@@ -1,0 +1,47 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import { dictionary } from '../../../i18n/dictionary';
+import { locales, type Locale } from '../../../i18n/locales';
+import { localizedPath } from '../../../i18n/routes';
+import { manualSidebarItems } from '../../../utils/navigation';
+import { getManualEntries } from '../../../utils/manual';
+
+export function getStaticPaths() {
+  return locales.map(locale => ({
+    params: { lang: locale.code },
+    props: { lang: locale.code },
+  }));
+}
+
+interface Props {
+  lang: Locale;
+}
+
+const { lang } = Astro.props;
+const t = dictionary[lang];
+const pages = await getManualEntries(lang);
+const sidebarItems = await manualSidebarItems(lang);
+---
+
+<DocsLayout
+  lang={lang}
+  title={t.nav.manual}
+  description={lang === 'zh-CN'
+    ? '从安装、核心概念到性能建议的学习路径。'
+    : 'A learning path from setup and concepts to performance practices.'}
+  sectionLabel={t.nav.manual}
+  sectionHref={localizedPath(lang, '/manual/')}
+  sidebarItems={sidebarItems}
+>
+  <div class="doc-card-list">
+    {
+      pages.map(page => (
+        <a href={localizedPath(lang, `/manual/${page.slug}/`)}>
+          <span>{String(page.order).padStart(2, '0')}</span>
+          <strong>{page.title}</strong>
+          <p>{page.description}</p>
+        </a>
+      ))
+    }
+  </div>
+</DocsLayout>

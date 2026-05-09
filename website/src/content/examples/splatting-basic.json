@@ -1,0 +1,14 @@
+{
+  "order": 0,
+  "tags": ["3dgs", "splatting"],
+  "accent": "#5eead4",
+  "coverImageUrl": "https://holo-cos.aholo3d.cn/aholo-opensource/page/example-cover/splatting-basic.9c5fc85d.png",
+  "renderer": {
+    "antialiasing": false,
+    "pixelRatio": 1
+  },
+  "title": {
+    "zh-CN": "Splatting 基础",
+    "en-US": "Splatting Basic"
+  }
+}

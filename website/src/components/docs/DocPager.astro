@@ -1,0 +1,36 @@
+---
+interface PagerItem {
+  href: string;
+  label: string;
+}
+
+interface Props {
+  previous?: PagerItem;
+  next?: PagerItem;
+}
+
+const { previous, next } = Astro.props;
+---
+
+<nav class="doc-pager" aria-label="Document pagination">
+  <div>
+    {
+      previous && (
+        <a href={previous.href}>
+          <span aria-hidden="true">&larr;</span>
+          {previous.label}
+        </a>
+      )
+    }
+  </div>
+  <div>
+    {
+      next && (
+        <a href={next.href}>
+          {next.label}
+          <span aria-hidden="true">&rarr;</span>
+        </a>
+      )
+    }
+  </div>
+</nav>

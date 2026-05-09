@@ -1,0 +1,11 @@
+node_modules/
+.pnpm-store/
+dist/
+.astro/
+website/.generated/
+.typedoc-*.tmp*/
+.typedoc-*.tmp.json
+*.log
+.env
+.env.*
+!.env.example

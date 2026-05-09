@@ -1,0 +1,27 @@
+packages:
+  - 'website'
+  - 'packages/*'
+  - 'external/egs-core/packages/*'
+  - 'external/egs-core/packages/loaders/*'
+  - 'external/egs-core/packages/utils/*'
+  - 'external/egs-core/tools/utils'
+  - 'external/splat-transform'
+  - 'external/splat-dev-server'
+
+minimumReleaseAge: 0
+
+allowBuilds:
+  esbuild: false
+  sharp: false
+  webgpu: false
+
+overrides:
+  '@qunhe/egs-typings': 'workspace:*'
+  '@qunhe/egs-lib': 'workspace:*'
+  '@qunhe/egs': 'workspace:*'
+  '@qunhe/egs-draco-loader': 'workspace:*'
+  '@qunhe/egs-splat-loader': 'workspace:*'
+  '@qunhe/egs-splat-utils': 'workspace:*'
+  '@manycore/aholo-splat-transform': 'workspace:*'
+  '@manycore/aholo-splat-dev-server': 'workspace:*'
+  '@manycore/aholo-render-cloud': 'workspace:*'

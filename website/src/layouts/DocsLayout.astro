@@ -1,0 +1,67 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import Breadcrumbs from '../components/site/Breadcrumbs.astro';
+import Sidebar from '../components/site/Sidebar.astro';
+import DocToc from '../components/docs/DocToc.astro';
+import type { Locale } from '../i18n/locales';
+import type { SidebarItem } from '../utils/navigation';
+import '../styles/docs.css';
+
+interface DocTocHeading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+interface Props {
+  lang: Locale;
+  title: string;
+  description: string;
+  sectionLabel: string;
+  sectionHref: string;
+  sidebarItems: SidebarItem[];
+  sidebarSearch?: {
+    label: string;
+    empty: string;
+  };
+  tocHeadings?: readonly DocTocHeading[];
+  tocLabel?: string;
+}
+
+const { lang, title, description, sectionLabel, sectionHref, sidebarItems, sidebarSearch, tocHeadings, tocLabel } =
+  Astro.props;
+const resolvedTocLabel = tocLabel ?? (lang === 'zh-CN' ? '本页目录' : 'On This Page');
+const hasGeneratedToc = tocHeadings?.some(heading => heading.depth === 2 || heading.depth === 3) ?? false;
+---
+
+<BaseLayout lang={lang} title={title} description={description} pageClass="docs-page">
+  <Fragment slot="mobileNav">
+    <Sidebar items={sidebarItems} currentPath={Astro.url.pathname} search={sidebarSearch}>
+      {
+        hasGeneratedToc && (
+          <Fragment slot="activeContent">
+            <DocToc headings={tocHeadings ?? []} label={resolvedTocLabel} />
+          </Fragment>
+        )
+      }
+    </Sidebar>
+  </Fragment>
+
+  <main class:list={['docs-shell', hasGeneratedToc && 'has-toc']}>
+    <Sidebar items={sidebarItems} currentPath={Astro.url.pathname} search={sidebarSearch} />
+    <article class="docs-content">
+      <Breadcrumbs
+        items={[
+          { label: sectionLabel, href: sectionHref },
+          { label: title, href: Astro.url.pathname },
+        ]}
+      />
+      <header class="docs-heading">
+        <h1>{title}</h1>
+        <p>{description}</p>
+      </header>
+      <slot />
+    </article>
+    {hasGeneratedToc && <DocToc headings={tocHeadings ?? []} label={resolvedTocLabel} />}
+  </main>
+</BaseLayout>

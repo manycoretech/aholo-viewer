@@ -1,0 +1,4 @@
+interface:
+  display_name: "Aholo Site"
+  short_description: "Astro website, docs UI, examples, and Playground."
+  default_prompt: "Use $aholo-site to update Aholo Viewer website routes, styles, examples, docs UI, or Playground behavior."

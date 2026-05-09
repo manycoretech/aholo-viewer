@@ -1,0 +1,64 @@
+---
+import DocPager from '../../../components/docs/DocPager.astro';
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import { dictionary } from '../../../i18n/dictionary';
+import { locales, type Locale } from '../../../i18n/locales';
+import { localizedPath } from '../../../i18n/routes';
+import { getApiEntries, getApiNeighbors, type ApiEntry } from '../../../utils/api';
+import { apiSidebarItems } from '../../../utils/navigation';
+
+export function getStaticPaths() {
+  return locales.flatMap(locale =>
+    getApiEntries(locale.code).map(entry => ({
+      params: { lang: locale.code, slug: entry.slug },
+      props: { lang: locale.code, entry },
+    })),
+  );
+}
+
+interface Props {
+  lang: Locale;
+  entry: ApiEntry;
+}
+
+const { lang, entry } = Astro.props;
+const t = dictionary[lang];
+const neighbors = getApiNeighbors(lang, entry.slug);
+const headings = entry.headings;
+---
+
+<DocsLayout
+  lang={lang}
+  title={entry.title}
+  description={entry.description}
+  sectionLabel={t.nav.api}
+  sectionHref={localizedPath(lang, '/api/')}
+  sidebarItems={apiSidebarItems(lang)}
+  sidebarSearch={{
+    label: lang === 'zh-CN' ? '搜索 API' : 'Search API',
+    empty: lang === 'zh-CN' ? '没有匹配的 API' : 'No API matches',
+  }}
+  tocHeadings={headings}
+  tocLabel={lang === 'zh-CN' ? '本页目录' : 'On This Page'}
+>
+  <div class="api-page-meta">
+    <span
+      >{
+        entry.namespaceLabel === entry.categoryLabel
+          ? entry.categoryLabel
+          : `${entry.categoryLabel} / ${entry.namespaceLabel}`
+      }</span
+    >
+    <span>{entry.kindLabel}</span>
+  </div>
+
+  <div class:list={['typedoc-html', `is-${entry.kind}`]} set:html={entry.html} />
+
+  <DocPager
+    previous={neighbors.previous && {
+      href: localizedPath(lang, `/api/${neighbors.previous.slug}/`),
+      label: neighbors.previous.title,
+    }}
+    next={neighbors.next && { href: localizedPath(lang, `/api/${neighbors.next.slug}/`), label: neighbors.next.title }}
+  />
+</DocsLayout>

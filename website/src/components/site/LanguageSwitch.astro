@@ -1,0 +1,42 @@
+---
+import { localeStorageKey, locales, type Locale } from '../../i18n/locales';
+import { swapLocale } from '../../i18n/routes';
+
+interface Props {
+  lang: Locale;
+  currentPath: string;
+}
+
+const { lang, currentPath } = Astro.props;
+const target = locales.find(locale => locale.code !== lang) ?? locales[0];
+const targetHref = swapLocale(currentPath, lang, target.code);
+---
+
+<a
+  class="language-switch"
+  href={targetHref}
+  data-locale-target={target.code}
+  data-locale-storage-key={localeStorageKey}
+  aria-label={`Switch language to ${target.label}`}
+>
+  {target.shortLabel}
+</a>
+
+<script is:inline>
+  document.addEventListener('click', event => {
+    const target =
+      event.target instanceof Element ? event.target.closest('[data-locale-target][data-locale-storage-key]') : null;
+    const locale = target?.getAttribute('data-locale-target');
+    const storageKey = target?.getAttribute('data-locale-storage-key');
+
+    if (!locale || !storageKey) {
+      return;
+    }
+
+    try {
+      localStorage.setItem(storageKey, locale);
+    } catch {
+      // Keep navigation working even when storage is unavailable.
+    }
+  });
+</script>

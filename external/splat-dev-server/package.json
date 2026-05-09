@@ -1,0 +1,29 @@
+{
+  "name": "@manycore/aholo-splat-dev-server",
+  "version": "1.0.1",
+  "description": "",
+  "author": "egs",
+  "repository": "https://github.com/manycoretech/aholo-viewer.git",
+  "license": "MIT",
+  "engines": {
+    "node": ">= 20.19.0"
+  },
+  "type": "module",
+  "bin": {
+    "splat-dev-server": "bin/server.js",
+    "merge-lod": "bin/merge.js"
+  },
+  "files": [
+    "src/",
+    "CHANGELOG.md"
+  ],
+  "dependencies": {
+    "express": "^5.2.1",
+    "yargs": "^18.0.0"
+  },
+  "binary": {
+    "napi_versions": [
+      8
+    ]
+  }
+}

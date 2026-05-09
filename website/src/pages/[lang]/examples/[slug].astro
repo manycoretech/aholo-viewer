@@ -1,0 +1,133 @@
+---
+import ExampleRail from '../../../components/ExampleRail.astro';
+import ExamplePreview from '../../../components/ExamplePreview.astro';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { dictionary } from '../../../i18n/dictionary';
+import { locales, type Locale } from '../../../i18n/locales';
+import { localizedPath } from '../../../i18n/routes';
+import { examples, type ExampleItem } from '../../../utils/examples';
+import '../../../styles/examples.css';
+
+export function getStaticPaths() {
+  return locales.flatMap(locale =>
+    examples.map(example => ({
+      params: { lang: locale.code, slug: example.slug },
+      props: { lang: locale.code, example },
+    })),
+  );
+}
+
+interface Props {
+  lang: Locale;
+  example: ExampleItem;
+}
+
+const { lang, example } = Astro.props;
+const t = dictionary[lang];
+const showPlaygroundEdit = example.surfaces.includes('playground');
+const playgroundHref = `${localizedPath(lang, '/playground/')}?example=${example.slug}`;
+const editLabel = lang === 'zh-CN' ? '编辑' : 'Edit';
+const resizeLabel = lang === 'zh-CN' ? '调整示例栏和预览宽度' : 'Resize examples and preview';
+const expandLabel = lang === 'zh-CN' ? '展开示例栏' : 'Expand examples';
+const configLabel = lang === 'zh-CN' ? '配置' : 'Config';
+const tagsLabel = lang === 'zh-CN' ? '标签' : 'Tags';
+const previewLoadingLabel = lang === 'zh-CN' ? '正在加载示例' : 'Loading example';
+const previewErrorLabel = lang === 'zh-CN' ? '示例运行失败' : 'Example failed';
+---
+
+<BaseLayout lang={lang} title={example.title[lang]} pageClass="workspace-page example-viewer-page" workspaceFullscreen>
+  <Fragment slot="mobileNav">
+    <ExampleRail currentSlug={example.slug} label={t.nav.examples} lang={lang} tagsLabel={tagsLabel} variant="drawer" />
+  </Fragment>
+
+  <script slot="head" is:inline>
+    (() => {
+      const root = document.documentElement;
+      const collapsedStorageKey = 'aholo:examples:rail-collapsed';
+      const widthStorageKey = 'aholo:examples:rail-width';
+      const railMinWidth = 220;
+      const railMaxWidth = 420;
+      const stageMinWidth = 420;
+      const splitterWidth = 9;
+
+      try {
+        const storedWidth = Number(localStorage.getItem(widthStorageKey));
+
+        if (Number.isFinite(storedWidth) && storedWidth > 0) {
+          const maximum = Math.max(
+            railMinWidth,
+            Math.min(railMaxWidth, window.innerWidth - stageMinWidth - splitterWidth),
+          );
+          const width = Math.min(Math.max(storedWidth, Math.min(railMinWidth, maximum)), maximum);
+
+          root.style.setProperty('--example-initial-rail-width', `${Math.round(width)}px`);
+        } else {
+          root.style.removeProperty('--example-initial-rail-width');
+        }
+
+        if (localStorage.getItem(collapsedStorageKey) === 'true') {
+          root.dataset.exampleRailCollapsed = 'true';
+        } else {
+          delete root.dataset.exampleRailCollapsed;
+        }
+      } catch {
+        root.style.removeProperty('--example-initial-rail-width');
+        delete root.dataset.exampleRailCollapsed;
+      }
+    })();
+  </script>
+
+  <main class="example-viewer workspace-grid" style={`--example-accent: ${example.accent}`} data-example-viewer>
+    <ExampleRail
+      currentSlug={example.slug}
+      label={t.nav.examples}
+      lang={lang}
+      navId="example-rail-nav"
+      tagsLabel={tagsLabel}
+    />
+
+    <div
+      class="example-splitter workspace-resizer"
+      aria-controls="example-rail-nav"
+      aria-expanded="true"
+      aria-label={resizeLabel}
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow="24"
+      aria-orientation="vertical"
+      data-resize-label={resizeLabel}
+      data-expand-label={expandLabel}
+      data-example-splitter
+      role="separator"
+      tabindex="0"
+    >
+    </div>
+
+    <section class="example-stage">
+      <ExamplePreview
+        accent={example.accent}
+        configLabel={configLabel}
+        code={example.code}
+        errorLabel={previewErrorLabel}
+        lang={lang}
+        loadingLabel={previewLoadingLabel}
+        renderer={example.renderer}
+        showInteractionGuide={example.showInteractionGuide}
+        title={example.title[lang]}
+      />
+      {
+        showPlaygroundEdit && (
+          <a class="example-edit-button" href={playgroundHref} aria-label={editLabel} title={editLabel}>
+            <img src="/icons/example-edit-code.svg" alt="" width="24" height="24" aria-hidden="true" />
+          </a>
+        )
+      }
+    </section>
+  </main>
+
+  <script>
+    import { mountExamplesPage } from '../../../client/examples';
+
+    mountExamplesPage();
+  </script>
+</BaseLayout>

@@ -1,0 +1,34 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": true,
+    "declarationMap": true,
+    "experimentalDecorators": true,
+    "noEmit": false,
+    "sourceMap": true,
+    "verbatimModuleSyntax": false,
+    "strictPropertyInitialization": false,
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "paths": {
+      "@qunhe/egs": ["../../external/egs-core/packages/egs/build/index.d.ts"],
+      "@qunhe/egs/*": ["../../external/egs-core/packages/egs/build/*"],
+      "@qunhe/egs-lib": ["../../external/egs-core/packages/egs-lib/build/index.d.ts"],
+      "@qunhe/egs-lib/*": ["../../external/egs-core/packages/egs-lib/build/*"],
+      "@qunhe/egs-animation": ["../../external/egs-core/packages/egs-animation/build/index.d.ts"],
+      "@qunhe/egs-animation/*": ["../../external/egs-core/packages/egs-animation/build/*"],
+      "@qunhe/egs-draco-loader": ["../../external/egs-core/packages/loaders/draco-loader/build/index.d.ts"],
+      "@qunhe/egs-draco-loader/*": ["../../external/egs-core/packages/loaders/draco-loader/build/*"],
+      "@qunhe/egs-gltf-loader": ["../../external/egs-core/packages/loaders/gltf-loader/build/index.d.ts"],
+      "@qunhe/egs-gltf-loader/*": ["../../external/egs-core/packages/loaders/gltf-loader/build/*"],
+      "@qunhe/egs-splat-loader": ["../../external/egs-core/packages/loaders/splat-loader/build/index.d.ts"],
+      "@qunhe/egs-splat-loader/*": ["../../external/egs-core/packages/loaders/splat-loader/build/*"],
+      "@qunhe/egs-splat-utils": ["../../external/egs-core/packages/utils/splat-utils/build/index.d.ts"],
+      "@qunhe/egs-splat-utils/*": ["../../external/egs-core/packages/utils/splat-utils/build/*"],
+      "@manycore/aholo-render-cloud": ["../render-cloud/src/index.ts"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["dist"]
+}

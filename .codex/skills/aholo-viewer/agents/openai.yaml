@@ -1,0 +1,4 @@
+interface:
+  display_name: "Aholo Viewer"
+  short_description: "Route repo-level Aholo work and validation."
+  default_prompt: "Use $aholo-viewer to route Aholo monorepo tasks, inspect workspace boundaries, and choose validation commands."

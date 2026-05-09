@@ -1,0 +1,268 @@
+---
+import { dictionary } from '../i18n/dictionary';
+import type { Locale } from '../i18n/locales';
+
+interface Props {
+  lang: Locale;
+}
+
+const { lang } = Astro.props;
+const t = dictionary[lang];
+const labels =
+  lang === 'zh-CN'
+    ? {
+        import: '导入',
+        selectFiles: '选择文件',
+        fileFormatHint: 'PLY / SPZ / SPLAT / KSPLAT / LCC / SOG / JSON',
+        urlLabel: 'URL',
+        urlPlaceholder: '粘贴 .ply / .spz / .sog / .json 地址',
+        loadUrl: '加载 URL',
+        loadClipboard: '从剪贴板加载',
+        removeFile: '删除文件',
+        files: '导入文件',
+        emptyFiles: '尚未导入文件',
+        camera: '相机',
+        coordSystem: '坐标系',
+        far: '远裁剪面',
+        useOrbit: '环绕',
+        copyCamera: '复制状态',
+        pasteCamera: '粘贴状态',
+        resetCamera: '重置视角',
+        settings: '渲染参数',
+        preset: '预设',
+        presetCustom: '自定义',
+        presetMaxQuality: '极限效果',
+        presetQualityFirst: '效果优先',
+        presetPerformanceFirst: '性能优先',
+        presetExtremePerformance: '极限性能',
+        presetPackTypeTip: '预设会影响 Pack type，请在导入前选择。',
+        packTypeTip: '仅导入前修改生效。',
+        statusReady: '',
+        statusLoading: '正在加载',
+        statusError: '加载失败',
+        unsupportedFileType: '不支持的文件类型',
+        statsFps: 'FPS',
+        dropOverlayTitle: '释放文件以导入项目',
+        dropOverlayHint: '支持 .ply / .spz / .sog / .json 等格式',
+        collapseLeft: '收起左侧设置',
+        expandLeft: '展开左侧设置',
+        collapseRight: '收起渲染参数',
+        expandRight: '展开渲染参数',
+      }
+    : {
+        import: 'Import',
+        selectFiles: 'Choose Files',
+        fileFormatHint: 'PLY / SPZ / SPLAT / KSPLAT / LCC / SOG / JSON',
+        urlLabel: 'URL',
+        urlPlaceholder: 'Paste .ply / .spz / .sog / .json URLs',
+        loadUrl: 'Load URL',
+        loadClipboard: 'Load Clipboard',
+        removeFile: 'Remove File',
+        files: 'Imported Files',
+        emptyFiles: 'No imported files',
+        camera: 'Camera',
+        coordSystem: 'Coordinate System',
+        far: 'Far Plane',
+        useOrbit: 'Orbit',
+        copyCamera: 'Copy State',
+        pasteCamera: 'Paste State',
+        resetCamera: 'Reset View',
+        settings: 'Render Settings',
+        preset: 'Preset',
+        presetCustom: 'Custom',
+        presetMaxQuality: 'Max Quality',
+        presetQualityFirst: 'Quality First',
+        presetPerformanceFirst: 'Performance First',
+        presetExtremePerformance: 'Extreme Performance',
+        presetPackTypeTip: 'Presets affect Pack type. Choose before import.',
+        packTypeTip: 'Only changes before import take effect.',
+        statusReady: '',
+        statusLoading: 'Loading',
+        statusError: 'Load failed',
+        unsupportedFileType: 'Unsupported file type',
+        statsFps: 'FPS',
+        dropOverlayTitle: 'Release files to import',
+        dropOverlayHint: 'Supports .ply / .spz / .sog / .json and more',
+        collapseLeft: 'Collapse left settings',
+        expandLeft: 'Expand left settings',
+        collapseRight: 'Collapse render settings',
+        expandRight: 'Expand render settings',
+      };
+const configJson = JSON.stringify({ labels }).replace(/</g, '\\u003c');
+const supportedFormats = '.ply,.spz,.splat,.ksplat,.lcc,.sog,.json';
+---
+
+<script is:inline>
+  (() => {
+    const compact = window.matchMedia('(max-width: 720px)').matches;
+    const readCollapsed = storageKey => {
+      if (compact) {
+        return true;
+      }
+
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored !== null) {
+          return stored === 'true';
+        }
+      } catch {
+        // Keep the responsive default when storage is unavailable.
+      }
+
+      return false;
+    };
+
+    document.documentElement.dataset.viewerLeftCollapsed = String(readCollapsed('aholo:viewer:left-collapsed'));
+    document.documentElement.dataset.viewerRightCollapsed = String(readCollapsed('aholo:viewer:right-collapsed'));
+  })();
+</script>
+
+<main class="viewer-shell" data-viewer data-left-collapsed="auto" data-right-collapsed="auto">
+  <section class="viewer-stage" aria-label={t.viewer.title} data-viewer-stage>
+    <div class="viewer-render-surface" data-render-surface></div>
+    <div class="viewer-status" data-status data-state="ready" aria-live="polite"></div>
+    <output class="viewer-stats" aria-label={labels.statsFps} data-stat-fps>0</output>
+  </section>
+
+  <button
+    class="viewer-left-toggle"
+    type="button"
+    aria-controls="viewer-left-rail"
+    aria-expanded="false"
+    aria-label={labels.expandLeft}
+    title={labels.expandLeft}
+    data-left-toggle
+    data-expand-label={labels.expandLeft}
+  >
+    <span class="viewer-collapse-icon" aria-hidden="true"></span>
+  </button>
+
+  <button
+    class="viewer-right-toggle"
+    type="button"
+    aria-controls="viewer-right-rail"
+    aria-expanded="false"
+    aria-label={labels.expandRight}
+    title={labels.expandRight}
+    data-right-toggle
+    data-expand-label={labels.expandRight}
+  >
+    <span class="viewer-settings-icon" aria-hidden="true"></span>
+  </button>
+
+  <aside id="viewer-left-rail" class="viewer-rail viewer-left-rail" aria-label={labels.import} data-left-rail>
+    <header class="viewer-left-header">
+      <button
+        class="viewer-left-close"
+        type="button"
+        aria-controls="viewer-left-rail"
+        aria-label={labels.collapseLeft}
+        title={labels.collapseLeft}
+        data-left-close
+      >
+        <span class="viewer-close-icon" aria-hidden="true"></span>
+      </button>
+    </header>
+    <section class="viewer-panel-section viewer-import-section" aria-label={labels.import}>
+      <label class="viewer-file-picker">
+        <input type="file" accept={supportedFormats} multiple data-file-input />
+        <span class="viewer-file-picker-copy">{labels.selectFiles}</span>
+        <span class="viewer-file-picker-meta">{labels.fileFormatHint}</span>
+      </label>
+      <form class="viewer-field viewer-url-form" data-url-form>
+        <textarea
+          id="viewer-url"
+          rows="2"
+          placeholder={labels.urlPlaceholder}
+          aria-label={labels.urlLabel}
+          data-url-input></textarea>
+        <div class="viewer-url-actions">
+          <button type="button" class="secondary" data-clipboard-load>{labels.loadClipboard}</button>
+          <button type="submit">{labels.loadUrl}</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="viewer-panel-section viewer-files-section" aria-label={labels.files}>
+      <ul class="viewer-file-list" data-file-list>
+        <li class="viewer-empty-file">{labels.emptyFiles}</li>
+      </ul>
+    </section>
+
+    <section class="viewer-panel-section viewer-camera-section">
+      <header class="viewer-section-header viewer-camera-header">
+        <h2>{labels.camera}</h2>
+        <label class="viewer-check-field viewer-camera-toggle">
+          <span class="viewer-check-label">{labels.useOrbit}</span>
+          <input id="viewer-use-orbit" type="checkbox" data-camera-use-orbit />
+          <span class="viewer-toggle-switch" aria-hidden="true"></span>
+        </label>
+      </header>
+      <div class="viewer-field-grid">
+        <div class="viewer-field">
+          <label for="viewer-coord">{labels.coordSystem}</label>
+          <select id="viewer-coord" data-camera-coord>
+            <option value="aholo">Aholo</option>
+            <option value="opengl">OpenGL</option>
+            <option value="opencv" selected>OpenCV</option>
+          </select>
+        </div>
+        <div class="viewer-field">
+          <label for="viewer-far">{labels.far}</label>
+          <input id="viewer-far" type="number" min="100" max="10000" step="100" value="2000" data-camera-far />
+        </div>
+      </div>
+      <div class="viewer-button-row viewer-camera-actions">
+        <button type="button" data-camera-copy>{labels.copyCamera}</button>
+        <button type="button" data-camera-paste>{labels.pasteCamera}</button>
+        <button type="button" class="secondary" data-camera-reset>{labels.resetCamera}</button>
+      </div>
+    </section>
+  </aside>
+
+  <aside
+    id="viewer-right-rail"
+    class="viewer-rail viewer-right-rail viewer-config-panel tool-panel-window"
+    aria-label={labels.settings}
+    data-right-rail
+    data-config-panel
+  >
+    <button
+      class="viewer-right-close"
+      type="button"
+      aria-controls="viewer-right-rail"
+      aria-label={labels.collapseRight}
+      title={labels.collapseRight}
+      data-right-close
+    >
+      <span class="viewer-close-icon" aria-hidden="true"></span>
+    </button>
+  </aside>
+
+  <div class="viewer-drag-overlay" aria-hidden="true" data-drag-overlay>
+    <div class="viewer-drag-overlay-panel">
+      <span class="viewer-drag-overlay-icon" aria-hidden="true"></span>
+      <strong>{labels.dropOverlayTitle}</strong>
+      <span>{labels.dropOverlayHint}</span>
+    </div>
+  </div>
+
+  <script is:inline type="application/json" data-viewer-config set:html={configJson} />
+</main>
+
+<script>
+  import { mountViewerPage } from '../client/viewer';
+
+  const root = document.querySelector<HTMLElement>('[data-viewer]');
+  const configElement = document.querySelector<HTMLScriptElement>('[data-viewer-config]');
+
+  if (root && configElement?.textContent) {
+    mountViewerPage(root, JSON.parse(configElement.textContent)).catch(error => {
+      const status = root.querySelector<HTMLElement>('[data-status]');
+      if (status) {
+        status.textContent = error instanceof Error ? error.message : String(error);
+        status.dataset.state = 'error';
+      }
+    });
+  }
+</script>

@@ -1,0 +1,62 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import { dictionary } from '../../../i18n/dictionary';
+import { locales, type Locale } from '../../../i18n/locales';
+import { localizedPath } from '../../../i18n/routes';
+import { getApiEntryGroups } from '../../../utils/api';
+import { apiSidebarItems } from '../../../utils/navigation';
+
+export function getStaticPaths() {
+  return locales.map(locale => ({
+    params: { lang: locale.code },
+    props: { lang: locale.code },
+  }));
+}
+
+interface Props {
+  lang: Locale;
+}
+
+const { lang } = Astro.props;
+const t = dictionary[lang];
+const groups = getApiEntryGroups(lang);
+---
+
+<DocsLayout
+  lang={lang}
+  title={t.nav.api}
+  description={lang === 'zh-CN'
+    ? '由 TypeDoc 生成的 API 参考。'
+    : 'TypeDoc API reference generated from renderer exports.'}
+  sectionLabel={t.nav.api}
+  sectionHref={localizedPath(lang, '/api/')}
+  sidebarItems={apiSidebarItems(lang)}
+  sidebarSearch={{
+    label: lang === 'zh-CN' ? '搜索 API' : 'Search API',
+    empty: lang === 'zh-CN' ? '没有匹配的 API' : 'No API matches',
+  }}
+>
+  <div class="api-group-list">
+    {
+      groups.map(group => (
+        <section class="api-group">
+          <h2>{group.label}</h2>
+          <div class="api-symbol-list">
+            {group.entries.map(entry => (
+              <a href={localizedPath(lang, `/api/${entry.slug}/`)}>
+                <span>
+                  {entry.namespaceLabel === group.label
+                    ? entry.kindLabel
+                    : `${entry.namespaceLabel} / ${entry.kindLabel}`}
+                </span>
+                <strong>{entry.title}</strong>
+                <code>{entry.signature}</code>
+                <p>{entry.description}</p>
+              </a>
+            ))}
+          </div>
+        </section>
+      ))
+    }
+  </div>
+</DocsLayout>

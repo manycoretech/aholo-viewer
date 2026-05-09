@@ -1,0 +1,49 @@
+---
+import type { Locale } from '../i18n/locales';
+import { localizedPath } from '../i18n/routes';
+import { examples } from '../utils/examples';
+
+interface Props {
+  currentSlug: string;
+  label: string;
+  lang: Locale;
+  navId?: string;
+  tagsLabel: string;
+  variant?: 'workspace' | 'drawer';
+}
+
+const { currentSlug, label, lang, navId, tagsLabel, variant = 'workspace' } = Astro.props;
+---
+
+<aside
+  class:list={[
+    'example-rail',
+    variant === 'workspace' && 'workspace-primary-pane',
+    variant === 'drawer' && 'example-mobile-rail',
+  ]}
+  aria-label={label}
+>
+  <nav id={navId}>
+    {
+      examples.map(item => (
+        <a
+          class={item.slug === currentSlug ? 'is-active' : ''}
+          href={localizedPath(lang, `/examples/${item.slug}/`)}
+          style={`--example-accent: ${item.accent}`}
+          aria-current={item.slug === currentSlug ? 'page' : undefined}
+          title={item.title[lang]}
+        >
+          <span class="example-thumb" aria-hidden="true">
+            <img src={item.coverImageUrl} alt="" loading="lazy" decoding="async" />
+          </span>
+          <strong>{item.title[lang]}</strong>
+          <span class="example-rail-tags" aria-label={tagsLabel}>
+            {item.tags.slice(0, 2).map(tag => (
+              <span>{tag}</span>
+            ))}
+          </span>
+        </a>
+      ))
+    }
+  </nav>
+</aside>

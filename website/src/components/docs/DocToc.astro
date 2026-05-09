@@ -1,0 +1,30 @@
+---
+interface DocTocHeading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+interface Props {
+  headings: readonly DocTocHeading[];
+  label: string;
+}
+
+const { headings, label } = Astro.props;
+const items = headings.filter(heading => heading.depth === 2 || heading.depth === 3);
+---
+
+{
+  items.length > 0 && (
+    <aside class="doc-toc">
+      <strong>{label}</strong>
+      <nav aria-label={label}>
+        {items.map(heading => (
+          <a class={heading.depth === 3 ? 'is-nested' : ''} href={`#${heading.slug}`}>
+            {heading.text}
+          </a>
+        ))}
+      </nav>
+    </aside>
+  )
+}

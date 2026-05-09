@@ -1,0 +1,15 @@
+{
+  "order": 99,
+  "surfaces": ["home"],
+  "tags": ["3dgs", "splatting", "lod", "streaming"],
+  "accent": "#38bdf8",
+  "coverImageUrl": "/home/feature-lod.svg",
+  "renderer": {
+    "antialiasing": false,
+    "pixelRatio": 1
+  },
+  "title": {
+    "zh-CN": "主页交互",
+    "en-US": "Home Interaction"
+  }
+}

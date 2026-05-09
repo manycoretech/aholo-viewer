@@ -1,0 +1,4 @@
+[submodule "external/egs-core"]
+	path = external/egs-core
+	url = https://github.com/manycoretech/egs.git
+	branch = master

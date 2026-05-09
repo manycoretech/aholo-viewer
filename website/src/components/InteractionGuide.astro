@@ -1,0 +1,302 @@
+---
+import type { Locale } from '../i18n/locales';
+
+interface Props {
+  activeWhen?: 'interactive';
+  lang: Locale;
+}
+
+const { activeWhen, lang } = Astro.props;
+const labels =
+  lang === 'zh-CN'
+    ? {
+        move: '移动',
+        riseDescend: '升降',
+        zoom: '缩放',
+        rotate: '旋转',
+        orbit: '环绕',
+        roll: '滚转',
+        pan: '平移',
+        fullscreen: '全屏',
+      }
+    : {
+        move: 'Move',
+        riseDescend: 'Rise / Descend',
+        zoom: 'Zoom',
+        rotate: 'Rotate',
+        orbit: 'Orbit',
+        roll: 'Roll',
+        pan: 'Pan',
+        fullscreen: 'Fullscreen',
+      };
+---
+
+<div class="viewer-interaction-guide" data-interaction-guide data-active-when={activeWhen} aria-hidden="true">
+  <div class="viewer-interaction-guide-panel">
+    <span class="viewer-guide-item">
+      <span class="viewer-guide-label">{labels.move}</span>
+      <span class="viewer-guide-keys" aria-hidden="true">
+        <kbd>W</kbd>
+        <kbd>A</kbd>
+        <kbd>S</kbd>
+        <kbd>D</kbd>
+      </span>
+    </span>
+    <span class="viewer-guide-item">
+      <span class="viewer-guide-label">{labels.riseDescend}</span>
+      <span class="viewer-guide-keys" aria-hidden="true">
+        <kbd>Q</kbd>
+        <kbd>E</kbd>
+      </span>
+    </span>
+    <span class="viewer-guide-item">
+      <span class="viewer-guide-label">{labels.roll}</span>
+      <span class="viewer-guide-keys" aria-hidden="true">
+        <kbd>R</kbd>
+        <kbd>F</kbd>
+      </span>
+    </span>
+    <span class="viewer-guide-item">
+      <span class="viewer-guide-label">{labels.zoom}</span>
+      <span class="viewer-guide-mouse is-wheel" aria-hidden="true">
+        <span></span>
+      </span>
+    </span>
+    <span class="viewer-guide-item">
+      <span class="viewer-guide-label">{labels.rotate}</span>
+      <span class="viewer-guide-mouse is-left" aria-hidden="true">
+        <span></span>
+      </span>
+    </span>
+    <span class="viewer-guide-item">
+      <span class="viewer-guide-label">{labels.orbit}</span>
+      <span class="viewer-guide-keys" aria-hidden="true">
+        <kbd>Alt</kbd>
+        <span class="viewer-guide-mouse is-left">
+          <span></span>
+        </span>
+      </span>
+    </span>
+    <span class="viewer-guide-item">
+      <span class="viewer-guide-label">{labels.pan}</span>
+      <span class="viewer-guide-mouse is-right" aria-hidden="true">
+        <span></span>
+      </span>
+    </span>
+    <span class="viewer-guide-item">
+      <span class="viewer-guide-label">{labels.fullscreen}</span>
+      <kbd>F11</kbd>
+    </span>
+  </div>
+</div>
+
+<script>
+  import { mountInteractionGuides } from '../client/interaction-guide';
+
+  mountInteractionGuides();
+</script>
+
+<style>
+  .viewer-interaction-guide {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .viewer-interaction-guide::before {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: min(220px, 40%);
+    background:
+      linear-gradient(180deg, transparent, rgba(3, 7, 18, 0.34) 58%, rgba(3, 7, 18, 0.48)),
+      linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+    opacity: 0;
+    transform: translateY(22px);
+    transition:
+      opacity 220ms ease,
+      transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .viewer-interaction-guide[data-visible='true']::before {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .viewer-interaction-guide-panel {
+    position: absolute;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+    left: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    max-width: min(1040px, calc(100% - 32px));
+    overflow-x: auto;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    background: rgba(3, 7, 18, 0.12);
+    box-shadow: none;
+    color: rgba(255, 255, 255, 0.92);
+    opacity: 0;
+    scrollbar-width: none;
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.66);
+    transform: translate(-50%, calc(100% + 26px));
+    transition:
+      opacity 180ms ease,
+      transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+    backdrop-filter: blur(6px);
+  }
+
+  .viewer-interaction-guide[data-visible='true'] .viewer-interaction-guide-panel {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  .viewer-interaction-guide-panel::-webkit-scrollbar {
+    display: none;
+  }
+
+  .viewer-guide-item,
+  .viewer-guide-keys {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .viewer-guide-item {
+    flex: 0 0 auto;
+    gap: 7px;
+  }
+
+  .viewer-guide-keys {
+    gap: 5px;
+  }
+
+  .viewer-guide-label {
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 0.84rem;
+    font-weight: 760;
+    line-height: 1;
+  }
+
+  .viewer-guide-item kbd {
+    display: inline-grid;
+    place-items: center;
+    min-width: 23px;
+    height: 23px;
+    padding: 0 6px;
+    border: 1px solid rgba(255, 255, 255, 0.78);
+    border-radius: 7px;
+    background: rgba(3, 7, 18, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    font-weight: 780;
+    line-height: 1;
+  }
+
+  .viewer-guide-mouse {
+    position: relative;
+    display: inline-block;
+    width: 18px;
+    height: 26px;
+    border: 1.5px solid rgba(255, 255, 255, 0.88);
+    border-radius: 999px;
+    background: rgba(3, 7, 18, 0.08);
+  }
+
+  .viewer-guide-mouse::before,
+  .viewer-guide-mouse::after,
+  .viewer-guide-mouse span {
+    content: '';
+    position: absolute;
+    background: rgba(255, 255, 255, 0.9);
+  }
+
+  .viewer-guide-mouse::before {
+    top: 2px;
+    bottom: 13px;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
+  }
+
+  .viewer-guide-mouse::after {
+    top: 11px;
+    right: 4px;
+    left: 4px;
+    height: 1px;
+  }
+
+  .viewer-guide-mouse span {
+    top: 4px;
+    left: 50%;
+    width: 3px;
+    height: 7px;
+    border-radius: 999px;
+    transform: translateX(-50%);
+  }
+
+  .viewer-guide-mouse.is-left span,
+  .viewer-guide-mouse.is-right span {
+    top: 3px;
+    width: 6px;
+    height: 8px;
+    border-radius: 7px 7px 2px 2px;
+    opacity: 0.96;
+  }
+
+  .viewer-guide-mouse.is-left span {
+    left: 5px;
+  }
+
+  .viewer-guide-mouse.is-right span {
+    left: 12px;
+  }
+
+  @media (max-width: 720px) {
+    .viewer-interaction-guide-panel {
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+      justify-content: flex-start;
+      gap: 13px;
+      max-width: calc(100% - 24px);
+      padding: 8px 10px;
+      border-radius: var(--radius);
+    }
+
+    .viewer-guide-item {
+      gap: 6px;
+    }
+
+    .viewer-guide-label {
+      font-size: 0.78rem;
+    }
+
+    .viewer-guide-item kbd {
+      min-width: 21px;
+      height: 21px;
+      padding: 0 5px;
+      border-radius: 6px;
+      font-size: 0.69rem;
+    }
+
+    .viewer-guide-mouse {
+      width: 16px;
+      height: 24px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .viewer-interaction-guide::before,
+    .viewer-interaction-guide-panel {
+      transition: none;
+    }
+  }
+</style>

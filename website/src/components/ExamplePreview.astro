@@ -1,0 +1,67 @@
+---
+import InteractionGuide from './InteractionGuide.astro';
+import type { Locale } from '../i18n/locales';
+
+interface Props {
+  accent: string;
+  configLabel: string;
+  code: string;
+  errorLabel: string;
+  lang: Locale;
+  loadingLabel: string;
+  renderer: {
+    antialiasing: boolean;
+    pixelRatio?: number;
+  };
+  showInteractionGuide?: boolean;
+  title: string;
+}
+
+const {
+  accent,
+  configLabel,
+  code,
+  errorLabel,
+  lang,
+  loadingLabel,
+  renderer,
+  showInteractionGuide = true,
+  title,
+} = Astro.props;
+const configJson = JSON.stringify({
+  accent,
+  configLabel,
+  code,
+  errorLabel,
+  loadingLabel,
+  renderer,
+}).replace(/</g, '\\u003c');
+---
+
+<div
+  class="example-preview"
+  style={`--example-accent: ${accent}`}
+  aria-label={title}
+  data-example-preview
+  data-state="loading"
+  aria-busy="true"
+>
+  <canvas data-example-preview-canvas></canvas>
+  <div class="example-preview-status" data-example-preview-status aria-live="polite">{loadingLabel}</div>
+  <aside
+    class="example-config-panel tool-panel-window"
+    aria-label={configLabel}
+    data-example-config-panel
+    data-config-panel-title={configLabel}
+    hidden
+  >
+  </aside>
+  {showInteractionGuide && <InteractionGuide lang={lang} />}
+  <script is:inline type="application/json" data-example-preview-config set:html={configJson} />
+</div>
+
+<script>
+  import { mountAllPreviewEmbeds } from '../client/examples';
+
+  mountAllPreviewEmbeds();
+</script>

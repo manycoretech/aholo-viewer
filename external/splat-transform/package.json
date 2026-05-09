@@ -1,0 +1,31 @@
+{
+  "name": "@manycore/aholo-splat-transform",
+  "version": "1.2.7",
+  "description": "Transform & filter Gaussian splats file",
+  "author": "egs",
+  "repository": "https://github.com/manycoretech/aholo-viewer.git",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">= 20.19.0"
+  },
+  "type": "module",
+  "bin": {
+    "splat-transform": "bin/cli.js"
+  },
+  "files": [
+    "dist/",
+    "CHANGELOG.md",
+    "THIRD_PARTY_LICENSES.txt"
+  ],
+  "dependencies": {
+    "commander": "^14.0.2",
+    "fflate": "^0.8.2",
+    "tslib": "^2.8.1",
+    "webgpu": "^0.4.0"
+  },
+  "binary": {
+    "napi_versions": [
+      8
+    ]
+  }
+}

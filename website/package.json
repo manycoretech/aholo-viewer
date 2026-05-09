@@ -1,0 +1,28 @@
+{
+  "name": "@manycore/aholo-viewer-website",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    ".dev": "astro dev --host 127.0.0.1",
+    ".build": "astro build",
+    ".preview": "astro preview --host 127.0.0.1",
+    ".check": "astro check",
+    ".clean": "node scripts/clean.mjs"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.1.2",
+    "@manycore/aholo-viewer": "workspace:*",
+    "@tweakpane/plugin-essentials": "^0.2.1",
+    "astro": "^6.3.5",
+    "lz-string": "^1.5.0",
+    "monaco-editor": "^0.55.1",
+    "tweakpane": "^4.0.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "@tweakpane/core": "^2.0.5",
+    "@types/node": "12.20.55",
+    "typescript": "^5.7.0"
+  }
+}

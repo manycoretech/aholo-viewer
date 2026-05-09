@@ -1,0 +1,16 @@
+{
+  "order": 4,
+  "surfaces": ["examples"],
+  "tags": ["walk", "3dgs", "first-person", "third-person"],
+  "accent": "#0ea5e9",
+  "coverImageUrl": "https://holo-cos.aholo3d.cn/aholo-opensource/page/example-cover/walk-demo.2a5373b0.png",
+  "renderer": {
+    "antialiasing": false,
+    "pixelRatio": 1
+  },
+  "showInteractionGuide": false,
+  "title": {
+    "zh-CN": "Splatting 行走模式",
+    "en-US": "Splatting Walk Mode"
+  }
+}

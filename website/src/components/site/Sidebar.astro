@@ -1,0 +1,258 @@
+---
+interface Props {
+  currentPath: string;
+  items: Array<{
+    href?: string;
+    label: string;
+    description?: string;
+    items?: Array<{
+      href?: string;
+      label: string;
+      description?: string;
+    }>;
+  }>;
+  search?: {
+    label: string;
+    empty: string;
+  };
+}
+
+const { currentPath, items, search } = Astro.props;
+const hasActiveContent = Astro.slots.has('activeContent');
+
+const getSearchText = (item: { label: string; description?: string }) =>
+  [item.label, item.description].filter(Boolean).join(' ');
+---
+
+<aside class="docs-sidebar" aria-label="Document navigation" data-docs-sidebar>
+  {
+    search && (
+      <div class="docs-sidebar-search" data-docs-sidebar-search>
+        <div class="docs-sidebar-search-control">
+          <span class="docs-sidebar-search-icon" aria-hidden="true" />
+          <input
+            type="search"
+            aria-label={search.label}
+            autocomplete="off"
+            spellcheck="false"
+            data-docs-sidebar-search-input
+          />
+        </div>
+        <p class="docs-sidebar-empty" hidden data-docs-sidebar-empty>
+          {search.empty}
+        </p>
+      </div>
+    )
+  }
+  <nav data-docs-sidebar-nav>
+    {
+      items.map((item, index) =>
+        item.items?.length ? (
+          <details class="docs-sidebar-group" open={index === 0} data-docs-sidebar-group>
+            <summary>
+              <span>{item.label}</span>
+            </summary>
+            <div>
+              {item.items.map(child => {
+                const active = currentPath === child.href;
+                return (
+                  <>
+                    <a
+                      class={active ? 'is-active' : ''}
+                      href={child.href}
+                      data-docs-sidebar-item
+                      data-docs-sidebar-search-text={getSearchText(child)}
+                    >
+                      <span>{child.label}</span>
+                      {child.description && <small>{child.description}</small>}
+                    </a>
+                    {active && hasActiveContent && (
+                      <div class="docs-sidebar-active-content">
+                        <slot name="activeContent" />
+                      </div>
+                    )}
+                  </>
+                );
+              })}
+            </div>
+          </details>
+        ) : (
+          <>
+            <a
+              class={currentPath === item.href ? 'is-active' : ''}
+              href={item.href}
+              data-docs-sidebar-item
+              data-docs-sidebar-search-text={getSearchText(item)}
+            >
+              <span>{item.label}</span>
+              {item.description && <small>{item.description}</small>}
+            </a>
+            {currentPath === item.href && hasActiveContent && (
+              <div class="docs-sidebar-active-content">
+                <slot name="activeContent" />
+              </div>
+            )}
+          </>
+        ),
+      )
+    }
+  </nav>
+</aside>
+
+<script>
+  const normalizeSidebarSearchText = (value: string) => value.trim().toLocaleLowerCase();
+  const getSidebarSearchTerms = (value: string) =>
+    value
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+      .split(/[^a-zA-Z0-9]+/)
+      .map(term => normalizeSidebarSearchText(term))
+      .filter(Boolean);
+  const getDocsSidebarSearchStorageKey = () => {
+    const [locale = 'root', section = 'docs'] = window.location.pathname.split('/').filter(Boolean);
+
+    return `aholo-viewer:docs-sidebar-search:${locale}:${section}`;
+  };
+  const readDocsSidebarSearchValue = (storageKey: string) => {
+    try {
+      return sessionStorage.getItem(storageKey) ?? '';
+    } catch {
+      return '';
+    }
+  };
+  const writeDocsSidebarSearchValue = (storageKey: string, value: string) => {
+    try {
+      if (value.trim()) {
+        sessionStorage.setItem(storageKey, value);
+        return;
+      }
+
+      sessionStorage.removeItem(storageKey);
+    } catch {
+      // Keep navigation usable when storage is unavailable.
+    }
+  };
+  const clearDocsSidebarSearchValue = (storageKey: string) => {
+    try {
+      sessionStorage.removeItem(storageKey);
+    } catch {
+      // Keep navigation usable when storage is unavailable.
+    }
+  };
+
+  const setupDocsSidebarSearch = (sidebar: HTMLElement) => {
+    if (sidebar.dataset.docsSidebarReady === 'true') {
+      return;
+    }
+
+    const input = sidebar.querySelector<HTMLInputElement>('[data-docs-sidebar-search-input]');
+    const nav = sidebar.querySelector<HTMLElement>('[data-docs-sidebar-nav]');
+    const empty = sidebar.querySelector<HTMLElement>('[data-docs-sidebar-empty]');
+
+    if (!input || !nav) {
+      return;
+    }
+
+    sidebar.dataset.docsSidebarReady = 'true';
+
+    const groups = Array.from(nav.querySelectorAll<HTMLDetailsElement>(':scope > [data-docs-sidebar-group]'));
+    const directItems = Array.from(nav.querySelectorAll<HTMLElement>(':scope > [data-docs-sidebar-item]'));
+    const openState = new WeakMap<HTMLDetailsElement, boolean>();
+    const storageKey = getDocsSidebarSearchStorageKey();
+    input.value = readDocsSidebarSearchValue(storageKey);
+    clearDocsSidebarSearchValue(storageKey);
+    let isSearching = false;
+
+    const itemMatches = (item: HTMLElement, tokens: string[]) => {
+      const terms = getSidebarSearchTerms(item.dataset.docsSidebarSearchText ?? item.textContent ?? '');
+
+      return tokens.every(token => terms.some(term => term.startsWith(token)));
+    };
+    const syncActiveContentVisibility = (item: HTMLElement, visible: boolean) => {
+      const activeContent = item.nextElementSibling;
+
+      if (activeContent instanceof HTMLElement && activeContent.classList.contains('docs-sidebar-active-content')) {
+        activeContent.hidden = !visible;
+      }
+    };
+
+    const applySearch = () => {
+      const tokens = normalizeSidebarSearchText(input.value).split(/\s+/).filter(Boolean);
+      const hasQuery = tokens.length > 0;
+      let visibleCount = 0;
+
+      if (hasQuery && !isSearching) {
+        for (const group of groups) {
+          openState.set(group, group.open);
+        }
+      }
+
+      if (!hasQuery && isSearching) {
+        for (const group of groups) {
+          const wasOpen = openState.get(group);
+          group.open = wasOpen ?? group.open;
+        }
+      }
+
+      isSearching = hasQuery;
+
+      for (const item of directItems) {
+        const matches = !hasQuery || itemMatches(item, tokens);
+        item.hidden = !matches;
+        syncActiveContentVisibility(item, matches);
+        if (matches) {
+          visibleCount += 1;
+        }
+      }
+
+      for (const group of groups) {
+        const children = Array.from(group.querySelectorAll<HTMLElement>('[data-docs-sidebar-item]'));
+        let visibleChildren = 0;
+
+        for (const child of children) {
+          const matches = !hasQuery || itemMatches(child, tokens);
+          child.hidden = !matches;
+          syncActiveContentVisibility(child, matches);
+          if (matches) {
+            visibleChildren += 1;
+          }
+        }
+
+        group.hidden = hasQuery && visibleChildren === 0;
+
+        if (hasQuery && !group.hidden) {
+          group.open = true;
+        }
+
+        visibleCount += visibleChildren;
+      }
+
+      if (empty) {
+        empty.hidden = !hasQuery || visibleCount > 0;
+      }
+    };
+
+    input.addEventListener('input', applySearch);
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && input.value) {
+        input.value = '';
+        applySearch();
+      }
+    });
+    nav.addEventListener('click', event => {
+      const item = event.target instanceof Element ? event.target.closest('[data-docs-sidebar-item]') : null;
+
+      if (!item) {
+        return;
+      }
+
+      writeDocsSidebarSearchValue(storageKey, input.value);
+    });
+
+    applySearch();
+  };
+
+  for (const sidebar of document.querySelectorAll<HTMLElement>('[data-docs-sidebar]')) {
+    setupDocsSidebarSearch(sidebar);
+  }
+</script>

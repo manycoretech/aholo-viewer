@@ -1,0 +1,15 @@
+<button class="theme-toggle" type="button" aria-label="Toggle color theme" data-theme-toggle>
+  <span aria-hidden="true">◐</span>
+</button>
+
+<script>
+  const button = document.querySelector<HTMLButtonElement>('[data-theme-toggle]');
+  const themeColor = document.querySelector<HTMLMetaElement>('[data-theme-color]');
+
+  button?.addEventListener('click', () => {
+    const current = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = current;
+    themeColor?.setAttribute('content', current === 'dark' ? '#0d1117' : '#f7f8fa');
+    localStorage.setItem('theme', current);
+  });
+</script>

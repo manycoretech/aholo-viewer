@@ -1,0 +1,111 @@
+---
+import Header from '../components/site/Header.astro';
+import { defaultLocale, type Locale } from '../i18n/locales';
+import { dictionary } from '../i18n/dictionary';
+import '../styles/theme.css';
+import '../styles/global.css';
+import '../styles/site.css';
+
+interface Props {
+  lang?: Locale;
+  title?: string;
+  description?: string;
+  pageClass?: string;
+  workspaceFullscreen?: boolean;
+}
+
+const lang = Astro.props.lang ?? defaultLocale;
+const t = dictionary[lang];
+const rawTitle = Astro.props.title ?? t.siteName;
+const title = rawTitle === t.siteName ? t.siteName : `${rawTitle} | ${t.siteName}`;
+const description = Astro.props.description ?? t.siteDescription;
+const pageClass = Astro.props.pageClass ?? '';
+const workspaceFullscreen = Astro.props.workspaceFullscreen ?? false;
+const hasMobileNav = Astro.slots.has('mobileNav');
+const workspaceFullscreenScript = `(() => {
+  const params = new URLSearchParams(window.location.search);
+  const value = params.get('fullscreen');
+  const normalized = value?.trim().toLowerCase();
+  const fullscreenViewportTolerance = 12;
+  const browserChromeTolerance = 24;
+  const isExplicitlyWindowed =
+    normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off';
+  const canInferBrowserFullscreenViewport = () =>
+    !window.matchMedia('(max-width: 900px), (hover: none), (pointer: coarse)').matches;
+  const isBrowserFullscreenViewport = () => {
+    if (!canInferBrowserFullscreenViewport()) {
+      return false;
+    }
+
+    const targetWidth = Math.max(window.screen.width, window.screen.availWidth);
+    const targetHeight = Math.max(window.screen.height, window.screen.availHeight);
+
+    if (!targetWidth || !targetHeight || !window.outerWidth || !window.outerHeight) {
+      return false;
+    }
+
+    const fillsScreen =
+      window.innerWidth >= targetWidth - fullscreenViewportTolerance &&
+      window.innerHeight >= targetHeight - fullscreenViewportTolerance;
+    const browserChromeHidden =
+      Math.abs(window.outerWidth - window.innerWidth) <= browserChromeTolerance &&
+      Math.abs(window.outerHeight - window.innerHeight) <= browserChromeTolerance;
+
+    return fillsScreen && browserChromeHidden;
+  };
+  const isFullscreen =
+    !isExplicitlyWindowed &&
+    (normalized === '' ||
+      normalized === '1' ||
+      normalized === 'true' ||
+      normalized === 'yes' ||
+      normalized === 'on' ||
+      params.get('view')?.trim().toLowerCase() === 'fullscreen' ||
+      isBrowserFullscreenViewport());
+
+  if (isFullscreen) {
+    document.documentElement.dataset.workspaceFullscreen = 'true';
+  }
+})();`;
+---
+
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#f7f8fa" data-theme-color />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <title>{title}</title>
+    <script>
+      (window as any).Ktracker = {
+        sendErrorV2() {},
+        sendEventV2() {},
+      };
+    </script>
+    <script is:inline>
+      (() => {
+        const stored = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored || (prefersDark ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+        document.querySelector('[data-theme-color]')?.setAttribute('content', theme === 'dark' ? '#0d1117' : '#f7f8fa');
+      })();
+    </script>
+    {workspaceFullscreen && <script is:inline set:html={workspaceFullscreenScript} />}
+    <slot name="head" />
+  </head>
+  <body class={pageClass}>
+    {
+      hasMobileNav ? (
+        <Header lang={lang} currentPath={Astro.url.pathname}>
+          <slot name="mobileNav" />
+        </Header>
+      ) : (
+        <Header lang={lang} currentPath={Astro.url.pathname} />
+      )
+    }
+    <slot />
+  </body>
+</html>

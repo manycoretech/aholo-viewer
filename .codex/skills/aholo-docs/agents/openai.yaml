@@ -1,0 +1,4 @@
+interface:
+  display_name: "Aholo Docs"
+  short_description: "Docs, copy, manuals, and handoffs."
+  default_prompt: "Use $aholo-docs to update Aholo documentation, bilingual copy, or AI collaboration guidance."

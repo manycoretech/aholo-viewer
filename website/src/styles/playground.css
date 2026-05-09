@@ -1,0 +1,449 @@
+.playground-shell {
+    overflow: hidden;
+    background: var(--bg);
+}
+
+.playground-workspace {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(300px, var(--editor-width)) var(--workspace-splitter-size) minmax(320px, 1fr);
+    height: calc(100svh - var(--header-height));
+    min-height: var(--workspace-min-height);
+    background: var(--bg);
+}
+
+.playground-workspace[data-resizing='true'] {
+    cursor: col-resize;
+    user-select: none;
+}
+
+.editor-panel,
+.preview-panel {
+    position: relative;
+    min-width: 0;
+    min-height: var(--workspace-min-height);
+    overflow: hidden;
+}
+
+.editor-panel {
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.preview-panel {
+    background: var(--scene-surface);
+}
+
+.editor-panel .monaco-editor,
+.editor-panel .monaco-editor-background,
+.editor-panel .inputarea.ime-input {
+    font-family: var(--font-mono);
+}
+
+.editor-loading {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
+    background: var(--surface);
+}
+
+.playground-editor-dock {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    z-index: 6;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    max-width: calc(100% - 32px);
+    padding: 4px;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    background: var(--glass-bg);
+    box-shadow: var(--shadow-glass);
+    backdrop-filter: blur(14px);
+}
+
+.dock-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 680;
+    padding: 0 12px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.dock-button:hover,
+.dock-button[aria-expanded='true'] {
+    background: var(--surface-muted);
+    color: var(--text);
+}
+
+.dock-button.run {
+    gap: 8px;
+    min-width: 74px;
+    border-color: var(--primary-strong);
+    background: var(--primary-strong);
+    color: var(--primary-contrast);
+    padding: 0 13px 0 10px;
+    box-shadow: var(--control-primary-shadow);
+}
+
+.dock-button.run::before {
+    content: '';
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: var(--radius-pill);
+    background: var(--scene-control-indicator);
+    box-shadow: 0 0 0 3px var(--scene-panel-border);
+}
+
+.dock-button.run:hover {
+    border-color: var(--primary-hover);
+    background: var(--primary-hover);
+}
+
+.dock-button.run[data-state='loading'] {
+    border-color: color-mix(in srgb, var(--primary-strong) 72%, var(--border));
+    background: color-mix(in srgb, var(--primary-strong) 94%, var(--surface));
+}
+
+.dock-button.run[data-state='loading']::before {
+    animation: playground-status-pulse 1s ease-in-out infinite;
+}
+
+.dock-button.run[data-state='error'] {
+    border-color: var(--danger);
+    background: var(--danger);
+    color: var(--color-white);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--danger) 20%, transparent);
+}
+
+.dock-button.run[data-state='error']:hover {
+    background: var(--danger-strong);
+}
+
+@keyframes playground-status-pulse {
+    0%,
+    100% {
+        opacity: 0.62;
+        transform: scale(0.86);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.playground-preset-menu {
+    position: relative;
+    min-width: 0;
+}
+
+.preset-trigger {
+    display: grid;
+    grid-template-columns: minmax(72px, 130px) auto;
+    align-items: center;
+    gap: 7px;
+    max-width: 168px;
+    min-height: 34px;
+    padding: 0 10px;
+}
+
+.preset-trigger strong {
+    overflow: hidden;
+    color: var(--text);
+    font-size: 0.9rem;
+    font-weight: 760;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.preset-trigger::after {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    margin-left: 2px;
+    transform: translateY(-2px) rotate(45deg);
+}
+
+.preset-popover {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 10px);
+    display: grid;
+    width: min(380px, calc(100vw - 32px));
+    max-height: min(420px, calc(100vh - 160px));
+    overflow: auto;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.preset-popover[hidden] {
+    display: none;
+}
+
+.preset-option {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr);
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+    min-height: 78px;
+    padding: 10px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+
+.preset-option:hover,
+.preset-option:focus-visible,
+.preset-option[data-active='true'] {
+    background: var(--surface-muted);
+}
+
+.preset-option[data-active='true'] {
+    border-color: color-mix(in srgb, var(--preset-accent) 44%, var(--border));
+}
+
+.preset-option-marker {
+    border-radius: var(--radius-pill);
+    background: var(--preset-accent);
+}
+
+.preset-option-content {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.preset-option-content strong,
+.preset-option-content span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.preset-option-content strong {
+    color: var(--text);
+    font-size: 0.95rem;
+    font-weight: 780;
+}
+
+.preset-option-content span {
+    color: var(--text-muted);
+    font-size: 0.86rem;
+    line-height: 1.35;
+}
+
+.preset-option-content .preset-option-tags {
+    color: var(--text-soft);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+}
+
+.preview-panel canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: var(--scene-surface);
+}
+
+.preview-status {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 7;
+    max-width: min(360px, calc(100% - 40px));
+    padding: 9px 12px;
+    border: 1px solid color-mix(in srgb, var(--primary) 38%, var(--scene-panel-border));
+    border-radius: var(--radius-sm);
+    background: var(--scene-panel-bg);
+    color: var(--scene-text);
+    font-size: 0.82rem;
+    font-weight: 720;
+    line-height: 1.35;
+    text-align: center;
+    box-shadow: var(--shadow-scene);
+    transform: translate(-50%, -50%);
+    backdrop-filter: blur(12px);
+}
+
+.preview-status[hidden] {
+    display: none;
+}
+
+.inspector-window {
+    position: absolute;
+    z-index: 8;
+    top: 12px;
+    left: 12px;
+    width: min(248px, calc(100% - 24px));
+    max-width: calc(100% - 24px);
+    --tool-panel-label-width: 84px;
+}
+
+.inspector-window .tp-grlv_g {
+    min-height: 48px;
+    shape-rendering: geometricPrecision;
+}
+
+.inspector-window .tp-grlv_g polyline {
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+}
+
+.config-panel-window {
+    position: absolute;
+    z-index: 8;
+    top: 12px;
+    right: 12px;
+    width: min(300px, calc(100% - 24px));
+    max-width: calc(100% - 24px);
+    max-height: calc(100% - 24px);
+    overflow: auto;
+}
+
+@media (max-width: 980px) {
+    .playground-page {
+        overflow: auto;
+    }
+
+    .playground-shell {
+        margin: 14px 12px 36px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-soft);
+    }
+
+    .playground-workspace {
+        grid-template-columns: 1fr;
+        height: auto;
+        min-height: auto;
+    }
+
+    .playground-workspace[data-pane-collapsed='true'] {
+        grid-template-columns: 1fr;
+    }
+
+    .workspace-splitter.workspace-resizer {
+        display: none;
+    }
+
+    .playground-workspace[data-pane-collapsed='true'] .editor-panel {
+        visibility: visible;
+        overflow: visible;
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .editor-panel,
+    .preview-panel {
+        min-height: 420px;
+    }
+
+    .editor-panel {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .playground-editor-dock {
+        right: 10px;
+        bottom: 10px;
+        left: 10px;
+        flex-wrap: nowrap;
+        justify-content: stretch;
+        max-width: none;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .playground-editor-dock::-webkit-scrollbar {
+        display: none;
+    }
+
+    .playground-preset-menu {
+        flex: 1 1 auto;
+    }
+
+    .preset-trigger {
+        grid-template-columns: minmax(0, 1fr) auto;
+        width: 100%;
+        max-width: none;
+    }
+
+    .dock-button:not(.preset-trigger) {
+        flex: 0 0 auto;
+        padding: 0 9px;
+    }
+
+    .preset-popover {
+        position: fixed;
+        right: 22px;
+        bottom: 128px;
+        left: 22px;
+        width: auto;
+        max-height: min(56vh, 420px);
+    }
+
+    .config-panel-window {
+        top: auto;
+        bottom: 12px;
+        max-height: min(46vh, 360px);
+    }
+}
+
+:root[data-workspace-fullscreen='true'] .playground-shell {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+:root[data-workspace-fullscreen='true'] .playground-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    height: 100dvh;
+    min-height: 100dvh;
+}
+
+:root[data-workspace-fullscreen='true'] .editor-panel,
+:root[data-workspace-fullscreen='true'] .workspace-splitter.workspace-resizer,
+:root[data-workspace-fullscreen='true'] .inspector-window,
+:root[data-workspace-fullscreen='true'] .config-panel-window,
+:root[data-workspace-fullscreen='true'] .viewer-interaction-guide {
+    display: none;
+}
+
+:root[data-workspace-fullscreen='true'] .preview-panel {
+    min-height: 100dvh;
+}

@@ -1,0 +1,56 @@
+---
+import { defaultLocale, localeStorageKey, locales } from '../i18n/locales';
+
+const fallbackDestination = `/${defaultLocale}/`;
+const availableLocales = locales.map(locale => locale.code);
+---
+
+<!doctype html>
+<html lang={defaultLocale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content={`0; url=${fallbackDestination}`} />
+    <title>Aholo Viewer</title>
+    <script is:inline define:vars={{ availableLocales, defaultLocale, localeStorageKey }}>
+      (() => {
+        const matchLocale = value => {
+          if (!value) {
+            return undefined;
+          }
+
+          const normalized = String(value).toLowerCase();
+          return (
+            availableLocales.find(locale => locale.toLowerCase() === normalized) ??
+            availableLocales.find(locale => locale.split('-')[0].toLowerCase() === normalized.split('-')[0])
+          );
+        };
+
+        let storedLocale;
+        try {
+          storedLocale = matchLocale(localStorage.getItem(localeStorageKey));
+        } catch {
+          storedLocale = undefined;
+        }
+
+        const browserLocales =
+          Array.isArray(navigator.languages) && navigator.languages.length > 0
+            ? navigator.languages
+            : [navigator.language];
+        const systemLocale = browserLocales.map(matchLocale).find(Boolean);
+        const locale = storedLocale ?? systemLocale ?? defaultLocale;
+
+        try {
+          localStorage.setItem(localeStorageKey, locale);
+        } catch {
+          // Ignore storage errors so private browsing and blocked storage still redirect.
+        }
+
+        window.location.replace(`/${locale}/`);
+      })();
+    </script>
+  </head>
+  <body>
+    <a href={fallbackDestination}>Go to Aholo Viewer</a>
+  </body>
+</html>

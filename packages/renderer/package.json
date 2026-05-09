@@ -1,0 +1,37 @@
+{
+  "name": "@manycore/aholo-viewer",
+  "version": "1.0.0",
+  "description": "A compact TypeScript renderer core used by the Aholo Viewer website and examples.",
+  "author": "egs",
+  "repository": "https://github.com/manycoretech/aholo-viewer.git",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    ".build": "node ../../scripts/build-package.mjs",
+    ".check": "tsc -p tsconfig.json --noEmit",
+    ".clean": "node ../../scripts/clean-package.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^12.20.55",
+    "esbuild": "0.27.7",
+    "rollup": "^4.60.2",
+    "rollup-plugin-dts": "6.4.1",
+    "typescript": "^5.7.0"
+  }
+}

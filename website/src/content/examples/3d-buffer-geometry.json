@@ -1,0 +1,15 @@
+{
+  "order": 6,
+  "tags": ["3d", "mesh", "buffer-geometry", "texture"],
+  "accent": "#34d399",
+  "coverImageUrl": "https://holo-cos.aholo3d.cn/aholo-opensource/page/example-cover/3d-buffer-geometry.2ae2f964.png",
+  "renderer": {
+    "antialiasing": true,
+    "pixelRatio": 1
+  },
+  "showInteractionGuide": false,
+  "title": {
+    "zh-CN": "3D 几何",
+    "en-US": "3D Buffer Geometry"
+  }
+}

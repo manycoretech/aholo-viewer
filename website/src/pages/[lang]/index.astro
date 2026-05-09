@@ -1,0 +1,287 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import InteractionGuide from '../../components/InteractionGuide.astro';
+import { dictionary } from '../../i18n/dictionary';
+import { locales, type Locale } from '../../i18n/locales';
+import { localizedPath } from '../../i18n/routes';
+import '../../styles/home.css';
+
+export function getStaticPaths() {
+  return locales.map(locale => ({
+    params: { lang: locale.code },
+    props: { lang: locale.code },
+  }));
+}
+
+interface Props {
+  lang: Locale;
+}
+
+const { lang } = Astro.props;
+const t = dictionary[lang];
+const heroDescription =
+  lang === 'zh-CN'
+    ? '能力丰富的 3D Gaussian Splatting 高性能渲染引擎。'
+    : 'A feature-rich, high-performance 3D Gaussian Splatting rendering engine.';
+
+const heroCards = [
+  {
+    eyebrow: lang === 'zh-CN' ? 'LOD · 流式' : 'LOD · Streaming',
+    title: lang === 'zh-CN' ? '10亿级高斯场景' : 'Billion-Scale Gaussian Scenes',
+    description:
+      lang === 'zh-CN'
+        ? '利用 LOD 与流式加载，控制内存和显存在大场景下占用。'
+        : 'Use LOD and streaming to control memory and GPU memory usage in large scenes.',
+    accent: 'var(--accent)',
+  },
+  {
+    eyebrow: lang === 'zh-CN' ? 'Preset · Config' : 'Preset · Config',
+    title: lang === 'zh-CN' ? '多档位渲染配置' : 'Tiered Rendering Presets',
+    description:
+      lang === 'zh-CN'
+        ? '按需平衡性能与效果，满足不同情景下规模和画质目标。'
+        : 'Balance performance and visual quality on demand to meet scale and image-quality goals across different scenarios.',
+    accent: 'var(--primary)',
+  },
+  {
+    eyebrow: lang === 'zh-CN' ? '开源 · MIT' : 'Open Source · MIT',
+    title: lang === 'zh-CN' ? '开源 MIT' : 'MIT Open Source',
+    description:
+      lang === 'zh-CN'
+        ? '适合 SDK 接入、示例验证和二次开发。'
+        : 'Ready for SDK integration, example validation, and product extensions.',
+    accent: 'var(--focus)',
+  },
+];
+
+const features = [
+  {
+    title: lang === 'zh-CN' ? '3D Gaussian Splatting 高性能渲染引擎' : 'High-Performance 3D Gaussian Splatting Engine',
+    subtitle: lang === 'zh-CN' ? '按目标平衡性能和效果' : 'Balance performance and visual quality by target',
+    body:
+      lang === 'zh-CN'
+        ? '通过细粒度参数设置，选择从效果优先到极限性能不同路径，简化渲染链路并减少内存和显存占用。'
+        : 'Use granular parameters to choose paths from quality-first to extreme performance, simplify the render pipeline, and reduce memory and GPU memory usage.',
+    points:
+      lang === 'zh-CN'
+        ? [
+            '针对 GPU 特性优化，提供更优的加载、调度和渲染性能',
+            '支持 ply / spz / sog / splat / lcc / ksplat 等主流格式',
+            '覆盖效果优先、性能优先和极限性能',
+          ]
+        : [
+            'GPU-aware rendering optimizations improve loading, scheduling, and rendering performance',
+            'Supports common formats including ply, spz, sog, splat, lcc, and ksplat',
+            'Covers quality-first, performance-first, and extreme-performance profiles',
+          ],
+    primaryHref: localizedPath(lang, '/manual/3dgs-preset-config/'),
+    interactionHref: localizedPath(lang, '/examples/splatting-basic/'),
+    mediaSrc: 'https://holo-cos.aholo3d.cn/aholo-opensource/page/images/home-engine-feature.4e2c1275.avif',
+    accent: 'var(--primary)',
+  },
+  {
+    title: lang === 'zh-CN' ? '大场景 LOD 流式加载' : 'Large-Scene LOD Streaming',
+    subtitle: lang === 'zh-CN' ? '10 亿级高斯核，秒级加载' : 'Billion-Scale Gaussians, Loaded in Seconds',
+    body:
+      lang === 'zh-CN'
+        ? '通过 chunk-level LoD 与流式调度，让 10 亿高斯点级别的真实场景能在浏览器里被流畅加载和漫游。'
+        : 'Use chunk-level LoD and streaming scheduling to smoothly load and navigate real-world scenes with billion-scale Gaussian points in the browser.',
+    points:
+      lang === 'zh-CN'
+        ? ['chunk-level LoD 调度，按视锥优先级加载', '流式分批拉取，首屏 10 秒内进入', '数亿高斯点级别真实空间流畅承载']
+        : [
+            'Chunk-level LoD scheduling loads by frustum priority',
+            'Streamed batch fetching makes the first view available within 10 seconds',
+            'Smoothly supports real spaces with hundreds of millions of Gaussian points',
+          ],
+    primaryHref: localizedPath(lang, '/api/splat-utils/classes/lod-splat/'),
+    interactionHref: localizedPath(lang, '/examples/splatting-lod-stream/'),
+    mediaSrc: 'https://holo-cos.aholo3d.cn/aholo-opensource/page/images/home-lod-feature.2e702550.avif',
+    accent: 'var(--focus)',
+  },
+  {
+    title: lang === 'zh-CN' ? '物理碰撞' : 'Physics Collision',
+    subtitle:
+      lang === 'zh-CN' ? '从重建资产生成可查询碰撞体' : 'Queryable colliders generated from reconstructed assets',
+    body:
+      lang === 'zh-CN'
+        ? '把 3DGS 重建空间转换为可查询的碰撞边界，为行走模式、相机避障、区域限制和空间交互提供稳定约束。'
+        : 'Turn 3DGS reconstructed spaces into queryable collision boundaries, providing stable constraints for walk mode, camera obstacle avoidance, area limits, and spatial interaction.',
+    points:
+      lang === 'zh-CN'
+        ? [
+            '由 3DGS 场景资产生成体素碰撞体，也可接入网格碰撞数据',
+            '支持射线、胶囊体、地面检测和墙体阻挡等实时碰撞查询',
+            '行走模式、第三人称相机避障、区域限制等交互可复用碰撞数据',
+          ]
+        : [
+            'Generate voxel colliders from 3DGS scene assets, with mesh collision data as an alternate input',
+            'Realtime ray, capsule, ground, and wall collision queries',
+            'Walk mode, third-person camera obstacle avoidance, area limits, and other interactions can share the same collision data',
+          ],
+    primaryHref: localizedPath(lang, '/manual/physics-collision/'),
+    interactionHref: localizedPath(lang, '/examples/walk-demo/'),
+    mediaSrc: 'https://holo-cos.aholo3d.cn/aholo-opensource/page/images/home-walk-feature.59bf9c9e.avif',
+    accent: 'var(--accent)',
+  },
+  {
+    title: lang === 'zh-CN' ? '云端渲染' : 'Cloud Rendering',
+    subtitle:
+      lang === 'zh-CN'
+        ? '3DGS 与高保真网格，同屏实时呈现'
+        : '3DGS and high-fidelity meshes, rendered together in real time',
+    body:
+      lang === 'zh-CN'
+        ? '基于 OpenUSD 将 3DGS 与高保真 Mesh 置于同一场景，在云端实时混合渲染并串流输出。3DGS 负责实景氛围与细节，Mesh 负责结构与硬装精度——一帧合成，所见即所得。'
+        : 'With OpenUSD, place 3DGS and high-fidelity meshes in the same scene, render them together in real time in the cloud, and stream the result. 3DGS carries real-world atmosphere and detail, while meshes provide structural and hard-surface precision: one-frame composition, what you see is what you get.',
+    points:
+      lang === 'zh-CN'
+        ? ['3DGS与高保真网格同场景共存、同帧混合渲染', '云端实时渲染，低配终端也能流畅预览']
+        : [
+            '3DGS and high-fidelity meshes coexist in one scene and render together in the same frame',
+            'Cloud realtime rendering keeps low-spec devices smooth',
+          ],
+    primaryHref: 'https://labs.aholo3d.cn/api-docs/api-reference#tag/rendercloud',
+    interactionHref: localizedPath(lang, '/examples/render-cloud-realtime/'),
+    interactionComingSoon: true,
+    mediaSrc: 'https://holo-cos.aholo3d.cn/aholo-opensource/page/images/feature-cloud.ae86e6af.avif',
+    accent: 'var(--accent)',
+  },
+  {
+    title: lang === 'zh-CN' ? '完整工具链支持' : 'Complete Toolchain Support',
+    subtitle:
+      lang === 'zh-CN'
+        ? '覆盖转换、LOD、编辑、拾取和生成体素碰撞体'
+        : 'Conversion, LOD, editing, picking, and voxel colliders',
+    body:
+      lang === 'zh-CN'
+        ? '提供多格式、LOD 和体素碰撞体生成以及编辑、拾取等必要能力。'
+        : 'Provides multi-format, LOD, and voxel collider generation plus essential editing and picking capabilities.',
+    points:
+      lang === 'zh-CN'
+        ? ['生成高质量 LOD 与流式资源', '支持编辑、拾取和体素碰撞体生成', '格式覆盖 ply / spz / sog / splat / lcc 等']
+        : [
+            'High-quality LOD and streaming resource generation',
+            'Editing, picking, and voxel collider generation',
+            'Format coverage for ply, spz, sog, splat, lcc, and related inputs',
+          ],
+    primaryHref: localizedPath(lang, '/manual/splat-transform/'),
+    interactionHref: localizedPath(lang, '/examples/splatting-lod-stream/'),
+    mediaSrc: '/home/feature-tools.svg',
+    accent: 'var(--primary)',
+  },
+];
+---
+
+<BaseLayout lang={lang} title={t.siteName} description={t.siteDescription} pageClass="home-page">
+  <main>
+    <section class="home-stage" data-home-stage data-interactive="false">
+      <canvas class="home-canvas" data-home-preview></canvas>
+      <div class="home-hero">
+        <div class="home-hero-inner">
+          <h1>{t.siteName}</h1>
+          <strong>{heroDescription}</strong>
+          <div class="home-actions">
+            <a class="button home-action-button home-started" href={localizedPath(lang, '/manual/getting-started/')}>
+              {lang === 'zh-CN' ? '开始使用' : 'Get Started'}
+            </a>
+            <button
+              class="button primary home-action-button home-enter"
+              type="button"
+              data-home-enter
+              aria-expanded="false"
+            >
+              <span>{lang === 'zh-CN' ? '开启空间' : 'Enter Space'}</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
+          <div class="home-hero-cards" aria-label={lang === 'zh-CN' ? '核心模块' : 'Core modules'}>
+            {
+              heroCards.map(card => (
+                <article class="home-hero-card" style={`--card-accent: ${card.accent}`}>
+                  <span>{card.eyebrow}</span>
+                  <h2>{card.title}</h2>
+                  <p>{card.description}</p>
+                </article>
+              ))
+            }
+          </div>
+        </div>
+      </div>
+      <button
+        class="home-exit"
+        type="button"
+        data-home-exit
+        aria-label={lang === 'zh-CN' ? '返回介绍' : 'Back to Intro'}
+        title={lang === 'zh-CN' ? '返回介绍' : 'Back to Intro'}
+        hidden
+      >
+        <span class="home-exit-icon" aria-hidden="true"></span>
+      </button>
+      <InteractionGuide lang={lang} activeWhen="interactive" />
+    </section>
+
+    <section class="home-features" aria-label={lang === 'zh-CN' ? '特殊功能' : 'Special features'}>
+      {
+        features.map(feature => (
+          <article class="home-feature">
+            {'interactionComingSoon' in feature && feature.interactionComingSoon ? (
+              <div
+                class="home-feature-media is-disabled"
+                style={`--feature-accent: ${feature.accent}`}
+                role="img"
+                aria-label={lang === 'zh-CN' ? `${feature.title} 即将上线` : `${feature.title} coming soon`}
+                aria-disabled="true"
+              >
+                <img class="home-feature-motion" src={feature.mediaSrc} alt="" loading="lazy" decoding="async" />
+                <span class="home-feature-enter" aria-hidden="true">
+                  {lang === 'zh-CN' ? '即将上线' : 'Coming Soon'}
+                </span>
+              </div>
+            ) : (
+              <a
+                class="home-feature-media"
+                style={`--feature-accent: ${feature.accent}`}
+                href={feature.interactionHref}
+                aria-label={
+                  lang === 'zh-CN' ? `进入${feature.title}交互示例` : `Enter the ${feature.title} interactive example`
+                }
+              >
+                <img class="home-feature-motion" src={feature.mediaSrc} alt="" loading="lazy" decoding="async" />
+                <span class="home-feature-enter" aria-hidden="true">
+                  {lang === 'zh-CN' ? '查看示例' : 'View Example'}
+                </span>
+              </a>
+            )}
+            <div class="home-feature-copy">
+              <h2>{feature.title}</h2>
+              <strong>{feature.subtitle}</strong>
+              <p>{feature.body}</p>
+              <ul>
+                {feature.points.map(point => (
+                  <li>{point}</li>
+                ))}
+              </ul>
+              <a class="button primary compact" href={feature.primaryHref}>
+                {lang === 'zh-CN' ? '查看文档' : 'View Docs'}
+              </a>
+            </div>
+          </article>
+        ))
+      }
+    </section>
+  </main>
+</BaseLayout>
+
+<script>
+  import heroExampleCode from '../../content/examples/home-interaction.ts?raw';
+  import { mountHomeStage } from '../../client/home';
+
+  const stage = document.querySelector<HTMLElement>('[data-home-stage]');
+
+  if (stage) {
+    mountHomeStage(stage, {
+      code: heroExampleCode,
+    });
+  }
+</script>

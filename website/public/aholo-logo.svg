@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="164" height="24" fill="none" class="brand-svg">
+  <path fill="url(#AHoloLogo_svg__a)" fill-rule="evenodd" d="M6.56 10.388c-1.266 2.542-2.745 5.127-2.02 7.075.5 1.337 3.12.334 4.541-.082-2.624 1.372-4.785 3.066-7.117 5.525q-.838.172-1.393-.122-.875-.448-.41-2.601l.004-.007c1.107-2.497 2.542-5.168 5.133-8.57z" clip-rule="evenodd"></path>
+  <g filter="url(#AHoloLogo_svg__b)">
+    <path fill="url(#AHoloLogo_svg__c)" d="M3.43 14.303Q1.67 19.47 2.263 20.2c.581.716 1.482.538 3.22-.518-1.125.868-2.214 1.863-3.34 3.035l-.186.194-.183.027q-.712.105-1.203-.155-.875-.448-.41-2.601l.004-.007a39 39 0 0 1 3.167-5.807z"></path>
+  </g>
+  <path fill="url(#AHoloLogo_svg__d)" fill-rule="evenodd" d="M6.422 9.987q4.824-3.79 7.647.8t-3.298 6.156l5.617 1.607 1.933-4.14s.103-.877-1.76-5.612c-.347-.88-1.76-3.33-2.17-4.372L10.615 6.62 6.422 7.94z" clip-rule="evenodd"></path>
+  <path fill="url(#AHoloLogo_svg__e)" fill-rule="evenodd" d="M3.43 22.331q8.877-4.193 12.948-1.022c4.072 3.171 5.023 3.008 6.634 2.178q-1.794-1.056-2.859-3.574l-2.057-1.368-5.99-1.082-3.985 1.726z" clip-rule="evenodd"></path>
+  <path fill="url(#AHoloLogo_svg__f)" d="M14.23 1.273c1.215 1.547 2.923 5.195 5.015 9.473 3.13 6.402 5.35 12.004 3.767 12.742-.962.318-1.972-.247-3.357-1.512q-4.663-4.035-8.246-3.358-3.585.678-6.431 2.829c-1.56 1.049-2.87 1.42-3.014 1.46q4.63-4.887 8.35-5.982 1.523-.49 2.459-.491c1.923 0 3.48.755 4.29.158 1.267-.937.313-4.975-.68-7.24-.991-2.263-2.512-3.615-4.315-3.187-1.216.289-2.69 1.205-4.065 2.55q-5.496 6.18-7.838 11.46l-.003.006q.585-2.704 3.288-8.101 1.917-4.082 2.198-4.633c.28-.551 2.753-5.242 3.963-6.338s3.01-1.885 4.62.164"></path>
+  <g filter="url(#AHoloLogo_svg__g)">
+    <path fill="url(#AHoloLogo_svg__h)" d="M14.23 1.273c1.215 1.547 2.923 5.195 5.015 9.473 3.13 6.402 5.35 12.004 3.767 12.742-.962.318-1.973-.247-3.357-1.512q-4.664-4.035-8.246-3.358-3.584.678-6.432 2.829c-1.559 1.049-2.87 1.42-3.013 1.46q4.63-4.887 8.349-5.982 1.523-.49 2.46-.491c1.923 0 3.48.755 4.29.158 1.267-.937.313-4.975-.68-7.24-.991-2.263-2.512-3.615-4.315-3.187-1.216.289-2.69 1.205-4.065 2.55q-5.496 6.18-7.839 11.46l-.002.006q.585-2.704 3.288-8.101 1.917-4.082 2.198-4.633c.28-.551 2.753-5.242 3.963-6.338s3.01-1.885 4.62.164"></path>
+  </g>
+  <path fill="#000" fill-opacity="0.8" fill-rule="evenodd" d="M38.958 5.442c-1.006-.422-2.175.024-2.611.995l-4.773 11.59a.506.506 0 0 0 .475.695h1.58a.51.51 0 0 0 .479-.32l3.572-9.01a.516.516 0 0 1 .959.007l2.414 6.34a.506.506 0 0 1-.48.683h-3.16a.51.51 0 0 0-.477.317l-.525 1.291a.506.506 0 0 0 .477.692h7.303c.362 0 .61-.36.476-.69L39.989 6.435a1.95 1.95 0 0 0-1.031-.994M51.619 9.816c0 .28.23.505.513.505h5.128a.51.51 0 0 0 .513-.505V5.783a.51.51 0 0 1 .514-.505h1.212c.283 0 .513.226.513.505v12.44a.51.51 0 0 1-.513.504h-1.212a.51.51 0 0 1-.513-.505v-4.874a.51.51 0 0 0-.514-.505h-5.128a.51.51 0 0 0-.513.505v4.874a.51.51 0 0 1-.513.505h-1.212a.51.51 0 0 1-.513-.505V5.782c0-.278.23-.504.513-.504h1.212c.283 0 .513.226.513.505zM71.816 7.609H70.73c-2.405 0-4.353 1.965-4.353 4.389s1.948 4.388 4.353 4.388h1.087c2.404 0 4.353-1.964 4.353-4.388s-1.949-4.389-4.353-4.389m0-2.336c3.684 0 6.67 3.01 6.67 6.725s-2.986 6.725-6.67 6.725H70.73c-3.684 0-6.67-3.011-6.67-6.725 0-3.715 2.986-6.725 6.67-6.725zM103.36 7.609h-1.088c-2.404 0-4.353 1.965-4.353 4.389s1.949 4.388 4.353 4.388h1.088c2.404 0 4.352-1.964 4.352-4.388s-1.948-4.389-4.352-4.389m0-2.336c3.684 0 6.67 3.01 6.67 6.725s-2.986 6.725-6.67 6.725h-1.088c-3.683 0-6.67-3.011-6.67-6.725 0-3.715 2.987-6.725 6.67-6.725zM85.041 5.784v10.14c0 .282.232.51.52.51l7.187.002c.287 0 .52.228.52.51v1.265c0 .282-.234.51-.52.51h-7.707l-1.884.001a.515.515 0 0 1-.52-.511V5.784c0-.282.232-.511.52-.511h1.365c.287 0 .52.229.52.51" clip-rule="evenodd"></path>
+  <defs>
+    <radialGradient id="AHoloLogo_svg__c" cx="0" cy="0" r="1" gradientTransform="matrix(3.09164 9.149 -12.5251 4.2325 2.64 13.8)" gradientUnits="userSpaceOnUse">
+      <stop></stop>
+      <stop offset="0.276" stop-color="#3C3C3C"></stop>
+      <stop offset="0.759" stop-color="#9C9C9C"></stop>
+      <stop offset="0.967" stop-color="#CACACA"></stop>
+    </radialGradient>
+    <radialGradient id="AHoloLogo_svg__f" cx="0" cy="0" r="1" gradientTransform="matrix(1411.08 2337.38 -2377.78 1411.08 531.474 880.183)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6A48FF"></stop>
+      <stop offset="0.273" stop-color="#4557FF"></stop>
+      <stop offset="0.798" stop-color="#ACC7FC"></stop>
+      <stop offset="1" stop-color="#F2F7D7"></stop>
+    </radialGradient>
+    <radialGradient id="AHoloLogo_svg__h" cx="0" cy="0" r="1" gradientTransform="matrix(14.04016 22.92026 -22.72473 13.92039 10.56 .6)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2F2F2F"></stop>
+      <stop offset="0.276" stop-color="#2C2C2C"></stop>
+      <stop offset="0.706" stop-color="#929292"></stop>
+      <stop offset="1" stop-color="#F2F2F2"></stop>
+    </radialGradient>
+    <linearGradient id="AHoloLogo_svg__a" x1="10.56" x2="0" y1="11.28" y2="22.44" gradientUnits="userSpaceOnUse">
+      <stop offset="0.225"></stop>
+      <stop offset="0.85" stop-color="#6D6D6D"></stop>
+    </linearGradient>
+    <linearGradient id="AHoloLogo_svg__d" x1="22.32" x2="9.36" y1="2.4" y2="15.84" gradientUnits="userSpaceOnUse">
+      <stop offset="0.387"></stop>
+      <stop offset="0.745" stop-color="#656565"></stop>
+    </linearGradient>
+    <linearGradient id="AHoloLogo_svg__e" x1="3535.02" x2="467.122" y1="439.092" y2="-471.19" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#868686"></stop>
+      <stop offset="1" stop-color="#919191"></stop>
+    </linearGradient>
+    <filter id="AHoloLogo_svg__b" width="6.202" height="9.387" x="0" y="14.303" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"></feFlood>
+      <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"></feBlend>
+      <feColorMatrix in="SourceAlpha" result="hardAlpha" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"></feColorMatrix>
+      <feOffset dx="0.72" dy="0.72"></feOffset>
+      <feGaussianBlur stdDeviation="0.6"></feGaussianBlur>
+      <feComposite in2="hardAlpha" k2="-1" k3="1" operator="arithmetic"></feComposite>
+      <feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.516515 0"></feColorMatrix>
+      <feBlend in2="shape" result="effect1_innerShadow_4488_1319"></feBlend>
+    </filter>
+    <filter id="AHoloLogo_svg__g" width="24.094" height="24.295" x="0.162" y="0" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"></feFlood>
+      <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"></feBlend>
+      <feColorMatrix in="SourceAlpha" result="hardAlpha" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"></feColorMatrix>
+      <feOffset dx="0.72" dy="0.72"></feOffset>
+      <feGaussianBlur stdDeviation="0.6"></feGaussianBlur>
+      <feComposite in2="hardAlpha" k2="-1" k3="1" operator="arithmetic"></feComposite>
+      <feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.516515 0"></feColorMatrix>
+      <feBlend in2="shape" result="effect1_innerShadow_4488_1319"></feBlend>
+    </filter>
+  </defs>
+</svg>

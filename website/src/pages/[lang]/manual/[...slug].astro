@@ -1,0 +1,67 @@
+---
+import DocPager from '../../../components/docs/DocPager.astro';
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import { dictionary } from '../../../i18n/dictionary';
+import { locales, type Locale } from '../../../i18n/locales';
+import { localizedPath } from '../../../i18n/routes';
+import { getManualEntries, getManualEntry, getManualNeighbors } from '../../../utils/manual';
+import { manualSidebarItems } from '../../../utils/navigation';
+
+export async function getStaticPaths() {
+  const paths = [];
+
+  for (const locale of locales) {
+    const entries = await getManualEntries(locale.code);
+
+    paths.push(
+      ...entries.map(page => ({
+        params: { lang: locale.code, slug: page.slug },
+        props: { lang: locale.code, slug: page.slug },
+      })),
+    );
+  }
+
+  return paths;
+}
+
+interface Props {
+  lang: Locale;
+  slug: string;
+}
+
+const { lang, slug } = Astro.props;
+const page = await getManualEntry(lang, slug);
+
+if (!page) {
+  throw new Error(`Manual page not found: ${lang}/${slug}`);
+}
+
+const t = dictionary[lang];
+const neighbors = await getManualNeighbors(lang, page.slug);
+const sidebarItems = await manualSidebarItems(lang);
+const headings = page.headings;
+---
+
+<DocsLayout
+  lang={lang}
+  title={page.title}
+  description={page.description}
+  sectionLabel={t.nav.manual}
+  sectionHref={localizedPath(lang, '/manual/')}
+  sidebarItems={sidebarItems}
+  tocHeadings={headings}
+  tocLabel={lang === 'zh-CN' ? '本页目录' : 'On This Page'}
+>
+  <div class="markdown-body" set:html={page.html} />
+
+  <DocPager
+    previous={neighbors.previous && {
+      href: localizedPath(lang, `/manual/${neighbors.previous.slug}/`),
+      label: neighbors.previous.title,
+    }}
+    next={neighbors.next && {
+      href: localizedPath(lang, `/manual/${neighbors.next.slug}/`),
+      label: neighbors.next.title,
+    }}
+  />
+</DocsLayout>

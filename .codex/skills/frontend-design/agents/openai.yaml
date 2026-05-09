@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Design"
+  short_description: "Aholo website visual direction and UI polish."
+  default_prompt: "Use $frontend-design to refine Aholo Viewer frontend styling, layout, responsive behavior, or visual design quality."

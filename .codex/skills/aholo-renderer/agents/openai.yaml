@@ -1,0 +1,4 @@
+interface:
+  display_name: "Aholo Renderer"
+  short_description: "Renderer package, API, and release flow."
+  default_prompt: "Use $aholo-renderer to work on the renderer package, public API, generated declarations, or release validation."

@@ -1,0 +1,51 @@
+{
+  "name": "@manycore/aholo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.2.2",
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.1"
+  },
+  "scripts": {
+    "pnpm:devPreinstall": "node scripts/ensure-submodules.mjs",
+    "prepare": "husky",
+    "dev": "pnpm run .egs:types && pnpm run .renderer:build && pnpm run .docs:api && pnpm run check:content && pnpm run .site:dev",
+    "build": "pnpm run build:website",
+    "build:renderer": "pnpm run .egs:types && pnpm run .renderer:build",
+    "build:website": "pnpm run .egs:types && pnpm run .renderer:build && pnpm run .docs:api && pnpm run .site:build",
+    "check": "pnpm run check:style && pnpm run .egs:types && pnpm run .renderer:check && pnpm run .renderer:build && pnpm run .docs:api && pnpm run check:content && pnpm run .site:check",
+    "check:style": "prettier . --check",
+    "check:content": "node scripts/check-content.mjs",
+    "check:renderer": "pnpm run .egs:types && pnpm run .renderer:check",
+    "check:website": "pnpm run .egs:types && pnpm run .renderer:build && pnpm run .docs:api && pnpm run check:content && pnpm run .site:check",
+    "clean": "pnpm run .renderer:clean && pnpm run .site:clean",
+    "docs:api": "pnpm run .egs:types && pnpm run .docs:api",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "preview": "pnpm run .site:preview",
+    ".docs:api": "node scripts/generate-api-docs.mjs",
+    ".egs:types": "node scripts/prepare-egs-types.mjs",
+    ".renderer:build": "pnpm --filter @manycore/aholo-viewer run .build",
+    ".renderer:check": "pnpm --filter @manycore/aholo-viewer run .check",
+    ".renderer:clean": "pnpm --filter @manycore/aholo-viewer run .clean",
+    ".site:dev": "pnpm --filter @manycore/aholo-viewer-website run .dev",
+    ".site:build": "pnpm --filter @manycore/aholo-viewer-website run .build",
+    ".site:preview": "pnpm --filter @manycore/aholo-viewer-website run .preview",
+    ".site:check": "pnpm --filter @manycore/aholo-viewer-website run .check",
+    ".site:clean": "pnpm --filter @manycore/aholo-viewer-website run .clean"
+  },
+  "devDependencies": {
+    "@manycore/aholo-splat-transform": "workspace:*",
+    "@manycore/aholo-splat-dev-server": "workspace:*",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.4",
+    "prettier": "3.8.3",
+    "prettier-plugin-astro": "0.14.1",
+    "typedoc": "^0.28.19",
+    "typescript": "^5.7.0"
+  },
+  "lint-staged": {
+    "**/*": "prettier --write --ignore-unknown"
+  }
+}

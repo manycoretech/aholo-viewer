@@ -1,0 +1,15 @@
+{
+  "order": 7,
+  "tags": ["3d", "lighting", "point-light"],
+  "accent": "#fbbf24",
+  "coverImageUrl": "https://holo-cos.aholo3d.cn/aholo-opensource/page/example-cover/3d-point-light.28df11a2.png",
+  "renderer": {
+    "antialiasing": true,
+    "pixelRatio": 1
+  },
+  "showInteractionGuide": false,
+  "title": {
+    "zh-CN": "3D 点光源",
+    "en-US": "3D Point Light"
+  }
+}

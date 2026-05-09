@@ -1,0 +1,198 @@
+---
+import InteractionGuide from './InteractionGuide.astro';
+import { dictionary } from '../i18n/dictionary';
+import type { Locale } from '../i18n/locales';
+import cameraControlTypes from '../client/camera-control.ts?raw';
+import renderRuntimeTypes from '../client/render-runtime.d.ts?raw';
+import rendererTypes from '../../node_modules/@manycore/aholo-viewer/dist/index.d.ts?raw';
+import { getPlaygroundPresets } from '../utils/examples';
+
+interface Props {
+  lang: Locale;
+}
+
+const { lang } = Astro.props;
+const t = dictionary[lang];
+const rendererEntryTypes = 'export * from "./dist/index";\n';
+const tweakpaneTypes = `
+declare module "tweakpane" {
+  export interface PaneConfig {
+    container?: HTMLElement;
+    expanded?: boolean;
+    title?: string;
+  }
+
+  export interface TpChangeEvent<T = unknown> {
+    value: T;
+    last: boolean;
+  }
+
+  export interface BladeApi {
+    hidden: boolean;
+    disabled: boolean;
+    dispose(): void;
+  }
+
+  export interface InputBindingApi<T = unknown> extends BladeApi {
+    on(eventName: "change", handler: (event: TpChangeEvent<T>) => void): this;
+    refresh(): void;
+  }
+
+  export interface ButtonApi extends BladeApi {
+    on(eventName: "click", handler: () => void): this;
+  }
+
+  export class Pane {
+    expanded: boolean;
+    constructor(config?: PaneConfig);
+    addBinding<T extends object, K extends keyof T & string>(
+      target: T,
+      key: K,
+      options?: Record<string, unknown>
+    ): InputBindingApi<T[K]>;
+    addButton(options: Record<string, unknown>): ButtonApi;
+    addFolder(options: Record<string, unknown>): Pane;
+    refresh(): void;
+    dispose(): void;
+  }
+
+  export const VERSION: unknown;
+}
+`;
+const editorLoadingLabel = lang === 'zh-CN' ? '正在加载编辑器...' : 'Loading editor...';
+const playgroundActionsLabel = lang === 'zh-CN' ? 'Playground 操作' : 'Playground actions';
+const resizePanelsLabel = lang === 'zh-CN' ? '调整编辑器和预览宽度' : 'Resize editor and preview';
+const expandEditorLabel = lang === 'zh-CN' ? '展开编辑器' : 'Expand editor';
+const configLabel = lang === 'zh-CN' ? '配置' : 'Config';
+const configJson = JSON.stringify({
+  presets: getPlaygroundPresets(lang),
+  labels: t.playground,
+  common: t.common,
+  typeDefinitions: [
+    {
+      path: 'file:///node_modules/@manycore/aholo-viewer/index.d.ts',
+      content: rendererEntryTypes,
+    },
+    {
+      path: 'file:///node_modules/@manycore/aholo-viewer/dist/index.d.ts',
+      content: rendererTypes,
+    },
+    {
+      path: 'file:///src/client/render-runtime.d.ts',
+      content: renderRuntimeTypes,
+    },
+    {
+      path: 'file:///src/client/camera-control.ts',
+      content: cameraControlTypes,
+    },
+    {
+      path: 'file:///node_modules/tweakpane/index.d.ts',
+      content: tweakpaneTypes,
+    },
+  ],
+}).replace(/</g, '\\u003c');
+---
+
+<main class="playground-shell" data-playground>
+  <div class="playground-workspace workspace-grid" data-workspace style="--editor-width: 48%">
+    <section class="editor-panel workspace-primary-pane" aria-label={t.playground.editor} data-editor-host>
+      <div class="editor-loading" data-editor-loading>{editorLoadingLabel}</div>
+      <div class="playground-editor-dock" aria-label={playgroundActionsLabel}>
+        <div class="playground-preset-menu" data-preset-menu>
+          <button
+            class="dock-button preset-trigger"
+            type="button"
+            data-preset-trigger
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-label={t.common.preset}
+          >
+            <strong data-current-preset>{t.common.preset}</strong>
+          </button>
+          <div class="preset-popover" data-preset-list role="menu" hidden></div>
+        </div>
+        <button
+          class="dock-button run"
+          type="button"
+          data-run
+          data-status
+          data-state="loading"
+          aria-live="polite"
+          aria-label={`${t.common.run}: ${t.playground.ready}`}
+          title={t.playground.ready}
+        >
+          {t.common.run}
+        </button>
+      </div>
+    </section>
+
+    <div
+      class="workspace-splitter workspace-resizer"
+      data-workspace-splitter
+      data-resize-label={resizePanelsLabel}
+      data-expand-label={expandEditorLabel}
+      role="separator"
+      aria-label={resizePanelsLabel}
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow="48"
+      aria-expanded="true"
+      aria-orientation="vertical"
+      tabindex="0"
+    >
+    </div>
+
+    <section class="preview-panel" aria-label={t.playground.preview}>
+      <canvas data-render-canvas></canvas>
+      <div
+        class="preview-status"
+        data-preview-status
+        data-loading-label={lang === 'zh-CN' ? '正在加载预览' : 'Loading preview'}
+        aria-live="polite"
+        hidden
+      >
+      </div>
+      <aside
+        class="inspector-window tool-panel-window"
+        aria-label={t.playground.inspector}
+        data-inspector
+        data-inspector-title={t.playground.inspector}
+        data-fps-label={t.playground.fps}
+        data-draw-calls-label={t.playground.drawCalls}
+        data-objects-label={t.playground.objects}
+        data-error-label={t.playground.error}
+      >
+      </aside>
+      <aside
+        class="config-panel-window tool-panel-window"
+        aria-label={configLabel}
+        data-config-panel
+        data-config-panel-title={configLabel}
+        hidden
+      >
+      </aside>
+      <InteractionGuide lang={lang} />
+    </section>
+  </div>
+
+  <script is:inline type="application/json" data-playground-config set:html={configJson} />
+</main>
+
+<script>
+  import { mountPlayground } from '../client/playground';
+
+  const root = document.querySelector<HTMLElement>('[data-playground]');
+  const configElement = document.querySelector<HTMLScriptElement>('[data-playground-config]');
+
+  if (root && configElement?.textContent) {
+    mountPlayground(root, JSON.parse(configElement.textContent)).catch(error => {
+      const status = root.querySelector<HTMLElement>('[data-status]');
+      if (status) {
+        const message = error instanceof Error ? error.message : String(error);
+        status.setAttribute('aria-label', message);
+        status.title = message;
+        status.dataset.state = 'error';
+      }
+    });
+  }
+</script>

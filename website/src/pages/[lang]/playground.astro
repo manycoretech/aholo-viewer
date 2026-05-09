@@ -1,0 +1,31 @@
+---
+import PlaygroundShell from '../../components/PlaygroundShell.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { dictionary } from '../../i18n/dictionary';
+import { locales, type Locale } from '../../i18n/locales';
+import '../../styles/playground.css';
+
+export function getStaticPaths() {
+  return locales.map(locale => ({
+    params: { lang: locale.code },
+    props: { lang: locale.code },
+  }));
+}
+
+interface Props {
+  lang: Locale;
+}
+
+const { lang } = Astro.props;
+const t = dictionary[lang];
+---
+
+<BaseLayout
+  lang={lang}
+  title={t.playground.title}
+  description={t.playground.description}
+  pageClass="workspace-page playground-page"
+  workspaceFullscreen
+>
+  <PlaygroundShell lang={lang} />
+</BaseLayout>
