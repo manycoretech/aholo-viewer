@@ -1,18 +1,18 @@
 ---
 title: Playground
-description: Playground使用指南
+description: Usage guide for Playground.
 order: 6
 ---
 
-## 概览
+## Overview
 
-[`Playground`](https://aholojs.dev/zh-CN/playground/)是一个方便用户直接使用`@manycore/aholo-viewer`进行代码验证的轻量在线编辑器。编辑器基于[`monaca-editor`](https://github.com/microsoft/monaco-editor)开发，并提供了完整的`typescript`支持和基础代码提示功能
+[`Playground`](../../playground/) is a lightweight online editor for validating code with `@manycore/aholo-viewer` directly. The editor is built on [`monaco-editor`](https://github.com/microsoft/monaco-editor) and provides full `typescript` support with basic code completion.
 
 ![playground](../assets/playground/playground.en-US.jpeg)
 
-## 使用方式
+## Usage
 
-基础代码模板:
+Basic code template:
 
 ```typescript
 import { type Viewer } from '@manycore/aholo-viewer';
@@ -46,7 +46,7 @@ export default async function runner({ renderer, control, loading, configPanel, 
         const cameraUpdated = control.update(delta);
         let animationUpdated = false;
         // update animation here...
-        return cameraUpdated || animationUpdated；
+        return cameraUpdated || animationUpdated;
     });
 
     // request next frame render
@@ -62,9 +62,9 @@ function throwIfAborted(signal: AbortSignal) {
 }
 ```
 
-除了基础模板外，部分[示例](https://aholojs.dev/zh-CN/examples/splatting-basic/)也可以通过示例页面的下方按钮或者`playground`下方的预设选择直接打开现有的样例代码直接查看编辑。完成编辑后，点击**运行**执行代码即可看到展示效果。已经完成编辑的代码也可以通过直接复制链接分享给其他人。
+In addition to the basic template, some [examples](../../examples/) can be opened from the button at the bottom of each example page or from the preset selector below `playground`. After editing, click **Run** to execute the code and view the result. Edited code can also be shared by copying the generated link directly.
 
-## 注意事项
+## Notes
 
-- 目前`playground`不支持导入第三方库。
-- 如果需要反馈`@manycore/aholo-viewer`的相关问题，我们推荐在`playground`构造最小样例一并提交至[issues](https://github.com/manycoretech/aholo-viewer/issues)
+- `playground` currently does not support importing third-party libraries.
+- To report issues related to `@manycore/aholo-viewer`, we recommend building a minimal reproduction in `playground` and submitting it with the [issue](https://github.com/manycoretech/aholo-viewer/issues).
