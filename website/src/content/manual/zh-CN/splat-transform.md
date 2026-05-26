@@ -471,3 +471,9 @@ Array<{
         ]
     }
     ```
+
+## 注意事项
+
+- 当需要生成`SOG`或者使用`GPU`生成`Voxel`时，推荐使用性能较好的独立显卡。当转换比较大的数据到`SOG`时，需要10GB以上显存。
+- 当生成`chunk-lod`时(既使用`AutoChunkLod`或者`lod:auto-chunk`生成)，推荐使用`spz`输出，在分块和多级`lod`后，会存在数据量很少数据量比较小的块，对于这些块`sog`压缩率表现不如`spz`，也可以配置`forceSpzFormatThreshold`来控制小于某个数量的块强制使用`spz`
+- `chunk-lod`生成过程中对资源消耗比较大，推荐使用配置比较高的机器配置。对于大型数据推荐内存 >= 32GB, CPU核心数>=16(含超线程)。当无法直接生成时，可以先进行简单的块分割再生成，之后合并`lod-meta.json`，合并可以使用来自`@manycore/aholo-splat-dev-server@>=1.0.1`的`merge-lod`指令。
