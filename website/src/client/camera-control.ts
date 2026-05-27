@@ -131,7 +131,7 @@ export class CameraControl {
     capsMultiplier: number;
 
     readonly #camera: CameraControlCamera;
-    readonly #canvas: HTMLCanvasElement;
+    readonly #element: HTMLElement;
     readonly #pointers = new Map<number, PointerTrack>();
     readonly #keys = new Set<string>();
     readonly #orbitCenter = copyVector(DEFAULT_ORBIT_CENTER);
@@ -147,11 +147,11 @@ export class CameraControl {
     #orbiting = false;
     #disposed = false;
 
-    constructor(camera: CameraControlCamera, canvas: HTMLCanvasElement, options: CameraControlOptions = {}) {
+    constructor(camera: CameraControlCamera, element: HTMLElement, options: CameraControlOptions = {}) {
         this.#camera = camera;
-        this.#canvas = canvas;
-        this.#initialTabIndex = canvas.getAttribute('tabindex');
-        this.#initialTouchAction = canvas.style.touchAction;
+        this.#element = element;
+        this.#initialTabIndex = element.getAttribute('tabindex');
+        this.#initialTouchAction = element.style.touchAction;
 
         const resolved = {
             ...DEFAULT_OPTIONS,
@@ -175,18 +175,18 @@ export class CameraControl {
         this.capsMultiplier = resolved.capsMultiplier;
 
         if (this.#initialTabIndex === null) {
-            canvas.tabIndex = 0;
+            element.tabIndex = 0;
         }
 
-        canvas.style.touchAction = 'none';
-        canvas.addEventListener('pointerdown', this.#onPointerDown);
-        canvas.addEventListener('pointermove', this.#onPointerMove);
-        canvas.addEventListener('pointerup', this.#onPointerUp);
-        canvas.addEventListener('pointercancel', this.#onPointerUp);
-        canvas.addEventListener('contextmenu', this.#onContextMenu);
-        canvas.addEventListener('wheel', this.#onWheel, { passive: false });
-        canvas.addEventListener('keydown', this.#onKeyDown);
-        canvas.addEventListener('keyup', this.#onKeyUp);
+        element.style.touchAction = 'none';
+        element.addEventListener('pointerdown', this.#onPointerDown);
+        element.addEventListener('pointermove', this.#onPointerMove);
+        element.addEventListener('pointerup', this.#onPointerUp);
+        element.addEventListener('pointercancel', this.#onPointerUp);
+        element.addEventListener('contextmenu', this.#onContextMenu);
+        element.addEventListener('wheel', this.#onWheel, { passive: false });
+        element.addEventListener('keydown', this.#onKeyDown);
+        element.addEventListener('keyup', this.#onKeyUp);
         window.addEventListener('keyup', this.#onKeyUp);
         window.addEventListener('blur', this.#onBlur);
     }
@@ -217,8 +217,8 @@ export class CameraControl {
 
     stop() {
         for (const pointer of this.#pointers.values()) {
-            if (this.#canvas.hasPointerCapture(pointer.pointerId)) {
-                this.#canvas.releasePointerCapture(pointer.pointerId);
+            if (this.#element.hasPointerCapture(pointer.pointerId)) {
+                this.#element.releasePointerCapture(pointer.pointerId);
             }
         }
 
@@ -278,22 +278,22 @@ export class CameraControl {
 
         this.stop();
         this.#disposed = true;
-        this.#canvas.removeEventListener('pointerdown', this.#onPointerDown);
-        this.#canvas.removeEventListener('pointermove', this.#onPointerMove);
-        this.#canvas.removeEventListener('pointerup', this.#onPointerUp);
-        this.#canvas.removeEventListener('pointercancel', this.#onPointerUp);
-        this.#canvas.removeEventListener('contextmenu', this.#onContextMenu);
-        this.#canvas.removeEventListener('wheel', this.#onWheel);
-        this.#canvas.removeEventListener('keydown', this.#onKeyDown);
-        this.#canvas.removeEventListener('keyup', this.#onKeyUp);
+        this.#element.removeEventListener('pointerdown', this.#onPointerDown);
+        this.#element.removeEventListener('pointermove', this.#onPointerMove);
+        this.#element.removeEventListener('pointerup', this.#onPointerUp);
+        this.#element.removeEventListener('pointercancel', this.#onPointerUp);
+        this.#element.removeEventListener('contextmenu', this.#onContextMenu);
+        this.#element.removeEventListener('wheel', this.#onWheel);
+        this.#element.removeEventListener('keydown', this.#onKeyDown);
+        this.#element.removeEventListener('keyup', this.#onKeyUp);
         window.removeEventListener('keyup', this.#onKeyUp);
         window.removeEventListener('blur', this.#onBlur);
-        this.#canvas.style.touchAction = this.#initialTouchAction;
+        this.#element.style.touchAction = this.#initialTouchAction;
 
         if (this.#initialTabIndex === null) {
-            this.#canvas.removeAttribute('tabindex');
+            this.#element.removeAttribute('tabindex');
         } else {
-            this.#canvas.setAttribute('tabindex', this.#initialTabIndex);
+            this.#element.setAttribute('tabindex', this.#initialTabIndex);
         }
     }
 
@@ -302,7 +302,7 @@ export class CameraControl {
             return;
         }
 
-        this.#canvas.focus({ preventScroll: true });
+        this.#element.focus({ preventScroll: true });
         this.#altKey = event.altKey;
         this.#pointers.set(event.pointerId, {
             pointerId: event.pointerId,
@@ -314,7 +314,7 @@ export class CameraControl {
             x: event.clientX,
             y: event.clientY,
         });
-        this.#canvas.setPointerCapture(event.pointerId);
+        this.#element.setPointerCapture(event.pointerId);
         event.preventDefault();
     };
 
@@ -335,8 +335,8 @@ export class CameraControl {
         if (this.#pointers.has(event.pointerId)) {
             this.#pointers.delete(event.pointerId);
 
-            if (this.#canvas.hasPointerCapture(event.pointerId)) {
-                this.#canvas.releasePointerCapture(event.pointerId);
+            if (this.#element.hasPointerCapture(event.pointerId)) {
+                this.#element.releasePointerCapture(event.pointerId);
             }
 
             if (this.#pointers.size === 0) {

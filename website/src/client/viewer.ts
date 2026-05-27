@@ -17,8 +17,6 @@ import { Pane } from 'tweakpane';
 import { CameraControl } from './camera-control';
 import {
     abortable as abortableWithMessage,
-    getViewerCanvas,
-    styleRendererCanvas,
     syncCameraAspect,
     throwIfAborted as throwIfAbortedWithMessage,
 } from './rendering';
@@ -263,8 +261,7 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
     const viewer = createViewer(`aholo-viewer-page-${Date.now()}`, surface, { antialiasing: false });
     const scene = new Scene3D();
     const camera = new PerspectiveCamera(60, 1, 0.1, Number(farInput.value) || 2000);
-    const canvas = getViewerCanvas(viewer);
-    const control = new CameraControl(camera, canvas, { enabled: true });
+    const control = new CameraControl(camera, surface, { enabled: true });
 
     let disposed = false;
     let rafId: number | undefined;
@@ -303,7 +300,6 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
     syncRightRail();
     viewer.setScene(scene);
     viewer.setCamera(camera);
-    styleRendererCanvas(canvas);
     applyViewerConfig(viewer, params);
     applyCoordinateSystem(coordSelect.value);
     resizeObserver.observe(stage);

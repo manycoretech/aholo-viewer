@@ -1,23 +1,5 @@
 import type { Camera3D, Viewer } from '@manycore/aholo-viewer';
 
-export function getViewerCanvas(viewer: Viewer, message = 'The renderer did not create a canvas.') {
-    const canvas = viewer.canvasContainer.querySelector('canvas');
-
-    if (!(canvas instanceof HTMLCanvasElement)) {
-        throw new Error(message);
-    }
-
-    return canvas;
-}
-
-export function styleRendererCanvas(canvas: HTMLCanvasElement) {
-    canvas.style.display = 'block';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    canvas.style.minHeight = '0';
-    canvas.style.outline = 'none';
-}
-
 export function syncCameraAspect(camera: Camera3D, viewer: Viewer) {
     if (!('aspect' in camera)) {
         return;

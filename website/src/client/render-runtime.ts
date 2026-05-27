@@ -8,8 +8,6 @@ import {
     abortable as abortableWithMessage,
     countSceneObjects,
     createAbortError as createAbortErrorWithMessage,
-    getViewerCanvas,
-    styleRendererCanvas,
     syncCameraAspect,
     throwIfAborted as throwIfAbortedWithMessage,
 } from './rendering';
@@ -684,7 +682,6 @@ class RenderSessionRenderer implements RuntimeRenderer {
     readonly #scene: Scene3D;
     readonly #camera: Camera3D;
     readonly #control: CameraControl;
-    readonly #canvas: HTMLCanvasElement;
     readonly #onStats: ((stats: RenderStats) => void) | undefined;
     readonly #frameCallbacks: FrameCallback[] = [];
     readonly #beginFrame: (() => void) | undefined;
@@ -740,15 +737,13 @@ class RenderSessionRenderer implements RuntimeRenderer {
             },
         });
         this.#viewer.requestRenderHandler = this.requestRender;
-        this.#canvas = getViewerCanvas(this.#viewer, 'The renderer did not create a render canvas.');
         this.#scene = new RendererApi.Scene3D();
         this.#camera = new RendererApi.PerspectiveCamera(60, 1, 0.1, 2000);
         this.#viewer.setScene(this.#scene);
         this.#viewer.setCamera(this.#camera);
-        this.#control = new CameraControl(this.#camera, this.#canvas, {
+        this.#control = new CameraControl(this.#camera, surface, {
             enabled: false,
         });
-        styleRendererCanvas(this.#canvas);
 
         this.#resizeTimer = window.setTimeout(() => {
             this.resize();
@@ -756,7 +751,7 @@ class RenderSessionRenderer implements RuntimeRenderer {
     }
 
     get canvas() {
-        return this.#canvas;
+        return this.#viewer._getEngine().canvasElement;
     }
 
     get control() {
