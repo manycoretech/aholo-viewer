@@ -23,6 +23,6 @@
     "@astrojs/check": "^0.9.9",
     "@tweakpane/core": "^2.0.5",
     "@types/node": "12.20.55",
-    "typescript": "^5.7.0"
+    "typescript": "^6.0.3"
   }
 }

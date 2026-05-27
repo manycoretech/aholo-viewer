@@ -9,8 +9,9 @@
     "sourceMap": true,
     "verbatimModuleSyntax": false,
     "strictPropertyInitialization": false,
+    "importHelpers": true,
     "outDir": "./dist",
-    "baseUrl": ".",
+    "rootDir": "./src",
     "paths": {
       "@qunhe/egs": ["../../external/egs-core/packages/egs/build/index.d.ts"],
       "@qunhe/egs/*": ["../../external/egs-core/packages/egs/build/*"],

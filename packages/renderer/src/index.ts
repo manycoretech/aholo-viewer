@@ -95,17 +95,17 @@ import {
     MeshBasicMaterial as BaseMeshBasicMaterial,
     MeshPhongMaterial as BaseMeshPhongMaterial,
     SpriteMaterial as BaseSpriteMaterial,
-    __INNER__,
+    SourceTexture,
+    TextureDimension,
+    TextureViewDimension,
+    TextureFormat,
+    __INTERNAL__,
 } from '@qunhe/egs';
 
-import SourceTexture = __INNER__.SourceTexture;
-import TextureDimension = __INNER__.TextureDimension;
-import TextureViewDimension = __INNER__.TextureViewDimension;
-import TextureFormat = __INNER__.TextureFormat;
-import InstancedBufferGeometry = __INNER__.InstancedBufferGeometry;
-import CompressedSplat = __INNER__.CompressedSplat;
-import SuperCompressedSplat = __INNER__.SuperCompressedSplat;
-import SogSplat = __INNER__.SogSplat;
+import InstancedBufferGeometry = __INTERNAL__.InstancedBufferGeometry;
+import CompressedSplat = __INTERNAL__.CompressedSplat;
+import SuperCompressedSplat = __INTERNAL__.SuperCompressedSplat;
+import SogSplat = __INTERNAL__.SogSplat;
 
 export const MeshBasicMaterial = BaseMeshBasicMaterial<SourceTexture>;
 export const MeshPhongMaterial = BaseMeshPhongMaterial<SourceTexture>;
@@ -369,7 +369,7 @@ export function setViewerConfig(ctx: Viewer | Viewport, config: IViewerConfig) {
     }
     if (config.pipeline) {
         viewerConfig.effects = {
-            __INNER__: config.pipeline,
+            __INTERNAL__: config.pipeline,
         };
     }
     originSetViewerConfig(viewerConfig, ctx.config);
