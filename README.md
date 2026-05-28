@@ -21,7 +21,7 @@ If everything goes well you will see [this](https://jsfiddle.net/q93yx8sr/2/)
 
 ## Clone this repository
 
-This repository has some submodule as it's dependencies, use following command to clone the repository.
+This repository contains some submodules as dependencies, use following command to clone the repository.
 
 ```bash
 git clone --recurse-submodules https://github.com/manycoretech/aholo-viewer.git
