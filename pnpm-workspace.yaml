@@ -28,3 +28,4 @@ overrides:
   '@manycore/aholo-splat-transform': 'workspace:*'
   '@manycore/aholo-splat-dev-server': 'workspace:*'
   'typescript': '^6.0.3'
+  'esbuild': '^0.28.0'
