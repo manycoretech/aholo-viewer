@@ -130,7 +130,7 @@ Made with [contrib.rocks](https://contrib.rocks).
 
 - [Discussions](https://github.com/manycoretech/aholo-viewer/discussions)
 - [Official website](https://aholojs.dev/)
-- [CHANGELOG](./packages//CHANGELOG.md)
+- [CHANGELOG](./packages/renderer/CHANGELOG.md)
 
 ## License
 
