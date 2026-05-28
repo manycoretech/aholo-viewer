@@ -2,14 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "allowImportingTsExtensions": false,
-    "declaration": true,
     "declarationMap": true,
-    "experimentalDecorators": true,
     "noEmit": false,
     "sourceMap": true,
     "verbatimModuleSyntax": false,
     "strictPropertyInitialization": false,
-    "importHelpers": true,
     "outDir": "./dist",
     "rootDir": "./src",
     "paths": {

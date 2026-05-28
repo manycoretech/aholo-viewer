@@ -71,12 +71,12 @@ export {
     type ReadonlyVector4,
 } from '@qunhe/egs';
 
-export * as Events from './events';
-export * as Animation from './animation';
+export * as Events from './events.js';
+export * as Animation from './animation.js';
 
-export * as SplatLoader from './splat-loader';
-export * as DracoLoader from './draco-loader';
-export * as GLTFLoader from './gltf-loader';
+export * as SplatLoader from './splat-loader.js';
+export * as DracoLoader from './draco-loader.js';
+export * as GLTFLoader from './gltf-loader.js';
 
 export * as SplatUtils from './splat-utils.js';
 

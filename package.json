@@ -36,6 +36,7 @@
     ".site:clean": "pnpm --filter @manycore/aholo-viewer-website run .clean"
   },
   "devDependencies": {
+    "@internal/utils": "workspace:*",
     "@manycore/aholo-splat-transform": "workspace:*",
     "@manycore/aholo-splat-dev-server": "workspace:*",
     "husky": "^9.1.7",

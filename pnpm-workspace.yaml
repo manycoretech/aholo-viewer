@@ -16,11 +16,15 @@ allowBuilds:
   webgpu: false
 
 overrides:
+  '@internal/utils': 'workspace:*'
   '@qunhe/egs-typings': 'workspace:*'
   '@qunhe/egs-lib': 'workspace:*'
   '@qunhe/egs': 'workspace:*'
+  '@qunhe/egs-animation': 'workspace:*'
+  '@qunhe/egs-gltf-loader': 'workspace:*'
   '@qunhe/egs-draco-loader': 'workspace:*'
   '@qunhe/egs-splat-loader': 'workspace:*'
   '@qunhe/egs-splat-utils': 'workspace:*'
   '@manycore/aholo-splat-transform': 'workspace:*'
   '@manycore/aholo-splat-dev-server': 'workspace:*'
+  'typescript': '^6.0.3'
