@@ -14,11 +14,8 @@ import {
 import { readWebsiteLocales, toPosixPath, workspaceRoot } from './package-utils.mjs';
 
 const root = workspaceRoot;
-const rendererIndex = resolve(root, 'packages/renderer/src/index.ts');
-const rendererSourceDir = dirname(rendererIndex);
+const rendererDeclaration = resolve(root, 'packages/renderer/dist/index.d.ts');
 const tempOutputDir = resolve(root, 'node_modules/.cache/aholo-api-docs');
-const tempEntryPointDir = resolve(root, 'node_modules/.cache/aholo-api-entrypoints');
-const tempTsconfig = resolve(tempEntryPointDir, 'tsconfig.api.json');
 const contentRoot = resolve(root, 'website/.generated/api');
 const locales = readWebsiteLocales();
 
@@ -57,13 +54,11 @@ const materialAliasDocs = new Map([
     ['SpriteMaterial', { base: 'BaseSpriteMaterial', parameters: 'SpriteMaterialParameters' }],
 ]);
 
-await rm(tempEntryPointDir, { recursive: true, force: true });
 await rm(tempOutputDir, { recursive: true, force: true });
-await mkdir(tempEntryPointDir, { recursive: true });
 await mkdir(tempOutputDir, { recursive: true });
 await mkdir(contentRoot, { recursive: true });
 
-const apiNamespaces = await createApiNamespacesFromRendererIndex();
+const apiNamespaces = await createApiNamespacesFromRendererDeclaration();
 const namespaceBySlug = new Map(apiNamespaces.map(namespace => [namespace.slug, namespace]));
 const categoryLabels = Object.fromEntries(
     apiNamespaces.map(({ category, categoryLabel }) => [category, categoryLabel]),
@@ -111,21 +106,8 @@ class AholoApiFragmentTheme extends DefaultTheme {
     }
 }
 
-await writeFile(
-    tempTsconfig,
-    `${JSON.stringify(
-        {
-            extends: '../../../packages/renderer/tsconfig.json',
-            include: ['../../../packages/renderer/src', './*.ts'],
-        },
-        null,
-        2,
-    )}\n`,
-);
-
 const app = await Application.bootstrapWithPlugins({
-    entryPoints: apiNamespaces.map(({ entryPoint }) => toPosixPath(entryPoint)),
-    tsconfig: toPosixPath(tempTsconfig),
+    entryPoints: [toPosixPath(rendererDeclaration)],
     out: toPosixPath(tempOutputDir),
     readme: 'none',
     router: 'aholo-api',
@@ -189,159 +171,90 @@ for (const entry of entries) {
 await removeStaleGeneratedFiles(expectedOutputPaths);
 await pruneEmptyDirectories(contentRoot);
 await rm(tempOutputDir, { recursive: true, force: true });
-await rm(tempEntryPointDir, { recursive: true, force: true });
 
 console.log(`[api-docs] Generated ${entries.length} API HTML pages for ${locales.join(', ')}.`);
 
-async function createApiNamespacesFromRendererIndex() {
-    const indexSource = await readFile(rendererIndex, 'utf8');
-    const sourceFile = ts.createSourceFile(rendererIndex, indexSource, ts.ScriptTarget.Latest, true);
-    const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
-    const namespaceImports = collectNamespaceImports(sourceFile);
-    const namespaces = [];
-    const coreStatements = [];
+async function createApiNamespacesFromRendererDeclaration() {
+    let declarationSource;
 
-    for (const statement of sourceFile.statements) {
-        if (ts.isImportDeclaration(statement)) {
-            if (!getNamespaceImportName(statement)) {
-                coreStatements.push(statement);
-            }
-
-            continue;
-        }
-
-        if (ts.isImportEqualsDeclaration(statement)) {
-            coreStatements.push(statement);
-            continue;
-        }
-
-        if (isNamespaceExportDeclaration(statement)) {
-            const name = statement.exportClause.name.text;
-
-            namespaces.push(
-                createNamespaceEntry({
-                    categoryLabel: name,
-                    namespaceLabel: name,
-                    moduleSpecifier: statement.moduleSpecifier.text,
-                }),
+    try {
+        declarationSource = await readFile(rendererDeclaration, 'utf8');
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            throw new Error(
+                `Renderer declaration not found at ${toPosixPath(relative(root, rendererDeclaration))}. Run pnpm build:renderer first.`,
             );
-
-            continue;
         }
 
-        const groupedNamespaces = getGroupedNamespaceEntries(statement, namespaceImports);
-
-        if (groupedNamespaces.length > 0) {
-            namespaces.push(...groupedNamespaces);
-            continue;
-        }
-
-        if (isExportedStatement(statement)) {
-            coreStatements.push(statement);
-        }
+        throw error;
     }
 
-    if (coreStatements.length > 0) {
-        const coreEntryPoint = resolve(tempEntryPointDir, 'core.ts');
-        const coreSource = `${coreStatements
-            .map(statement => renderCoreEntryPointStatement(statement, sourceFile, printer))
-            .join('\n\n')}\n`;
-
-        await writeFile(coreEntryPoint, coreSource);
-
-        namespaces.unshift({
+    const sourceFile = ts.createSourceFile(rendererDeclaration, declarationSource, ts.ScriptTarget.Latest, true);
+    const declaredNamespaces = collectDeclaredNamespaces(sourceFile);
+    const namespaces = [
+        {
             slug: 'core',
             name: 'Core',
             category: 'core',
             categoryLabel: 'Core',
             namespaceLabel: 'Core',
-            entryPoint: coreEntryPoint,
-        });
-    }
+        },
+    ];
+    const knownSlugs = new Set(namespaces.map(namespace => namespace.slug));
 
-    const orderedNamespaces = orderApiNamespaces(namespaces);
+    for (const namespaceLabel of getExportedNamespaceLabels(sourceFile, declaredNamespaces)) {
+        const namespace = createNamespaceEntry(namespaceLabel);
 
-    for (const namespace of orderedNamespaces) {
-        if (!namespace.entryPoint) {
-            namespace.entryPoint = await writeNamespaceEntryPoint(namespace);
+        if (knownSlugs.has(namespace.slug)) {
+            continue;
         }
+
+        namespaces.push(namespace);
+        knownSlugs.add(namespace.slug);
     }
 
-    return orderedNamespaces;
+    return orderApiNamespaces(namespaces);
 }
 
-function renderCoreEntryPointStatement(statement, sourceFile, printer) {
-    return createMaterialAliasClassDoc(statement) ?? printer.printNode(ts.EmitHint.Unspecified, statement, sourceFile);
-}
-
-function createMaterialAliasClassDoc(statement) {
-    if (!ts.isVariableStatement(statement) || !hasExportModifier(statement)) {
-        return undefined;
-    }
-
-    if (statement.declarationList.declarations.length !== 1) {
-        return undefined;
-    }
-
-    const declaration = statement.declarationList.declarations[0];
-
-    if (!ts.isIdentifier(declaration.name)) {
-        return undefined;
-    }
-
-    const materialDoc = materialAliasDocs.get(declaration.name.text);
-
-    if (!materialDoc) {
-        return undefined;
-    }
-
-    return [
-        `export class ${declaration.name.text} extends ${materialDoc.base}<SourceTexture> {`,
-        `    constructor(p?: ${materialDoc.parameters}<SourceTexture>) {`,
-        '        super(p);',
-        '    }',
-        '}',
-    ].join('\n');
-}
-
-function collectNamespaceImports(sourceFile) {
-    const imports = new Map();
+function collectDeclaredNamespaces(sourceFile) {
+    const namespaces = new Set();
 
     for (const statement of sourceFile.statements) {
-        if (!ts.isImportDeclaration(statement)) {
+        if (ts.isModuleDeclaration(statement) && ts.isIdentifier(statement.name)) {
+            namespaces.add(statement.name.text);
+        }
+    }
+
+    return namespaces;
+}
+
+function getExportedNamespaceLabels(sourceFile, declaredNamespaces) {
+    const labels = [];
+
+    for (const statement of sourceFile.statements) {
+        if (ts.isModuleDeclaration(statement) && hasExportModifier(statement) && ts.isIdentifier(statement.name)) {
+            labels.push(statement.name.text);
             continue;
         }
 
-        const importName = getNamespaceImportName(statement);
-
-        if (!importName) {
+        if (
+            !ts.isExportDeclaration(statement) ||
+            !statement.exportClause ||
+            !ts.isNamedExports(statement.exportClause)
+        ) {
             continue;
         }
 
-        imports.set(importName, statement.moduleSpecifier.text);
+        for (const element of statement.exportClause.elements) {
+            const localName = element.propertyName?.text ?? element.name.text;
+
+            if (declaredNamespaces.has(localName)) {
+                labels.push(element.name.text);
+            }
+        }
     }
 
-    return imports;
-}
-
-function getNamespaceImportName(statement) {
-    const namedBindings = statement.importClause?.namedBindings;
-
-    if (!namedBindings || !ts.isNamespaceImport(namedBindings)) {
-        return undefined;
-    }
-
-    return namedBindings.name.text;
-}
-
-function isNamespaceExportDeclaration(statement) {
-    return (
-        ts.isExportDeclaration(statement) &&
-        statement.exportClause &&
-        ts.isNamespaceExport(statement.exportClause) &&
-        statement.moduleSpecifier &&
-        ts.isStringLiteral(statement.moduleSpecifier)
-    );
+    return labels;
 }
 
 function orderApiNamespaces(namespaces) {
@@ -358,93 +271,14 @@ function orderApiNamespaces(namespaces) {
         .map(({ namespace }) => namespace);
 }
 
-function getGroupedNamespaceEntries(statement, namespaceImports) {
-    if (!ts.isVariableStatement(statement) || !hasExportModifier(statement)) {
-        return [];
-    }
-
-    const entries = [];
-
-    for (const declaration of statement.declarationList.declarations) {
-        if (!ts.isIdentifier(declaration.name) || !ts.isObjectLiteralExpression(declaration.initializer)) {
-            continue;
-        }
-
-        const categoryLabel = declaration.name.text;
-
-        for (const property of declaration.initializer.properties) {
-            const namespaceLabel = getObjectPropertyNamespace(property);
-            const moduleSpecifier = namespaceLabel ? namespaceImports.get(namespaceLabel) : undefined;
-
-            if (!moduleSpecifier) {
-                continue;
-            }
-
-            entries.push(createNamespaceEntry({ categoryLabel, namespaceLabel, moduleSpecifier }));
-        }
-    }
-
-    return entries;
-}
-
-function getObjectPropertyNamespace(property) {
-    if (ts.isShorthandPropertyAssignment(property)) {
-        return property.name.text;
-    }
-
-    if (ts.isPropertyAssignment(property) && ts.isIdentifier(property.initializer)) {
-        return property.initializer.text;
-    }
-
-    return undefined;
-}
-
-function createNamespaceEntry({ categoryLabel, namespaceLabel, moduleSpecifier }) {
+function createNamespaceEntry(namespaceLabel) {
     return {
         slug: toKebabCase(namespaceLabel),
         name: namespaceLabel,
-        category: toKebabCase(categoryLabel),
-        categoryLabel,
+        category: toKebabCase(namespaceLabel),
+        categoryLabel: namespaceLabel,
         namespaceLabel,
-        sourceModule: resolveRendererModule(moduleSpecifier),
     };
-}
-
-function resolveRendererModule(moduleSpecifier) {
-    if (!moduleSpecifier.startsWith('.')) {
-        return moduleSpecifier;
-    }
-
-    const withoutJsExtension = moduleSpecifier.replace(/\.js$/, '');
-
-    return resolve(rendererSourceDir, `${withoutJsExtension}.ts`);
-}
-
-async function writeNamespaceEntryPoint(namespace) {
-    const entryPoint = resolve(tempEntryPointDir, `${namespace.slug}.ts`);
-    const moduleSpecifier = toEntryPointModuleSpecifier(namespace.sourceModule);
-
-    await writeFile(entryPoint, `export * from ${JSON.stringify(moduleSpecifier)};\n`);
-
-    return entryPoint;
-}
-
-function toEntryPointModuleSpecifier(sourceModule) {
-    if (!sourceModule.startsWith(root)) {
-        return sourceModule;
-    }
-
-    const sourcePath = toPosixPath(relative(tempEntryPointDir, sourceModule)).replace(/\.ts$/, '.js');
-
-    return sourcePath.startsWith('.') ? sourcePath : `./${sourcePath}`;
-}
-
-function isExportedStatement(statement) {
-    if (ts.isExportDeclaration(statement)) {
-        return !isNamespaceExportDeclaration(statement);
-    }
-
-    return hasExportModifier(statement);
 }
 
 function hasExportModifier(node) {
@@ -626,7 +460,7 @@ function getReflectionNamespace(reflection) {
 
     const slug = toKebabCase(topLevel?.name ?? '');
 
-    return namespaceBySlug.get(slug);
+    return namespaceBySlug.get(slug) ?? namespaceBySlug.get('core');
 }
 
 function getReflectionDescription(reflection) {
