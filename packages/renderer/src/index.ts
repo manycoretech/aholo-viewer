@@ -75,14 +75,12 @@ export {
     type ReadonlyVector4,
 } from '@qunhe/egs';
 
-export * as Events from './events.js';
-export * as Animation from './animation.js';
-
-export * as SplatLoader from './splat-loader.js';
-export * as DracoLoader from './draco-loader.js';
-export * as GLTFLoader from './gltf-loader.js';
-
-export * as SplatUtils from './splat-utils.js';
+import * as Events from './events.js';
+import * as Animation from './animation.js';
+import * as SplatLoader from './splat-loader.js';
+import * as DracoLoader from './draco-loader.js';
+import * as GLTFLoader from './gltf-loader.js';
+import * as SplatUtils from './splat-utils.js';
 
 import {
     Application,
@@ -379,4 +377,15 @@ export function setViewerConfig(ctx: Viewer | Viewport, config: IViewerConfig) {
     originSetViewerConfig(viewerConfig, ctx.config);
 }
 
-export { InstancedBufferGeometry, CompressedSplat, SuperCompressedSplat, SogSplat };
+export {
+    InstancedBufferGeometry,
+    CompressedSplat,
+    SuperCompressedSplat,
+    SogSplat,
+    Events,
+    Animation,
+    SplatLoader,
+    DracoLoader,
+    GLTFLoader,
+    SplatUtils,
+};
