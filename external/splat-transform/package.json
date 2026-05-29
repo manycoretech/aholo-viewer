@@ -12,6 +12,13 @@
   "bin": {
     "splat-transform": "bin/cli.js"
   },
+  "os": [
+    "win32",
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
   "files": [
     "dist/",
     "CHANGELOG.md",
