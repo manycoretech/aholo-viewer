@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import fs from 'fs';
+import fs from 'node:fs';
 import { program } from 'commander';
 import packageJson from '../package.json' with { type: 'json' };
 import { runner } from '../dist/index.js';
@@ -8,10 +8,10 @@ const ExtraText = `
 Transform Gaussian splats file
 ===================================
 SUPPORTED INPUTS
-    .ply   .compressed.ply   .sog   meta.json   .ksplat   .splat   .spz   .lcc
+    .ply   .compressed.ply   .sog   meta.json   .ksplat   .splat   .spz   .lcc    .esz
 
 SUPPORTED OUTPUTS
-    .ply   .spz   .uspz   .splat   .sog
+    .ply   .spz   .uspz   .splat   .sog   .esz
 `;
 
 program

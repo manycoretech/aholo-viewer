@@ -1,11 +1,6 @@
 export class StreamChunkDecoder {
-    reader;
-    decoders;
-    decodedTotals;
-    currentIndex = 0;
-    currentTotals;
-    currentItemSize;
     constructor(reader) {
+        this.currentIndex = 0;
         this.reader = reader;
     }
     setDecoders(decoders) {

@@ -37,24 +37,14 @@ function buildSHTableMap(shCoeffs) {
     return result;
 }
 export class SogFile {
-    iterations;
-    counts = 0;
-    shDegree = 0;
-    /**
-     * @internal
-     */
-    version;
-    /**
-     * @internal
-     */
-    meta;
-    /**
-     * @internal
-     */
-    refs = {};
-    cached;
     constructor(iterations = 10) {
         this.iterations = iterations;
+        this.counts = 0;
+        this.shDegree = 0;
+        /**
+         * @internal
+         */
+        this.refs = {};
     }
     async load(stream, contentLength) {
         const buffer = new Uint8Array(contentLength);
@@ -405,12 +395,12 @@ export class SogFile {
                 const maxComp = q.reduce((v, _, i) => (Math.abs(q[i]) > Math.abs(q[v]) ? i : v), 0);
                 // invert if max component is negative
                 if (q[maxComp] < 0) {
-                    q.forEach((v, j) => {
+                    q.forEach((_, j) => {
                         q[j] *= -1;
                     });
                 }
                 // scale by sqrt(2) to fit in [-1, 1] range
-                q.forEach((v, j) => q[j] *= Math.SQRT2);
+                q.forEach((_, j) => q[j] *= Math.SQRT2);
                 const idx = [
                     [1, 2, 3],
                     [0, 2, 3],

@@ -1,5 +1,12 @@
 # ChangeLOG
 
+## 1.2.8
+
+- 升级`typescript@^6.0.3`
+- `WebP`编码防止压缩纯透明数据
+- 支持`spz v4`输入和输出（默认还是v3）
+- 支持`esz`格式输入和输出
+
 ## 1.2.7
 
 - `ReadTask`支持`maxShDegree`参数

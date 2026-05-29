@@ -2,22 +2,16 @@ import { Quaternion, deferred } from './utils/index.js';
 import { SH_MAPS } from './constant.js';
 const tempQuat = new Quaternion(0, 0, 0, 1);
 export class SplatData {
-    counts;
-    shDegree;
-    shCounts;
-    maxShDegree;
-    table;
     constructor(blockCounts = 1, maxShDegree = 3) {
+        this.blockOffsets = [];
+        this.blockContentCounts = [];
+        this.totalBlockCounts = 0;
+        this.totalBlockShDegree = 3;
+        this.blockExecs = [];
+        this.currentBlockIndex = 0;
         this.blockCounts = blockCounts;
         this.maxShDegree = maxShDegree;
     }
-    blockOffsets = [];
-    blockContentCounts = [];
-    blockCounts;
-    totalBlockCounts = 0;
-    totalBlockShDegree = 3;
-    blockExecs = [];
-    currentBlockIndex = 0;
     initBlock(counts, shDegree) {
         this.blockContentCounts.push(counts);
         this.blockOffsets.push(this.totalBlockCounts);

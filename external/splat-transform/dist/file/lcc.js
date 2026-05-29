@@ -39,10 +39,11 @@ function mix(min, max, s) {
 }
 ;
 export class LccFile {
-    counts = 0;
-    shDegree = 0;
-    meta;
-    refs = {};
+    constructor() {
+        this.counts = 0;
+        this.shDegree = 0;
+        this.refs = {};
+    }
     load(buffer) {
         const view = new DataView(buffer.buffer);
         if (view.getUint32(0, true) !== ZIP_MAGIC) {

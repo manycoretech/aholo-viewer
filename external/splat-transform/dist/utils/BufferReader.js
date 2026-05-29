@@ -1,12 +1,10 @@
 export class BufferReader {
-    head = 0;
-    tail = 0;
-    buffer;
-    view;
     get remaining() {
         return this.tail - this.head;
     }
     constructor(buffer = new Uint8Array()) {
+        this.head = 0;
+        this.tail = 0;
         this.buffer = buffer;
         this.view = new DataView(this.buffer.buffer);
     }

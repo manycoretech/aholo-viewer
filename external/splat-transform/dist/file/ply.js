@@ -64,12 +64,14 @@ function createParseFn(properties, littleEndian, shDegree) {
 }
 const HeaderTerminator = 'end_header\n';
 export class PlyFile {
-    littleEndian = true;
-    comments = [];
-    elements = {};
-    isSuperSplatCompressed = false;
-    counts = 0;
-    shDegree = 0;
+    constructor() {
+        this.littleEndian = true;
+        this.comments = [];
+        this.elements = {};
+        this.isSuperSplatCompressed = false;
+        this.counts = 0;
+        this.shDegree = 0;
+    }
     initHeader(header) {
         let curElement;
         const lines = header.trim().split('\n').map(v => v.trim()).filter(v => !!v);

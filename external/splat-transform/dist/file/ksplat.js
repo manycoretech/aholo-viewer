@@ -46,11 +46,10 @@ const SHIndex = [
 const HEADER_BYTES = 4096;
 const SECTION_BYTES = 1024;
 export class KsplatFile {
-    counts = 0;
-    shDegree = 0;
-    header;
-    sections;
-    buffer;
+    constructor() {
+        this.counts = 0;
+        this.shDegree = 0;
+    }
     load(buffer) {
         this.buffer = buffer;
         const header = new DataView(buffer.buffer, 0, HEADER_BYTES);

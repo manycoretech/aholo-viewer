@@ -163,12 +163,7 @@ const quickselect = (axisData, idx, k) => {
     }
 };
 export class GaussianBVH {
-    static MAX_LEAF_SIZE = 64;
-    x;
-    y;
-    z;
-    extents;
-    root;
+    static { this.MAX_LEAF_SIZE = 64; }
     constructor(x, y, z, extents) {
         this.x = x;
         this.y = y;
@@ -323,13 +318,15 @@ const growUint32 = (src, newCap) => {
  * the grid dimensions; the buffer itself is dimension-agnostic.
  */
 export class BlockMaskBuffer {
-    solidIdx = new Float64Array(0);
-    solidCountValue = 0;
-    solidCap = 0;
-    mixedIdx = new Float64Array(0);
-    mixedCountValue = 0;
-    mixedCap = 0;
-    mixedMasks = new Uint32Array(0);
+    constructor() {
+        this.solidIdx = new Float64Array(0);
+        this.solidCountValue = 0;
+        this.solidCap = 0;
+        this.mixedIdx = new Float64Array(0);
+        this.mixedCountValue = 0;
+        this.mixedCap = 0;
+        this.mixedMasks = new Uint32Array(0);
+    }
     addBlock(blockIdx, lo, hi) {
         if ((lo | hi) === 0) {
             return;
@@ -399,12 +396,6 @@ const writeBlockType = (types, blockIdx, blockType) => {
 };
 const EMPTY = -1;
 class BlockMaskMap {
-    keys;
-    lo;
-    hi;
-    _size;
-    _capacity;
-    _mask;
     constructor(initialCapacity = 4096) {
         const cap = 1 << (32 - Math.clz32(Math.max(15, initialCapacity - 1)));
         this._capacity = cap;
@@ -504,15 +495,6 @@ class BlockMaskMap {
     }
 }
 class SparseVoxelGrid {
-    nx;
-    ny;
-    nz;
-    nbx;
-    nby;
-    nbz;
-    bStride;
-    types;
-    masks;
     constructor(nx, ny, nz) {
         this.nx = nx;
         this.ny = ny;

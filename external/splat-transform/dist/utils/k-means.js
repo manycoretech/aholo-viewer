@@ -138,15 +138,6 @@ function interleaveData(result, dataTable, numRows, rowOffset) {
 }
 const MAX_CONCURRENCY_BATCHES = 10;
 class GpuClustering {
-    device;
-    numPoints;
-    numColumns;
-    numCentroids;
-    batchSize;
-    resource;
-    numBatches;
-    concurrencyBatches;
-    concurrencyRuns;
     constructor(device, numPoints, numColumns, numCentroids) {
         this.device = device;
         this.numPoints = numPoints;

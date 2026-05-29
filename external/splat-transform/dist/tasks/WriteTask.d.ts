@@ -4,6 +4,7 @@ export interface Config {
     output: string;
     enableMortonSort?: boolean;
     compressLevel?: number;
+    spzVersion?: number;
 }
 export declare class WriteTask extends BaseTask<Config> {
     exec(config: Config, { logger, resources }: Context): Promise<void>;

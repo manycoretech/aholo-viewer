@@ -86,13 +86,14 @@ export function generateLod(splat, levelParameters, blockPrecision, minSize, max
     return { splats, blocks };
 }
 export class WebPLosslessProfile {
-    lossless = true;
+    constructor() {
+        this.lossless = true;
+    }
 }
 export class WebPQualityProfile {
-    quality;
-    lossless = false;
     constructor(quality) {
         this.quality = quality;
+        this.lossless = false;
     }
     ;
 }

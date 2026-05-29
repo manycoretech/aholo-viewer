@@ -1,5 +1,5 @@
 import { unzipSync } from 'fflate';
-import { PlyFile, SpzFile, KsplatFile, SplatFile, SogFile, LccFile } from '../file/index.js';
+import { PlyFile, SpzFile, KsplatFile, SplatFile, SogFile, LccFile, EszFile } from '../file/index.js';
 import { SplatData } from '../SplatData.js';
 import { SH_MAPS } from '../constant.js';
 export var SplatFileType;
@@ -11,6 +11,7 @@ export var SplatFileType;
     SplatFileType[SplatFileType["KSPLAT"] = 4] = "KSPLAT";
     SplatFileType[SplatFileType["SOG"] = 5] = "SOG";
     SplatFileType[SplatFileType["LCC"] = 6] = "LCC";
+    SplatFileType[SplatFileType["ESZ"] = 7] = "ESZ";
 })(SplatFileType || (SplatFileType = {}));
 export function detectSplatFileType(filename, buffer = new Uint8Array()) {
     let ext = filename.split('.').pop();
@@ -66,13 +67,17 @@ export function detectSplatFileType(filename, buffer = new Uint8Array()) {
             type = SplatFileType.LCC;
             break;
         }
+        case 'esz': {
+            type = SplatFileType.ESZ;
+            break;
+        }
         default: {
             break;
         }
     }
     return type;
 }
-export function createSplatFile(path, buffer = new Uint8Array(), compressLevel = 6) {
+export function createSplatFile(path, buffer = new Uint8Array(), compressLevel = 6, spzVersion = 3) {
     const type = detectSplatFileType(path, buffer);
     if (type === undefined) {
         throw new Error(`Unsupported file format: ${path}`);
@@ -84,7 +89,7 @@ export function createSplatFile(path, buffer = new Uint8Array(), compressLevel =
             break;
         }
         case SplatFileType.SPZ: {
-            file = new SpzFile(compressLevel);
+            file = new SpzFile(compressLevel, spzVersion);
             break;
         }
         case SplatFileType.USPZ: {
@@ -105,6 +110,10 @@ export function createSplatFile(path, buffer = new Uint8Array(), compressLevel =
         }
         case SplatFileType.LCC: {
             file = new LccFile();
+            break;
+        }
+        case SplatFileType.ESZ: {
+            file = new EszFile();
             break;
         }
     }

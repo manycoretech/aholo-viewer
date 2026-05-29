@@ -356,19 +356,10 @@ const applyChunkToDst = (dst, typesOut, masksOut, cx, cy, cz, innerNx, innerNy, 
     }
 };
 class GpuDilation {
-    device;
-    extractPipeline;
-    compactPipeline;
-    dilateXPipeline;
-    dilateYZPipeline;
-    slots = [];
-    srcTypesBuffer;
-    srcKeysBuffer;
-    srcLoBuffer;
-    srcHiBuffer;
-    srcMeta = { nbx: 0, nby: 0, nbz: 0, bStride: 0, capMinusOne: 0 };
-    static NUM_SLOTS = 2;
+    static { this.NUM_SLOTS = 2; }
     constructor(device) {
+        this.slots = [];
+        this.srcMeta = { nbx: 0, nby: 0, nbz: 0, bStride: 0, capMinusOne: 0 };
         this.device = device;
         this.extractPipeline = createStoragePipeline(device, extractWgsl());
         this.compactPipeline = createStoragePipeline(device, compactWgsl());

@@ -1,9 +1,5 @@
 export class Quaternion {
-    x;
-    y;
-    z;
-    w;
-    static ONE = new Quaternion(0, 0, 0, 1);
+    static { this.ONE = new Quaternion(0, 0, 0, 1); }
     constructor(x, y, z, w) {
         this.x = x;
         this.y = y;
@@ -101,10 +97,7 @@ export class Quaternion {
     }
 }
 export class Vector3 {
-    x;
-    y;
-    z;
-    static ONE = new Vector3(1, 1, 1);
+    static { this.ONE = new Vector3(1, 1, 1); }
     constructor(x, y, z) {
         this.x = x;
         this.y = y;
@@ -142,9 +135,9 @@ export class Vector3 {
     }
 }
 export class Matrix4 {
-    static ONE = new Matrix4();
-    elements = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    static { this.ONE = new Matrix4(); }
     constructor(elements, isRow = false) {
+        this.elements = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
         if (elements) {
             this.set(elements);
         }
@@ -327,7 +320,9 @@ export class Matrix4 {
     }
 }
 export class Matrix3 {
-    elements = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    constructor() {
+        this.elements = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    }
     set(n11, n12, n13, n21, n22, n23, n31, n32, n33) {
         const te = this.elements;
         te[0] = n11;

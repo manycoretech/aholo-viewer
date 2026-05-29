@@ -7,10 +7,11 @@ export declare enum SplatFileType {
     SPLAT = 3,
     KSPLAT = 4,
     SOG = 5,
-    LCC = 6
+    LCC = 6,
+    ESZ = 7
 }
 export declare function detectSplatFileType(filename: string, buffer?: Uint8Array): SplatFileType | undefined;
-export declare function createSplatFile(path: string, buffer?: Uint8Array, compressLevel?: number): IFile;
+export declare function createSplatFile(path: string, buffer?: Uint8Array, compressLevel?: number, spzVersion?: number): IFile;
 export declare function combineSplatData(source: SplatData[]): SplatData;
 export declare function computeDenseBox(data: SplatData, ratio?: number): {
     min: number[];

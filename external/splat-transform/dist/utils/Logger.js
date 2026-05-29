@@ -1,6 +1,8 @@
 export class Logger {
-    prefix = '';
-    silent = false;
+    constructor() {
+        this.prefix = '';
+        this.silent = false;
+    }
     format(msg) {
         return this.prefix ? `${this.prefix} ${msg}` : msg;
     }
