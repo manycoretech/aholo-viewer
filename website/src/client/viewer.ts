@@ -30,7 +30,7 @@ const LEFT_RAIL_COLLAPSED_STORAGE_KEY = 'aholo:viewer:left-collapsed';
 const RIGHT_RAIL_COLLAPSED_STORAGE_KEY = 'aholo:viewer:right-collapsed';
 const FPS_DISPLAY_INTERVAL_MS = 250;
 const FPS_SMOOTHING_FACTOR = 0.08;
-const SUPPORTED_FILE_EXTENSIONS = ['.ply', '.spz', '.splat', '.ksplat', '.lcc', '.sog', '.json'] as const;
+const SUPPORTED_FILE_EXTENSIONS = ['.ply', '.spz', '.splat', '.ksplat', '.lcc', '.sog', '.esz', '.json'] as const;
 
 type SplatFileTypeValue = (typeof SplatFileType)[keyof typeof SplatFileType];
 type SplatPackTypeValue = (typeof SplatPackType)[keyof typeof SplatPackType];
@@ -1391,6 +1391,8 @@ function getFileTypeLabel(type: SplatFileTypeValue) {
             return 'LCC';
         case SplatFileType.SOG:
             return 'SOG';
+        case SplatFileType.ESZ:
+            return 'ESZ';
         default:
             return 'Unknown';
     }

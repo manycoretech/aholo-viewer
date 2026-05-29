@@ -13,9 +13,9 @@ const labels =
     ? {
         import: '导入',
         selectFiles: '选择文件',
-        fileFormatHint: 'PLY / SPZ / SPLAT / KSPLAT / LCC / SOG / JSON',
+        fileFormatHint: 'PLY / SPZ / SPLAT / KSPLAT / LCC / SOG / ESZ / JSON',
         urlLabel: 'URL',
-        urlPlaceholder: '粘贴 .ply / .spz / .sog / .json 地址',
+        urlPlaceholder: '粘贴 .ply / .spz / .sog / .esz / .json 地址',
         loadUrl: '加载 URL',
         loadClipboard: '从剪贴板加载',
         removeFile: '删除文件',
@@ -43,7 +43,7 @@ const labels =
         unsupportedFileType: '不支持的文件类型',
         statsFps: 'FPS',
         dropOverlayTitle: '释放文件以导入项目',
-        dropOverlayHint: '支持 .ply / .spz / .sog / .json 等格式',
+        dropOverlayHint: '支持 .ply / .spz / .sog / .esz / .json 等格式',
         collapseLeft: '收起左侧设置',
         expandLeft: '展开左侧设置',
         collapseRight: '收起渲染参数',
@@ -52,9 +52,9 @@ const labels =
     : {
         import: 'Import',
         selectFiles: 'Choose Files',
-        fileFormatHint: 'PLY / SPZ / SPLAT / KSPLAT / LCC / SOG / JSON',
+        fileFormatHint: 'PLY / SPZ / SPLAT / KSPLAT / LCC / SOG / ESZ / JSON',
         urlLabel: 'URL',
-        urlPlaceholder: 'Paste .ply / .spz / .sog / .json URLs',
+        urlPlaceholder: 'Paste .ply / .spz / .sog / .esz / .json URLs',
         loadUrl: 'Load URL',
         loadClipboard: 'Load Clipboard',
         removeFile: 'Remove File',
@@ -82,14 +82,14 @@ const labels =
         unsupportedFileType: 'Unsupported file type',
         statsFps: 'FPS',
         dropOverlayTitle: 'Release files to import',
-        dropOverlayHint: 'Supports .ply / .spz / .sog / .json and more',
+        dropOverlayHint: 'Supports .ply / .spz / .sog / .esz / .json and more',
         collapseLeft: 'Collapse left settings',
         expandLeft: 'Expand left settings',
         collapseRight: 'Collapse render settings',
         expandRight: 'Expand render settings',
       };
 const configJson = JSON.stringify({ labels }).replace(/</g, '\\u003c');
-const supportedFormats = '.ply,.spz,.splat,.ksplat,.lcc,.sog,.json';
+const supportedFormats = '.ply,.spz,.splat,.ksplat,.lcc,.sog,.esz,.json';
 ---
 
 <script is:inline>
