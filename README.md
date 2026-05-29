@@ -12,7 +12,7 @@ Aholo Viewer is a high performance Renderer for 3DGS and Mesh. It uses `Chunked 
 
 Follow the [Manual](https://aholojs.dev/en-US/manual/getting-started/).
 
-If everything goes well you will see [this](https://jsfiddle.net/q93yx8sr/2/)
+If everything goes well you will see [this](https://jsfiddle.net/u78hL5ta/)
 
 ## Build Requirements
 

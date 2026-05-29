@@ -1,15 +1,16 @@
 # ChangeLOG
 
-## 1.2.1
-
-1. Features
-    - cleanup `package.json`
-
-## 1.2.0
+## 1.2.9
 
 1. Features
     - use `api-extractor` to rollup dts.
     - add `esz` and `spzV4` format support.
+2. Fixes
+    - fix typing for `MeshBasicMaterial.setValues`
+    - fix typing for `MeshPhongMaterial.setValues`
+    - Simplify some material typings
+    - fix type only classes
+    - cleanup `package.json`
 
 ## 1.1.0
 

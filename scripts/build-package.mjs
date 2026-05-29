@@ -45,6 +45,17 @@ const workerEntry = resolveWorkspacePath(
     'splat worker entry',
 );
 
+const declareOnlyClasses = [
+    { name: 'Viewer', exported: 'export declare class Viewer', unexported: 'declare class Viewer' },
+    { name: 'Viewport', exported: 'export declare class Viewport', unexported: 'declare class Viewport' },
+    {
+        name: 'Material',
+        exported: 'export declare abstract class Material',
+        unexported: 'declare abstract class Material',
+    },
+    { name: 'Light', exported: 'export declare abstract class Light', unexported: 'declare abstract class Light' },
+];
+
 await mkdir(runtimeDir, { recursive: true });
 await mkdir(declarationDir, { recursive: true });
 await rm(tempTypesDir, { recursive: true, force: true });
@@ -130,7 +141,20 @@ async function bundleDeclarations() {
             '@qunhe/egs-splat-utils',
         ],
     });
-    await cp(resolve(packageRoot, 'build/index.d.ts'), declarationOutput, { force: true });
+    let content = await readFile(resolve(packageRoot, 'build/index.d.ts'), 'utf-8');
+    const typeClasses = [];
+    for (const { name, exported, unexported } of declareOnlyClasses) {
+        if (content.indexOf(exported) !== -1) {
+            content = content.replace(exported, unexported);
+            typeClasses.push(name);
+        }
+    }
+    if (typeClasses.length > 0) {
+        content += `\nexport type {
+    ${typeClasses.join(',\n    ')}
+}\n`;
+    }
+    await writeFile(declarationOutput, content, 'utf-8');
 }
 
 async function stripPrivateTypingsImports() {

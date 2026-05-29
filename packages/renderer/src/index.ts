@@ -40,7 +40,7 @@ export {
     WebGLStencilOp as StencilOp,
     WebGLStencilFunc as StencilFunc,
     Layers,
-    type Intersection,
+    Intersection,
     Raycaster,
     TypeAssert,
     DrawableRenderMode,
@@ -109,9 +109,9 @@ import CompressedSplat = __INTERNAL__.CompressedSplat;
 import SuperCompressedSplat = __INTERNAL__.SuperCompressedSplat;
 import SogSplat = __INTERNAL__.SogSplat;
 
-export const MeshBasicMaterial = BaseMeshBasicMaterial<SourceTexture>;
-export const MeshPhongMaterial = BaseMeshPhongMaterial<SourceTexture>;
-export const SpriteMaterial = BaseSpriteMaterial<SourceTexture>;
+export const MeshBasicMaterial: typeof BaseMeshBasicMaterial<SourceTexture> = BaseMeshBasicMaterial;
+export const MeshPhongMaterial: typeof BaseMeshPhongMaterial<SourceTexture> = BaseMeshPhongMaterial;
+export const SpriteMaterial: typeof BaseSpriteMaterial<SourceTexture> = BaseSpriteMaterial;
 
 export interface IBasicBackgroundConfig {
     color?: Color;
