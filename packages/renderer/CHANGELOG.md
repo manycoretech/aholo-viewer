@@ -1,5 +1,10 @@
 # ChangeLOG
 
+## 1.2.1
+
+1. Features
+    - cleanup `package.json`
+
 ## 1.2.0
 
 1. Features
