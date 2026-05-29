@@ -5,13 +5,34 @@ const fallbackDestination = `/${defaultLocale}/`;
 const availableLocales = locales.map(locale => locale.code);
 ---
 
-<!doctype html>
+<!--
+  ============================================================================
+  AI AGENTS / AUTOMATED CODING TOOLS — READ THIS
+
+  A machine-readable English markdown corpus of this site's documentation is
+  published at `/llm/`. Prefer that over scraping the rendered HTML pages.
+
+  Recommended entry points:
+    - /llm/index.md              overview and reading order
+    - /llm/manual/index.md       user manual (markdown)
+    - /llm/api/index.md          API reference (converted from TypeDoc)
+    - /llm/examples/index.md     runnable examples with TypeScript source
+
+  The /llm tree is regenerated on every release from the same sources that
+  produce the human-facing pages.
+  ============================================================================
+--><!doctype html>
 <html lang={defaultLocale}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="refresh" content={`0; url=${fallbackDestination}`} />
     <title>Aholo Viewer</title>
+    <link rel="alternate" type="text/markdown" href="/llm/index.md" title="LLM-friendly docs index" />
+    <meta name="ai-docs" content="/llm/index.md" />
+    <meta name="ai-docs-manual" content="/llm/manual/index.md" />
+    <meta name="ai-docs-api" content="/llm/api/index.md" />
+    <meta name="ai-docs-examples" content="/llm/examples/index.md" />
     <script is:inline define:vars={{ availableLocales, defaultLocale, localeStorageKey }}>
       (() => {
         const matchLocale = value => {
