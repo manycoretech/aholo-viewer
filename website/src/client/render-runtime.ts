@@ -750,10 +750,6 @@ class RenderSessionRenderer implements RuntimeRenderer {
         }, 0);
     }
 
-    get canvas() {
-        return this.#viewer._getEngine().canvasElement;
-    }
-
     get control() {
         return this.#control;
     }

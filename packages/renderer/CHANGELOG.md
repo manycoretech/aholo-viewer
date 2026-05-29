@@ -1,9 +1,10 @@
 # ChangeLOG
 
-## DEV
+## 1.2.0
 
 1. Features
     - use `api-extractor` to rollup dts.
+    - add `esz` and `spzV4` format support.
 
 ## 1.1.0
 

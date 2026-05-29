@@ -30,6 +30,7 @@ order: 5
 - `splat`
 - `spz`
 - `lcc`
+- `esz`
 - `compressed.ply`, the supersplat compressed ply format
 - `meta.json`, unpacked sog metadata
 
@@ -40,6 +41,7 @@ order: 5
 - `uspz`, an spz file without gzip compression
 - `splat`
 - `sog`
+- `esz`
 
 ### modify Format
 
@@ -65,7 +67,7 @@ npm install @manycore/aholo-splat-transform -g
 ```bash
 splat-transform create <input> <output> # Convert 3DGS formats.
 splat-transform lod:auto --ratio <ratio> <input> <output> # Simplify 3DGS data to the specified ratio [0-1].
-splat-transform lod:auto-chunk --type <type:ply,spz,splat,sog> --max-chunk-counts <count> <input> <output> # Generate schedulable multi-level LOD data. --max-chunk-counts controls the maximum chunk size.
+splat-transform lod:auto-chunk --type <type:ply,spz,splat,sog,esz> --max-chunk-counts <count> <input> <output> # Generate schedulable multi-level LOD data. --max-chunk-counts controls the maximum chunk size.
 ```
 
 ### Pipeline Mode (Recommended)
@@ -448,5 +450,5 @@ Generate voxel colliders:
 ## Notes
 
 - A reasonably powerful discrete GPU is recommended when generating `SOG` or generating `Voxel` data with `GPU`. Converting large datasets to `SOG` may require more than 10 GB of GPU memory.
-- When generating `chunk-lod` with `AutoChunkLod` or `lod:auto-chunk`, `spz` output is recommended. After chunking and multi-level `lod` generation, some chunks can contain very little data. `sog` compresses these small chunks less effectively than `spz`. You can also use `forceSpzFormatThreshold` to force chunks below a chosen count to `spz`.
+- When generating `chunk-lod` with `AutoChunkLod` or `lod:auto-chunk`, `spz` or `esz` output is recommended. After chunking and multi-level `lod` generation, some chunks can contain very little data. `sog` compresses these small chunks less effectively than `spz`. You can also use `forceSpzFormatThreshold` to force chunks below a chosen count to `spz`.
 - `chunk-lod` generation is resource-intensive, so use a relatively powerful machine. For large datasets, memory >= 32 GB and CPU cores >= 16, including hyper-threading, are recommended. If generation cannot complete directly, split the data into coarse chunks first, then generate and merge `lod-meta.json` files. Merging can be done with the `merge-lod` command from `@manycore/aholo-splat-dev-server@>=1.0.1`.
