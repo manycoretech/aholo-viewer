@@ -1,0 +1,28 @@
+on:
+  push:
+    branches:
+      - 'master'
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+    branches:
+      - 'master'
+
+name: build
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: chmod a+x ./ci/build.sh
+      - run: ./ci/build.sh

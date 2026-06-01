@@ -1,0 +1,21 @@
+on: workflow_dispatch
+
+name: publish
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: chmod a+x ./ci/publish.sh
+      - run: ./ci/publish.sh
+        env:
+          NPM_TOKEN: ${{secrets.NPM_TOKEN}}
