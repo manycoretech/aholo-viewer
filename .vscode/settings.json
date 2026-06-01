@@ -4,8 +4,7 @@
     "editor.defaultFormatter": "esbenp.prettier-vscode",
   },
   "cSpell.words": [
-    "aholo",
-    "gltf",
+    "aholo",    "gltf",
     "manycore",
     "Raycaster"
   ]
