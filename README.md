@@ -138,4 +138,4 @@ Unless otherwise noted, most code in this repository is released under the [MIT 
 
 Exceptions include:
 
-- `external/splat-transform/`: proprietary and not open source. The tool may be used as distributed to generate or process content for commercial and non-commercial purposes, but the tool itself may not be copied, redistributed, repackaged, hosted, or republished. See [`external/splat-transform/COPYRIGHT.md`](./external/splat-transform/COPYRIGHT.md).
+- `external/splat-transform/`: proprietary and not open source. The tool may be used as distributed to generate or process content for commercial and non-commercial purposes, but the tool itself may not be copied, redistributed, repackaged, hosted, or republished. See [`external/splat-transform/COPYRIGHT.md`](./external/splat-transform/COPYRIGHT.md)
