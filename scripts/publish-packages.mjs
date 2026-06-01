@@ -15,7 +15,7 @@ for (const p of packages) {
         child_process.execSync(`npm view ${p.name}@${p.version}`, { stdio: 'ignore' });
         published = true;
     } catch {
-        //
+        // assume not found. should publish.
     }
     if (!published) {
         if (buildCommand) {
