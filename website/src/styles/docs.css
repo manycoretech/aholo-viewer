@@ -374,7 +374,7 @@
 }
 
 .doc-card-list span {
-    color: var(--accent);
+    color: var(--code-type);
     font-family: var(--font-mono);
     font-size: 0.8rem;
     font-weight: 820;
@@ -397,7 +397,7 @@
     max-width: 100%;
     min-width: 0;
     overflow-x: auto;
-    color: var(--primary-strong);
+    color: var(--code-type);
     font-size: 0.9rem;
 }
 
@@ -1103,7 +1103,11 @@
 
 .typedoc-html .tsd-kind-parameter,
 .typedoc-html .tsd-kind-type-parameter {
-    color: var(--accent);
+    color: var(--code-param);
+}
+
+.typedoc-html .tsd-signature-type {
+    color: var(--code-type);
 }
 
 .typedoc-html .tsd-kind-class,
@@ -1112,12 +1116,18 @@
 .typedoc-html .tsd-kind-type-alias,
 .typedoc-html .tsd-kind-variable,
 .typedoc-html .tsd-kind-property,
+.typedoc-html .tsd-kind-enum-member {
+    color: var(--code-type);
+    font-weight: 700;
+}
+
+.typedoc-html .tsd-kind-function,
+.typedoc-html .tsd-kind-method,
 .typedoc-html .tsd-kind-call-signature,
 .typedoc-html .tsd-kind-get-signature,
 .typedoc-html .tsd-kind-set-signature,
-.typedoc-html .tsd-kind-constructor-signature,
-.typedoc-html .tsd-kind-enum-member {
-    color: var(--primary-strong);
+.typedoc-html .tsd-kind-constructor-signature {
+    color: var(--code-func);
     font-weight: 700;
 }
 

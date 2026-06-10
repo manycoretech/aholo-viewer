@@ -12,7 +12,7 @@ export function mountHomeStage(stage: HTMLElement, config: HomeStageConfig) {
     }
 
     const canvas = stage.querySelector<HTMLCanvasElement>('[data-home-preview]');
-    const enterButton = stage.querySelector<HTMLButtonElement>('[data-home-enter]');
+    const enterButtons = Array.from(stage.querySelectorAll<HTMLButtonElement>('[data-home-enter]'));
     const exitButton = stage.querySelector<HTMLButtonElement>('[data-home-exit]');
 
     if (!canvas) {
@@ -38,7 +38,9 @@ export function mountHomeStage(stage: HTMLElement, config: HomeStageConfig) {
     renderHomePreview();
     setHomeInteractive(false);
 
-    enterButton?.addEventListener('click', handleEnter);
+    for (const enterButton of enterButtons) {
+        enterButton.addEventListener('click', handleEnter);
+    }
     exitButton?.addEventListener('click', handleExit);
     document.addEventListener('keydown', handleKeydown);
     previewCanvas.addEventListener('pointerdown', handlePointerDown);
@@ -46,13 +48,24 @@ export function mountHomeStage(stage: HTMLElement, config: HomeStageConfig) {
     previewCanvas.addEventListener('pointerup', handlePointerUp);
     previewCanvas.addEventListener('pointercancel', handlePointerCancel);
 
+    // Theme switches must not reload the splat scene; the accent only feeds
+    // the surface CSS variable, so update it in place.
     const themeObserver = new MutationObserver(() => {
-        renderHomePreview();
+        renderSession?.setAccent(readThemeAccent());
     });
     themeObserver.observe(document.documentElement, {
         attributes: true,
         attributeFilter: ['data-theme'],
     });
+
+    // The stage sits in the first viewport only; stop the render loop while it
+    // is scrolled out of view so scrolling the rest of the page stays idle.
+    let stageVisible = true;
+    const stageVisibilityObserver = new IntersectionObserver(entries => {
+        stageVisible = entries[entries.length - 1]?.isIntersecting ?? true;
+        renderSession?.setPaused(!stageVisible);
+    });
+    stageVisibilityObserver.observe(stage);
 
     window.addEventListener('pageshow', handlePageShow);
     window.addEventListener('resize', schedulePreviewResize);
@@ -73,6 +86,8 @@ export function mountHomeStage(stage: HTMLElement, config: HomeStageConfig) {
             }
 
             renderSession = session;
+            session.setAccent(readThemeAccent());
+            session.setPaused(!stageVisible);
         } catch (error) {
             console.error(error);
         }
@@ -161,7 +176,9 @@ export function mountHomeStage(stage: HTMLElement, config: HomeStageConfig) {
         }
 
         setHomeInteractive(false, { resize: false });
-        enterButton?.removeEventListener('click', handleEnter);
+        for (const enterButton of enterButtons) {
+            enterButton.removeEventListener('click', handleEnter);
+        }
         exitButton?.removeEventListener('click', handleExit);
         document.removeEventListener('keydown', handleKeydown);
         previewCanvas.removeEventListener('pointerdown', handlePointerDown);
@@ -172,13 +189,14 @@ export function mountHomeStage(stage: HTMLElement, config: HomeStageConfig) {
         window.removeEventListener('resize', schedulePreviewResize);
         document.removeEventListener('astro:before-swap', dispose);
         themeObserver.disconnect();
+        stageVisibilityObserver.disconnect();
         renderSession?.dispose();
         renderSession = undefined;
         delete stage.dataset.mounted;
     }
 
     function readThemeAccent() {
-        return getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#0d9488';
+        return getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#18181b';
     }
 
     function setHomeInteractive(interactive: boolean, options: { animate?: boolean; resize?: boolean } = {}) {
@@ -198,7 +216,9 @@ export function mountHomeStage(stage: HTMLElement, config: HomeStageConfig) {
         stage.dataset.interactive = interactive ? 'true' : 'false';
         document.documentElement.classList.toggle('home-interactive', interactive);
         document.body.classList.toggle('home-interactive', interactive);
-        enterButton?.setAttribute('aria-expanded', interactive ? 'true' : 'false');
+        for (const enterButton of enterButtons) {
+            enterButton.setAttribute('aria-expanded', interactive ? 'true' : 'false');
+        }
 
         if (exitButton) {
             exitButton.hidden = !interactive;

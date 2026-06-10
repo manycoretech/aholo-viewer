@@ -4,9 +4,9 @@ import { getManualEntries } from './manual';
 
 export const navItems = [
     { key: 'home', href: '/' },
+    { key: 'viewer', href: '/viewer/' },
     { key: 'examples', href: '/examples/' },
     { key: 'playground', href: '/playground/' },
-    { key: 'viewer', href: '/viewer/' },
     { key: 'manual', href: '/manual/' },
     { key: 'api', href: '/api/' },
 ] as const;

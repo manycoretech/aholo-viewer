@@ -8,8 +8,8 @@
     min-height: var(--header-height);
     padding: 0 clamp(16px, 2.4vw, 36px);
     border-bottom: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-    background: color-mix(in srgb, var(--surface) 91%, transparent);
-    backdrop-filter: blur(16px);
+    background: color-mix(in srgb, var(--surface) 86%, transparent);
+    backdrop-filter: blur(18px) saturate(1.4);
 }
 
 .brand {
@@ -71,7 +71,7 @@
     left: 12px;
     height: 2px;
     border-radius: var(--radius-pill);
-    background: var(--primary);
+    background: var(--text);
 }
 
 .site-actions {

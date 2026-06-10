@@ -21,6 +21,8 @@ export interface RenderSession {
     stats: RenderStats;
     dispose(): void;
     resize(): void;
+    setAccent(accent: string): void;
+    setPaused(paused: boolean): void;
 }
 
 export interface RenderSessionStatus {
@@ -196,6 +198,16 @@ export async function createRenderSession(
             },
             resize() {
                 renderer?.resize();
+            },
+            setAccent(nextAccent: string) {
+                surface.style.setProperty('--runtime-accent', nextAccent);
+            },
+            setPaused(paused: boolean) {
+                if (paused) {
+                    renderer?.pause();
+                } else {
+                    renderer?.start();
+                }
             },
         };
     } catch (error) {
@@ -791,12 +803,26 @@ class RenderSessionRenderer implements RuntimeRenderer {
     }
 
     start() {
-        if (this.#rafRequestId !== undefined) {
+        if (this.#disposed || this.#rafRequestId !== undefined) {
             return;
         }
 
+        this.#viewer.resume();
         this.resize();
         this.#rafRequestId = window.requestAnimationFrame(this.#tick);
+    }
+
+    pause() {
+        if (this.#disposed || this.#rafRequestId === undefined) {
+            return;
+        }
+
+        window.cancelAnimationFrame(this.#rafRequestId);
+        this.#rafRequestId = undefined;
+        this.#lastFrameTime = 0;
+        // Also stops the engine-internal FPS/tick loop so a hidden surface
+        // schedules no animation frames at all.
+        this.#viewer.pause();
     }
 
     dispose() {

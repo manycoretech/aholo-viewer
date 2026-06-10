@@ -75,7 +75,7 @@ const workspaceFullscreenScript = `(() => {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#f7f8fa" data-theme-color />
+    <meta name="theme-color" content="#fafafa" data-theme-color />
     <link rel="alternate" type="text/plain" href="/llms.txt" />
     <link rel="alternate" type="text/markdown" href="/llm/index.md" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -92,7 +92,7 @@ const workspaceFullscreenScript = `(() => {
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         const theme = stored || (prefersDark ? 'dark' : 'light');
         document.documentElement.dataset.theme = theme;
-        document.querySelector('[data-theme-color]')?.setAttribute('content', theme === 'dark' ? '#0d1117' : '#f7f8fa');
+        document.querySelector('[data-theme-color]')?.setAttribute('content', theme === 'dark' ? '#050506' : '#fafafa');
       })();
     </script>
     {workspaceFullscreen && <script is:inline set:html={workspaceFullscreenScript} />}

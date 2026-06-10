@@ -475,7 +475,14 @@ function getReflectionSignature(reflection, kind) {
     const signature = kind === 'class' ? getConstructorSignature(reflection) : getPrimarySignature(reflection);
 
     if (signature) {
-        const params = (signature.parameters ?? []).map(parameter => parameter.toString()).join(', ');
+        const params = (signature.parameters ?? [])
+            .map(
+                parameter =>
+                    `${parameter.name}${parameter.flags?.isOptional ? '?' : ''}${
+                        parameter.type ? `: ${parameter.type.toString()}` : ''
+                    }`,
+            )
+            .join(', ');
         const returnType = signature.type?.toString();
         const name = kind === 'class' ? `new ${reflection.name}` : reflection.name;
 

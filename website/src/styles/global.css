@@ -21,6 +21,10 @@ a {
     text-decoration: none;
 }
 
+::selection {
+    background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
 button,
 select,
 textarea {

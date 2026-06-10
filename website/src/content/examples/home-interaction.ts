@@ -57,20 +57,37 @@ export default async function runner({ renderer, control, loading, indexedDB, si
     }
     loading.hide();
 
-    await waitForHomeInteraction(signal);
-    throwIfAborted(signal);
-
-    splat.setConfig({
-        minLevel: 0,
-        schedulerParallelCounts: 4,
-    });
-    renderer.frame(({ delta }) => {
-        const updated = control.update(delta);
-        splat.tick(viewer.getCamera());
-        return updated;
-    });
+    // Resolve the session once the preview is ready. Upgrading to the full-detail
+    // walkthrough continues in the background when the user enters the space.
+    void upgradeOnEnter();
 
     return () => splat.destroy();
+
+    async function upgradeOnEnter() {
+        try {
+            await waitForHomeInteraction(signal);
+        } catch {
+            return;
+        }
+        if (signal.aborted) {
+            return;
+        }
+
+        splat.setConfig({
+            minLevel: 0,
+            schedulerParallelCounts: 4,
+        });
+        renderer.frame(({ delta }) => {
+            // Outside the immersive mode the camera is frozen: skip the per-frame
+            // control damping and LOD scheduling work entirely.
+            if (!document.documentElement.classList.contains('home-interactive')) {
+                return false;
+            }
+            const updated = control.update(delta);
+            splat.tick(viewer.getCamera());
+            return updated;
+        });
+    }
 }
 
 function waitForHomeInteraction(signal: AbortSignal) {
