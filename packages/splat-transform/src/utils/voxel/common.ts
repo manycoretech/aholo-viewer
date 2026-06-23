@@ -1300,14 +1300,10 @@ export interface SparseOctree {
 }
 
 export function getChildOffset(mask: number, octant: number) {
-    const prefix = mask & ((1 << octant) - 1);
-    let n = prefix >>> 0;
-    n -= (n >>> 1) & 0x55555555;
-    n = (n & 0x33333333) + ((n >>> 2) & 0x33333333);
-    return (((n + (n >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+    return popcount(mask & ((1 << octant) - 1));
 }
 
-function bitCount(n: number) {
+export function popcount(n: number) {
     let v = n >>> 0;
     v -= (v >>> 1) & 0x55555555;
     v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
@@ -1635,7 +1631,7 @@ function flattenTreeFromLevels(
         let nextChildStart = emitPos;
         for (let j = 0; j < intPos.length; j++) {
             const childMask = intMask[j];
-            const childCount = bitCount(childMask);
+            const childCount = popcount(childMask);
             if (nextChildStart > MAX_24BIT_OFFSET) {
                 throw new SparseOctree24BitOverflowError('node', nextChildStart + 1, MAX_24BIT_OFFSET + 1);
             }
@@ -1893,8 +1889,8 @@ export function buildSparseOctree(
         }
         const solidMask = word & EVEN_BITS & ~((word >>> 1) & EVEN_BITS);
         const mixedMask = (word >>> 1) & EVEN_BITS & ~(word & EVEN_BITS);
-        nSolid += bitCount(solidMask >>> 0);
-        nMixed += bitCount(mixedMask >>> 0);
+        nSolid += popcount(solidMask >>> 0);
+        nMixed += popcount(mixedMask >>> 0);
     }
     if (nSolid + nMixed === 0) {
         return {

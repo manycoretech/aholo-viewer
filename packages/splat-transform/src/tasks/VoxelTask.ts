@@ -1,5 +1,5 @@
 import { SplatData } from '../SplatData.js';
-import { writeVoxelFiles } from '../file/voxel.js';
+import { writeVoxelFiles, type VoxelBinaryCompression } from '../file/voxel.js';
 import type { FilterClusterOptions } from '../utils/voxel/filter-cluster.js';
 import type { VoxelNodeEncoding } from '../utils/voxel/binary.js';
 import { type Context, BaseTask } from './BaseTask.js';
@@ -18,7 +18,7 @@ export interface VoxelTaskConfig {
     box?: { minCorner: [number, number, number]; maxCorner: [number, number, number] };
     navCapsule?: { height: number; radius: number };
     navSeed?: { x: number; y: number; z: number };
-    gzip?: boolean;
+    compression?: VoxelBinaryCompression;
     nodeEncoding?: VoxelNodeEncoding;
     filterCluster?: boolean | FilterClusterOptions;
 }
@@ -39,7 +39,7 @@ export class VoxelTask extends BaseTask<VoxelTaskConfig> {
             box = { minCorner: [-100, -100, -100], maxCorner: [100, 100, 100] },
             navCapsule,
             navSeed,
-            gzip = false,
+            compression = 'none',
             nodeEncoding = 'raw',
             filterCluster = true,
         } = config;
@@ -56,7 +56,7 @@ export class VoxelTask extends BaseTask<VoxelTaskConfig> {
             floorFillDilation,
             cpuWorkerCount,
             box,
-            gzip,
+            compression,
             nodeEncoding,
             filterCluster,
         };

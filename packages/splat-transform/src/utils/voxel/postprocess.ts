@@ -1,4 +1,4 @@
-import { BlockMaskBuffer, type SparseVoxelGrid, type Bounds, SOLID_HI, SOLID_LO } from './common.js';
+import { popcount, BlockMaskBuffer, type SparseVoxelGrid, type Bounds, SOLID_HI, SOLID_LO } from './common.js';
 import { logger } from '../Logger.js';
 
 const FACE_X0 = 0x11111111;
@@ -7,14 +7,6 @@ const FACE_Y0 = 0x000f000f;
 const FACE_Y3 = 0xf000f000;
 const FACE_Z0_LO = 0x0000ffff;
 const FACE_Z3_HI = 0xffff0000 >>> 0;
-
-/** Count set bits in a 32-bit unsigned integer. */
-function popcount(n: number) {
-    n >>>= 0;
-    n -= (n >>> 1) & 0x55555555;
-    n = (n & 0x33333333) + ((n >>> 2) & 0x33333333);
-    return (((n + (n >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
-}
 
 function sortedUint32Has(sorted: Float64Array, value: number) {
     let lo = 0;

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Buffer } from 'node:buffer';
-import { gzipSync } from 'node:zlib';
+import { constants as zlibConstants, gzipSync, zstdCompressSync } from 'node:zlib';
 
 /**
  * Portions of this voxel pipeline are adapted from:
@@ -36,6 +36,8 @@ import {
     type Bounds,
     type SparseOctree,
 } from '../utils/voxel/common.js';
+export type VoxelBinaryCompression = 'none' | 'gzip' | 'zstd';
+
 interface VoxelMetadata {
     version: string;
     gridBounds: { min: number[]; max: number[] };
@@ -49,6 +51,7 @@ interface VoxelMetadata {
     leafDataCount: number;
     files: string[];
     nodeEncoding: VoxelNodeEncoding;
+    compression: VoxelBinaryCompression;
 }
 type VoxelBackend = 'cpu' | 'gpu';
 type CollisionMeshOption = boolean | CollisionMeshShape;
@@ -61,11 +64,16 @@ interface VoxelWriteResult {
     binary: Uint8Array;
     collisionGlb: Uint8Array | undefined;
 }
+interface VoxelBinaryOutput {
+    filename: string;
+    payload: Uint8Array;
+}
 // Stay under the hard 31-bit block limit and leave room for CPU memory use.
 const GRID_BLOCK_FALLBACK_TARGET = Math.floor(MAX_VOXEL_BLOCK_COUNT_INT32 * 0.55);
 const OCTREE_24BIT_FALLBACK_TARGET = Math.floor((MAX_24BIT_OFFSET + 1) * 0.98);
 const MAX_RESOLUTION_FALLBACK_ATTEMPTS = 4;
 const RESOLUTION_FALLBACK_ALIGNMENT = 0.01;
+const ZSTD_COMPRESSION_LEVEL = 12;
 
 function blockCountFromBounds(bounds: Bounds, voxelResolution: number) {
     const blockSize = 4 * voxelResolution;
@@ -90,6 +98,29 @@ function chooseFallbackResolution(currentVoxelResolution: number, currentCount: 
         return aligned;
     }
     return align(currentVoxelResolution + step);
+}
+
+function compressVoxelBinary(binary: Uint8Array, compression: VoxelBinaryCompression): VoxelBinaryOutput {
+    switch (compression) {
+        case 'none':
+            return { filename: 'voxel.bin', payload: binary };
+        case 'gzip':
+            return { filename: 'voxel.bin.gz', payload: gzipSync(binary) };
+        case 'zstd':
+            return {
+                filename: 'voxel.bin.zst',
+                payload: zstdCompressSync(binary, {
+                    params: {
+                        [zlibConstants.ZSTD_c_compressionLevel]: ZSTD_COMPRESSION_LEVEL,
+                    },
+                }),
+            };
+    }
+    throw new Error(`Invalid voxel compression: ${String(compression)}`);
+}
+
+function formatCompressedSizePercent(rawBytes: number, compressedBytes: number) {
+    return rawBytes > 0 ? ((compressedBytes / rawBytes) * 100).toFixed(1) : 'n/a';
 }
 
 /**
@@ -128,6 +159,7 @@ async function writeVoxels(
     navCapsule?: { height: number; radius: number },
     navSeed?: NavSeed,
     nodeEncoding: VoxelNodeEncoding = 'raw',
+    compression: VoxelBinaryCompression = 'none',
     requestedVoxelResolution = voxelResolution,
 ): Promise<VoxelWriteResult> {
     const hasNav = !!(navCapsule && navSeed && navCapsule.height > 0);
@@ -458,6 +490,7 @@ async function writeVoxels(
         leafDataCount: octree.leafData.length,
         files: ['voxel.bin'],
         nodeEncoding,
+        compression,
     };
     const binary =
         nodeEncoding === 'compact'
@@ -482,12 +515,12 @@ export async function writeVoxelFiles(
         box?: BoundsBox;
         navCapsule?: { height: number; radius: number };
         navSeed?: NavSeed;
-        gzip?: boolean;
+        compression?: VoxelBinaryCompression;
         nodeEncoding?: VoxelNodeEncoding;
         filterCluster?: boolean | FilterClusterOptions;
     },
 ) {
-    const gzip = options?.gzip ?? false;
+    const compression = options?.compression ?? 'none';
     const requestedVoxelResolution = options?.voxelResolution ?? 0.05;
     const opacityCutoff = options?.opacityCutoff ?? 0.1;
     const backend = options?.backend ?? 'gpu';
@@ -529,6 +562,7 @@ export async function writeVoxelFiles(
                 options?.navCapsule,
                 options?.navSeed,
                 nodeEncoding,
+                compression,
                 requestedVoxelResolution,
             );
             break;
@@ -553,16 +587,10 @@ export async function writeVoxelFiles(
     fs.mkdirSync(outputDir, { recursive: true });
     const metaPath = path.join(outputDir, 'voxel-meta.json');
     const rawBytes = binary.length;
-    let binPayload: Uint8Array;
-    let binPath: string;
-    if (gzip) {
-        binPayload = gzipSync(binary);
-        binPath = path.join(outputDir, 'voxel.bin.gz');
-        metadata.files = ['voxel.bin.gz'];
-    } else {
-        binPayload = binary;
-        binPath = path.join(outputDir, 'voxel.bin');
-    }
+    const compressedBinary = compressVoxelBinary(binary, compression);
+    const binPayload = compressedBinary.payload;
+    const binPath = path.join(outputDir, compressedBinary.filename);
+    metadata.files = [compressedBinary.filename];
     logger.info(`writing '${metaPath}'...`);
     fs.writeFileSync(metaPath, Buffer.from(JSON.stringify(metadata, null, 2), 'utf-8'));
     logger.info(`writing '${binPath}'...`);
@@ -578,9 +606,10 @@ export async function writeVoxelFiles(
         }
         return `${(bytes / 1024).toFixed(1)} KB`;
     }
-    const octreeSizeMsg = gzip
-        ? `octree raw: ${formatSize(rawBytes)}, gzip: ${formatSize(binPayload.length)} (${rawBytes > 0 ? ((binPayload.length / rawBytes) * 100).toFixed(1) : 'n/a'}%)`
-        : `octree ${formatSize(rawBytes)}`;
+    const octreeSizeMsg =
+        compression === 'none'
+            ? `octree ${formatSize(rawBytes)}`
+            : `octree raw: ${formatSize(rawBytes)}, ${compression}: ${formatSize(binPayload.length)} (${formatCompressedSizePercent(rawBytes, binPayload.length)}%)`;
     if (collisionGlb && collisionGlb.length > 0) {
         logger.info(`${octreeSizeMsg}, collision mesh ${formatSize(collisionGlb.length)}`);
     } else {

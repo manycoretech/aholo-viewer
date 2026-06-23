@@ -1,5 +1,10 @@
 # Changelog
 
+## DEV
+
+- Add a `compression` option for voxel binary output with `none`, `gzip`, and `zstd` modes.
+- Add a `filterCluster` fallback when the default seed keeps too few gaussians.
+
 ## 1.4.2
 
 - fix typo in `list:gpu` output

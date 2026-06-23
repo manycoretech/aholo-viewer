@@ -1,3 +1,5 @@
+import { popcount } from './common.js';
+
 const SOLID_LEAF_MARKER = 0xff000000 >>> 0;
 const COMPACT_MAGIC = 0x31424356; // "VCB1" little-endian
 const COMPACT_VERSION = 1;
@@ -13,13 +15,6 @@ export type VoxelNodeEncoding = 'raw' | 'compact';
 export interface DecodedVoxelBinary {
     nodes: Uint32Array;
     leafData: Uint32Array;
-}
-
-function popcount(n: number): number {
-    n >>>= 0;
-    n -= (n >>> 1) & 0x55555555;
-    n = (n & 0x33333333) + ((n >>> 2) & 0x33333333);
-    return (((n + (n >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
 }
 
 function getTagByteLength(nodeCount: number): number {

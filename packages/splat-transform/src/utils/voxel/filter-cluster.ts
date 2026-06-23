@@ -2,6 +2,7 @@ import { ColIdx, SplatData } from '../../SplatData.js';
 import { logger } from '../Logger.js';
 import {
     alignGridBounds,
+    popcount,
     BLOCK_EMPTY,
     BLOCK_MIXED,
     BLOCK_SOLID,
@@ -48,7 +49,28 @@ interface BlockGridParams {
     strideZ: number;
 }
 
+interface VoxelCluster {
+    grid: SparseVoxelGrid;
+    voxelCount: number;
+}
+
+interface GaussianSelectionResult {
+    selectedIndices: number[];
+    aborted: boolean;
+}
+
 const QUEUE_CAP_MAX = 1 << 30;
+const FALLBACK_MIN_GAUSSIAN_RATIO = 0.3;
+const FALLBACK_CANDIDATE_LIMIT = 5;
+
+function countOccupiedVoxels(buffer: BlockMaskBuffer): number {
+    let count = buffer.getSolidBlocks().length * 64;
+    const mixed = buffer.getMixedBlocks();
+    for (let i = 0; i < mixed.blockIdx.length; i++) {
+        count += popcount(mixed.masks[i * 2]) + popcount(mixed.masks[i * 2 + 1]);
+    }
+    return count;
+}
 
 function makeFaceMask(axis: 0 | 1 | 2, value: number): [number, number] {
     let lo = 0;
@@ -244,8 +266,10 @@ function twoLevelBFS(
     nx: number,
     ny: number,
     nz: number,
-): SparseVoxelGrid {
+    visitedAccumulator?: SparseVoxelGrid,
+): VoxelCluster {
     const visited = new SparseVoxelGrid(nx, ny, nz);
+    let voxelCount = 0;
     const nbx = nx >> 2;
     const nby = ny >> 2;
     const bStride = nbx * nby;
@@ -339,11 +363,18 @@ function twoLevelBFS(
             return false;
         }
         writeBlockType(visitedTypes, blockIdx, BLOCK_SOLID);
+        if (visitedAccumulator) {
+            visitedAccumulator.orBlock(blockIdx, SOLID_LO, SOLID_HI);
+        }
+        voxelCount += 64;
         enqueueBlock(blockIdx);
         return true;
     }
 
     function enqueueVisitedMaskVoxels(blockIdx: number, bx: number, by: number, bz: number, lo: number, hi: number) {
+        if ((lo | hi) === 0) {
+            return;
+        }
         const baseX = bx << 2;
         const baseY = by << 2;
         const baseZ = bz << 2;
@@ -369,6 +400,10 @@ function twoLevelBFS(
         if ((newLo | newHi) === 0) {
             return;
         }
+        if (visitedAccumulator) {
+            visitedAccumulator.orBlock(blockIdx, newLo, newHi);
+        }
+        voxelCount += popcount(newLo) + popcount(newHi);
         visitedMasks.lo[slot] = (oldLo | newLo) >>> 0;
         visitedMasks.hi[slot] = (oldHi | newHi) >>> 0;
         if (visitedMasks.lo[slot] === SOLID_LO && visitedMasks.hi[slot] === SOLID_HI) {
@@ -526,20 +561,18 @@ function twoLevelBFS(
             processVoxel(ix, iy, iz);
         }
     }
-    return visited;
+    return { grid: visited, voxelCount };
 }
 
-function findClusterVoxelFlood(
-    buffer: BlockMaskBuffer,
+function floodClusterFromSeed(
+    blocked: SparseVoxelGrid,
     nx: number,
     ny: number,
     nz: number,
     seedIx: number,
     seedIy: number,
     seedIz: number,
-): SparseVoxelGrid | null {
-    const occupied = SparseVoxelGrid.fromBuffer(buffer, nx, ny, nz);
-    const blocked = occupied.cropToInverted(0, 0, 0, occupied.nbx, occupied.nby, occupied.nbz);
+): VoxelCluster | null {
     if (blocked.getVoxel(seedIx, seedIy, seedIz)) {
         const nearest = SparseVoxelGrid.findNearestFreeCell(blocked, seedIx, seedIy, seedIz, Math.max(nx, ny, nz));
         if (!nearest) {
@@ -560,6 +593,93 @@ function findClusterVoxelFlood(
         ny,
         nz,
     );
+}
+
+function getProcessedMask(processed: SparseVoxelGrid, blockIdx: number): [number, number] {
+    const blockType = readBlockType(processed.types, blockIdx);
+    if (blockType === BLOCK_EMPTY) {
+        return [0, 0];
+    }
+    if (blockType === BLOCK_SOLID) {
+        return [SOLID_LO, SOLID_HI];
+    }
+    const slot = processed.masks.slot(blockIdx);
+    return [processed.masks.lo[slot], processed.masks.hi[slot]];
+}
+
+function insertCandidate(candidates: VoxelCluster[], candidate: VoxelCluster, limit: number) {
+    candidates.push(candidate);
+    candidates.sort((a, b) => b.voxelCount - a.voxelCount);
+    if (candidates.length > limit) {
+        const removed = candidates.pop();
+        removed?.grid.releaseStorage();
+    }
+}
+
+function findLargestVoxelClusterCandidates(
+    buffer: BlockMaskBuffer,
+    blocked: SparseVoxelGrid,
+    nx: number,
+    ny: number,
+    nz: number,
+    limit: number,
+    initialProcessed?: SparseVoxelGrid,
+    initialComponentCount = 0,
+): { candidates: VoxelCluster[]; componentCount: number } {
+    const candidates: VoxelCluster[] = [];
+    const processed = initialProcessed ?? new SparseVoxelGrid(nx, ny, nz);
+    const nbx = nx >> 2;
+    const nby = ny >> 2;
+    const bStride = nbx * nby;
+    let componentCount = initialComponentCount;
+
+    function floodFromMask(blockIdx: number, lo: number, hi: number) {
+        while ((lo | hi) !== 0) {
+            const bit = lo ? 31 - Math.clz32(lo & -lo) : 31 - Math.clz32(hi & -hi) + 32;
+            const bx = blockIdx % nbx;
+            const byBz = (blockIdx / nbx) | 0;
+            const by = byBz % nby;
+            const bz = (blockIdx / bStride) | 0;
+            const seedIx = (bx << 2) + (bit & 3);
+            const seedIy = (by << 2) + ((bit >> 2) & 3);
+            const seedIz = (bz << 2) + (bit >> 4);
+            const seedBlockType = readBlockType(blocked.types, blockIdx);
+            const floodResult = twoLevelBFS(
+                blocked,
+                seedBlockType === BLOCK_EMPTY ? [blockIdx] : [],
+                seedBlockType === BLOCK_EMPTY ? [] : [{ ix: seedIx, iy: seedIy, iz: seedIz }],
+                nx,
+                ny,
+                nz,
+                processed,
+            );
+            componentCount++;
+            insertCandidate(candidates, floodResult, limit);
+            const [processedLo, processedHi] = getProcessedMask(processed, blockIdx);
+            lo = (lo & ~processedLo) >>> 0;
+            hi = (hi & ~processedHi) >>> 0;
+        }
+    }
+
+    const solidBlocks = buffer.getSolidBlocks();
+    for (let i = 0; i < solidBlocks.length; i++) {
+        const blockIdx = solidBlocks[i];
+        const [processedLo, processedHi] = getProcessedMask(processed, blockIdx);
+        floodFromMask(blockIdx, (SOLID_LO & ~processedLo) >>> 0, (SOLID_HI & ~processedHi) >>> 0);
+    }
+
+    const mixed = buffer.getMixedBlocks();
+    for (let i = 0; i < mixed.blockIdx.length; i++) {
+        const blockIdx = mixed.blockIdx[i];
+        const [processedLo, processedHi] = getProcessedMask(processed, blockIdx);
+        floodFromMask(
+            blockIdx,
+            (mixed.masks[i * 2] & ~processedLo) >>> 0,
+            (mixed.masks[i * 2 + 1] & ~processedHi) >>> 0,
+        );
+    }
+
+    return { candidates, componentCount };
 }
 
 function cloneRows(data: SplatData, rows: number[]): SplatData {
@@ -583,6 +703,7 @@ export async function filterCluster(
     const voxelResolution = options.voxelResolution ?? 1.0;
     const opacityCutoff = options.opacityCutoff ?? 0.999;
     const minContribution = options.minContribution ?? 0.1;
+    const hasExplicitSeed = options.seed !== undefined;
     const seed = options.seed ?? { x: 0, y: 0, z: 0 };
     const box = runtime.box;
     if (!Number.isFinite(voxelResolution) || voxelResolution <= 0) {
@@ -759,22 +880,18 @@ export async function filterCluster(
         logger.warn('filterCluster: no occupied voxels, returning empty data');
         return cloneRows(data, []);
     }
+    const occupied = SparseVoxelGrid.fromBuffer(buffer, nx, ny, nz);
+    const blocked = occupied.cropToInverted(0, 0, 0, occupied.nbx, occupied.nby, occupied.nbz);
     const seedIx = Math.max(0, Math.min(Math.floor((seed.x - gridBounds.min.x) / voxelResolution), nx - 1));
     const seedIy = Math.max(0, Math.min(Math.floor((seed.y - gridBounds.min.y) / voxelResolution), ny - 1));
     const seedIz = Math.max(0, Math.min(Math.floor((seed.z - gridBounds.min.z) / voxelResolution), nz - 1));
-    const visited = findClusterVoxelFlood(buffer, nx, ny, nz, seedIx, seedIy, seedIz);
-    if (!visited) {
+    const seedCluster = floodClusterFromSeed(blocked, nx, ny, nz, seedIx, seedIy, seedIz);
+    if (!seedCluster) {
         logger.warn('filterCluster: no occupied voxel near seed, returning empty data');
         return cloneRows(data, []);
     }
-    const visitedBuffer = visited.toBuffer(0, 0, 0, nbx, nby, nbz);
-    logger.info(`filterCluster: cluster blocks=${visitedBuffer.count}, occupied blocks=${buffer.count}`);
-    if (visitedBuffer.count === buffer.count) {
-        logger.info('filterCluster: all blocks are connected, no filtering needed');
-        return data;
-    }
-    const lookup = buildBlockLookup(visitedBuffer);
-    const grid: BlockGridParams = {
+
+    const blockGrid: BlockGridParams = {
         gridMinX: gridBounds.min.x,
         gridMinY: gridBounds.min.y,
         gridMinZ: gridBounds.min.z,
@@ -786,27 +903,113 @@ export async function filterCluster(
         strideY: nbx,
         strideZ: nbx * nby,
     };
-    const keep: number[] = [];
     const largeThreshold = 2 * voxelResolution;
     const minOccupancyRatio = 0.1;
     const invVoxel = 1 / voxelResolution;
-    for (let i = 0; i < data.counts; i++) {
-        if (isCenterInOccupiedVoxel(xCol[i], yCol[i], zCol[i], grid, lookup)) {
-            keep.push(i);
-            continue;
+
+    function selectGaussiansForCluster(
+        clusterBuffer: BlockMaskBuffer,
+        keepCountToExceed?: number,
+    ): GaussianSelectionResult {
+        const lookup = buildBlockLookup(clusterBuffer);
+        const selectedIndices: number[] = [];
+        for (let i = 0; i < data.counts; i++) {
+            const remaining = data.counts - i;
+            if (keepCountToExceed !== undefined && selectedIndices.length + remaining <= keepCountToExceed) {
+                return {
+                    selectedIndices,
+                    aborted: true,
+                };
+            }
+            if (isCenterInOccupiedVoxel(xCol[i], yCol[i], zCol[i], blockGrid, lookup)) {
+                selectedIndices.push(i);
+                continue;
+            }
+            const ex = extents[i * 3];
+            const ey = extents[i * 3 + 1];
+            const ez = extents[i * 3 + 2];
+            let minHits = 1;
+            if (Math.max(ex, ey, ez) * 2 > largeThreshold) {
+                const aabbVoxels = 2 * ex * invVoxel * (2 * ey * invVoxel) * (2 * ez * invVoxel);
+                minHits = Math.max(1, Math.ceil(aabbVoxels * minOccupancyRatio));
+            }
+            if (gaussianContributesToVoxels(i, data, extents, blockGrid, lookup, minContribution, minHits)) {
+                selectedIndices.push(i);
+            }
         }
-        const ex = extents[i * 3];
-        const ey = extents[i * 3 + 1];
-        const ez = extents[i * 3 + 2];
-        let minHits = 1;
-        if (Math.max(ex, ey, ez) * 2 > largeThreshold) {
-            const aabbVoxels = 2 * ex * invVoxel * (2 * ey * invVoxel) * (2 * ez * invVoxel);
-            minHits = Math.max(1, Math.ceil(aabbVoxels * minOccupancyRatio));
+        return {
+            selectedIndices,
+            aborted: false,
+        };
+    }
+
+    const seedClusterBuffer = seedCluster.grid.toBuffer(0, 0, 0, nbx, nby, nbz);
+    if (seedClusterBuffer.count === buffer.count) {
+        const occupiedVoxelCount = countOccupiedVoxels(buffer);
+        if (seedCluster.voxelCount === occupiedVoxelCount) {
+            logger.info('filterCluster: all occupied voxels are connected, no filtering needed');
+            return data;
         }
-        if (gaussianContributesToVoxels(i, data, extents, grid, lookup, minContribution, minHits)) {
-            keep.push(i);
+        logger.info(
+            `filterCluster: all occupied blocks reached but voxel count differs ` +
+                `(cluster=${seedCluster.voxelCount}, occupied=${occupiedVoxelCount}); continuing filtering`,
+        );
+    }
+
+    let chosenIndices = selectGaussiansForCluster(seedClusterBuffer).selectedIndices;
+    let chosenSource = 'seed';
+    let chosenKeepRatio = chosenIndices.length / data.counts;
+
+    if (hasExplicitSeed && chosenKeepRatio < FALLBACK_MIN_GAUSSIAN_RATIO) {
+        logger.warn(
+            `filterCluster: explicit seed cluster keeps ${chosenIndices.length}/${data.counts} gaussians ` +
+                `(${(chosenKeepRatio * 100).toFixed(1)}%); automatic fallback is disabled for explicit seeds`,
+        );
+    }
+
+    if (!hasExplicitSeed && chosenKeepRatio < FALLBACK_MIN_GAUSSIAN_RATIO) {
+        logger.warn(
+            `filterCluster: default seed cluster keeps ${chosenIndices.length}/${data.counts} gaussians ` +
+                `(${(chosenKeepRatio * 100).toFixed(1)}%), ` +
+                `below the fallback threshold (${(FALLBACK_MIN_GAUSSIAN_RATIO * 100).toFixed(1)}%); ` +
+                'falling back to connected-component search',
+        );
+        const { candidates, componentCount } = findLargestVoxelClusterCandidates(
+            buffer,
+            blocked,
+            nx,
+            ny,
+            nz,
+            FALLBACK_CANDIDATE_LIMIT,
+            seedCluster.grid,
+            1,
+        );
+        logger.info(
+            `filterCluster fallback: components=${componentCount}, candidates=${candidates.length}, ` +
+                `candidateLimit=${FALLBACK_CANDIDATE_LIMIT}`,
+        );
+        for (let i = 0; i < candidates.length; i++) {
+            const candidate = candidates[i];
+            const candidateClusterBuffer = candidate.grid.toBuffer(0, 0, 0, nbx, nby, nbz);
+            const candidateSelection = selectGaussiansForCluster(candidateClusterBuffer, chosenIndices.length);
+            if (candidateSelection.aborted) {
+                continue;
+            }
+            const candidateKeepRatio = candidateSelection.selectedIndices.length / data.counts;
+            if (candidateSelection.selectedIndices.length > chosenIndices.length) {
+                chosenIndices = candidateSelection.selectedIndices;
+                chosenKeepRatio = candidateKeepRatio;
+                chosenSource = `fallback candidate #${i + 1}`;
+            }
+        }
+        for (const candidate of candidates) {
+            candidate.grid.releaseStorage();
         }
     }
-    logger.info(`filterCluster: kept ${keep.length} / ${data.counts} gaussians`);
-    return keep.length === data.counts ? data : cloneRows(data, keep);
+
+    logger.info(
+        `filterCluster: kept ${chosenIndices.length} / ${data.counts} gaussians via ${chosenSource} ` +
+            `(${(chosenKeepRatio * 100).toFixed(1)}%)`,
+    );
+    return chosenIndices.length === data.counts ? data : cloneRows(data, chosenIndices);
 }
