@@ -243,10 +243,8 @@ function resolveAutoDenseBoxOptions(autoDenseBox?: AutoDenseBoxConfig): Required
         return null;
     }
     const options = autoDenseBox === true ? {} : autoDenseBox;
-    const targetCenterKeepRatio =
-        options.targetCenterKeepRatio ?? DEFAULT_AUTO_DENSE_BOX_TARGET_CENTER_KEEP_RATIO;
-    const minimumCenterKeepRatio =
-        options.minimumCenterKeepRatio ?? DEFAULT_AUTO_DENSE_BOX_MINIMUM_CENTER_KEEP_RATIO;
+    const targetCenterKeepRatio = options.targetCenterKeepRatio ?? DEFAULT_AUTO_DENSE_BOX_TARGET_CENTER_KEEP_RATIO;
+    const minimumCenterKeepRatio = options.minimumCenterKeepRatio ?? DEFAULT_AUTO_DENSE_BOX_MINIMUM_CENTER_KEEP_RATIO;
     const minimumAxisInflation = options.minimumAxisInflation ?? DEFAULT_AUTO_DENSE_BOX_MINIMUM_AXIS_INFLATION;
     const minimumVolumeInflation = options.minimumVolumeInflation ?? DEFAULT_AUTO_DENSE_BOX_MINIMUM_VOLUME_INFLATION;
     return {
