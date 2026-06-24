@@ -1,5 +1,5 @@
 import { SplatData } from '../SplatData.js';
-import { writeVoxelFiles, type VoxelBinaryCompression } from '../file/voxel.js';
+import { writeVoxelFiles, type AutoDenseBoxConfig, type VoxelBinaryCompression } from '../file/voxel.js';
 import type { FilterClusterOptions } from '../utils/voxel/filter-cluster.js';
 import type { VoxelNodeEncoding } from '../utils/voxel/binary.js';
 import { type Context, BaseTask } from './BaseTask.js';
@@ -21,6 +21,7 @@ export interface VoxelTaskConfig {
     compression?: VoxelBinaryCompression;
     nodeEncoding?: VoxelNodeEncoding;
     filterCluster?: boolean | FilterClusterOptions;
+    autoDenseBox?: AutoDenseBoxConfig;
 }
 
 export class VoxelTask extends BaseTask<VoxelTaskConfig> {
@@ -42,6 +43,7 @@ export class VoxelTask extends BaseTask<VoxelTaskConfig> {
             compression = 'none',
             nodeEncoding = 'raw',
             filterCluster = true,
+            autoDenseBox = true,
         } = config;
         const source = resources.get(input)!;
         if (!(source instanceof SplatData)) {
@@ -59,6 +61,7 @@ export class VoxelTask extends BaseTask<VoxelTaskConfig> {
             compression,
             nodeEncoding,
             filterCluster,
+            autoDenseBox,
         };
         if (navExteriorRadius !== undefined) {
             options.navExteriorRadius = navExteriorRadius;

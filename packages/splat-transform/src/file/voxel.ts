@@ -10,7 +10,7 @@ import { constants as zlibConstants, gzipSync, zstdCompressSync } from 'node:zli
  * Licensed under the MIT License.
  */
 import { ColIdx, type SplatData } from '../SplatData.js';
-import { logger, cpuVoxelize, gpuVoxelize, type BlockMaskBuffer } from '../utils/index.js';
+import { computeDenseBox, logger, cpuVoxelize, gpuVoxelize, type BlockMaskBuffer } from '../utils/index.js';
 import { encodeCompactVoxelBinary, encodeRawVoxelBinary, type VoxelNodeEncoding } from '../utils/voxel/binary.js';
 import { fillExterior, fillFloor, carve, type NavSeed } from '../utils/voxel/nav.js';
 import { buildCollisionMesh, type CollisionMeshShape } from '../utils/voxel/mesh.js';
@@ -59,6 +59,13 @@ interface BoundsBox {
     minCorner: [number, number, number];
     maxCorner: [number, number, number];
 }
+export interface AutoDenseBoxOptions {
+    targetCenterKeepRatio?: number;
+    minimumCenterKeepRatio?: number;
+    minimumAxisInflation?: number;
+    minimumVolumeInflation?: number;
+}
+export type AutoDenseBoxConfig = boolean | AutoDenseBoxOptions;
 interface VoxelWriteResult {
     metadata: VoxelMetadata;
     binary: Uint8Array;
@@ -74,6 +81,11 @@ const OCTREE_24BIT_FALLBACK_TARGET = Math.floor((MAX_24BIT_OFFSET + 1) * 0.98);
 const MAX_RESOLUTION_FALLBACK_ATTEMPTS = 4;
 const RESOLUTION_FALLBACK_ALIGNMENT = 0.01;
 const ZSTD_COMPRESSION_LEVEL = 12;
+const DEFAULT_VOXEL_BOX: BoundsBox = { minCorner: [-100, -100, -100], maxCorner: [100, 100, 100] };
+const DEFAULT_AUTO_DENSE_BOX_TARGET_CENTER_KEEP_RATIO = 0.98;
+const DEFAULT_AUTO_DENSE_BOX_MINIMUM_CENTER_KEEP_RATIO = 0.95;
+const DEFAULT_AUTO_DENSE_BOX_MINIMUM_AXIS_INFLATION = 1.5;
+const DEFAULT_AUTO_DENSE_BOX_MINIMUM_VOLUME_INFLATION = 4;
 
 function blockCountFromBounds(bounds: Bounds, voxelResolution: number) {
     const blockSize = 4 * voxelResolution;
@@ -98,6 +110,199 @@ function chooseFallbackResolution(currentVoxelResolution: number, currentCount: 
         return aligned;
     }
     return align(currentVoxelResolution + step);
+}
+
+function formatBoundsBox(box: BoundsBox) {
+    const formatPoint = (point: [number, number, number]) => point.map(v => v.toFixed(2)).join(',');
+    return `(${formatPoint(box.minCorner)})-(${formatPoint(box.maxCorner)})`;
+}
+
+function toBoundsBox(box: { min: number[]; max: number[] }): BoundsBox {
+    return {
+        minCorner: [box.min[0], box.min[1], box.min[2]],
+        maxCorner: [box.max[0], box.max[1], box.max[2]],
+    };
+}
+
+function intersectBoundsBoxes(a: BoundsBox, b: BoundsBox): BoundsBox | null {
+    const minCorner: [number, number, number] = [
+        Math.max(a.minCorner[0], b.minCorner[0]),
+        Math.max(a.minCorner[1], b.minCorner[1]),
+        Math.max(a.minCorner[2], b.minCorner[2]),
+    ];
+    const maxCorner: [number, number, number] = [
+        Math.min(a.maxCorner[0], b.maxCorner[0]),
+        Math.min(a.maxCorner[1], b.maxCorner[1]),
+        Math.min(a.maxCorner[2], b.maxCorner[2]),
+    ];
+    if (minCorner[0] >= maxCorner[0] || minCorner[1] >= maxCorner[1] || minCorner[2] >= maxCorner[2]) {
+        return null;
+    }
+    return { minCorner, maxCorner };
+}
+
+function countCentersInsideBounds(data: SplatData, box: BoundsBox) {
+    const xCol = data.table[ColIdx.x];
+    const yCol = data.table[ColIdx.y];
+    const zCol = data.table[ColIdx.z];
+    const [minX, minY, minZ] = box.minCorner;
+    const [maxX, maxY, maxZ] = box.maxCorner;
+    let count = 0;
+    for (let i = 0; i < data.counts; i++) {
+        if (
+            xCol[i] >= minX &&
+            xCol[i] <= maxX &&
+            yCol[i] >= minY &&
+            yCol[i] <= maxY &&
+            zCol[i] >= minZ &&
+            zCol[i] <= maxZ
+        ) {
+            count++;
+        }
+    }
+    return count;
+}
+
+function computeCenterAndSceneBounds(data: SplatData): { centerBounds: BoundsBox; sceneBounds: BoundsBox } {
+    if (data.counts === 0) {
+        return {
+            centerBounds: { minCorner: [0, 0, 0], maxCorner: [0, 0, 0] },
+            sceneBounds: { minCorner: [0, 0, 0], maxCorner: [0, 0, 0] },
+        };
+    }
+
+    const table = data.table;
+    const xCol = table[ColIdx.x];
+    const yCol = table[ColIdx.y];
+    const zCol = table[ColIdx.z];
+    const sxCol = table[ColIdx.sx];
+    const syCol = table[ColIdx.sy];
+    const szCol = table[ColIdx.sz];
+    const qxCol = table[ColIdx.qx];
+    const qyCol = table[ColIdx.qy];
+    const qzCol = table[ColIdx.qz];
+    const qwCol = table[ColIdx.qw];
+    const aCol = table[ColIdx.a];
+
+    const centerBounds: BoundsBox = {
+        minCorner: [Infinity, Infinity, Infinity],
+        maxCorner: [-Infinity, -Infinity, -Infinity],
+    };
+    const sceneBounds: BoundsBox = {
+        minCorner: [Infinity, Infinity, Infinity],
+        maxCorner: [-Infinity, -Infinity, -Infinity],
+    };
+
+    for (let i = 0; i < data.counts; i++) {
+        const x = xCol[i];
+        const y = yCol[i];
+        const z = zCol[i];
+        const e = extentsFromQuatScale(sxCol[i], syCol[i], szCol[i], qxCol[i], qyCol[i], qzCol[i], qwCol[i], aCol[i]);
+        const ex = Number.isFinite(e.ex) ? e.ex : 0;
+        const ey = Number.isFinite(e.ey) ? e.ey : 0;
+        const ez = Number.isFinite(e.ez) ? e.ez : 0;
+
+        centerBounds.minCorner[0] = Math.min(centerBounds.minCorner[0], x);
+        centerBounds.minCorner[1] = Math.min(centerBounds.minCorner[1], y);
+        centerBounds.minCorner[2] = Math.min(centerBounds.minCorner[2], z);
+        centerBounds.maxCorner[0] = Math.max(centerBounds.maxCorner[0], x);
+        centerBounds.maxCorner[1] = Math.max(centerBounds.maxCorner[1], y);
+        centerBounds.maxCorner[2] = Math.max(centerBounds.maxCorner[2], z);
+
+        sceneBounds.minCorner[0] = Math.min(sceneBounds.minCorner[0], x - ex);
+        sceneBounds.minCorner[1] = Math.min(sceneBounds.minCorner[1], y - ey);
+        sceneBounds.minCorner[2] = Math.min(sceneBounds.minCorner[2], z - ez);
+        sceneBounds.maxCorner[0] = Math.max(sceneBounds.maxCorner[0], x + ex);
+        sceneBounds.maxCorner[1] = Math.max(sceneBounds.maxCorner[1], y + ey);
+        sceneBounds.maxCorner[2] = Math.max(sceneBounds.maxCorner[2], z + ez);
+    }
+
+    return { centerBounds, sceneBounds };
+}
+
+function getBoundsInflation(centerBounds: BoundsBox, sceneBounds: BoundsBox) {
+    const centerX = Math.max(0, centerBounds.maxCorner[0] - centerBounds.minCorner[0]);
+    const centerY = Math.max(0, centerBounds.maxCorner[1] - centerBounds.minCorner[1]);
+    const centerZ = Math.max(0, centerBounds.maxCorner[2] - centerBounds.minCorner[2]);
+    const sceneX = Math.max(0, sceneBounds.maxCorner[0] - sceneBounds.minCorner[0]);
+    const sceneY = Math.max(0, sceneBounds.maxCorner[1] - sceneBounds.minCorner[1]);
+    const sceneZ = Math.max(0, sceneBounds.maxCorner[2] - sceneBounds.minCorner[2]);
+    const axisInflation = Math.max(
+        sceneX / Math.max(centerX, 1e-6),
+        sceneY / Math.max(centerY, 1e-6),
+        sceneZ / Math.max(centerZ, 1e-6),
+    );
+    const sceneVolume = sceneX * sceneY * sceneZ;
+    const centerVolume = centerX * centerY * centerZ;
+    const volumeInflation = sceneVolume / Math.max(centerVolume, 1e-6);
+    return { axisInflation, volumeInflation };
+}
+
+function resolveAutoDenseBoxOptions(autoDenseBox?: AutoDenseBoxConfig): Required<AutoDenseBoxOptions> | null {
+    if (!autoDenseBox) {
+        return null;
+    }
+    const options = autoDenseBox === true ? {} : autoDenseBox;
+    const targetCenterKeepRatio =
+        options.targetCenterKeepRatio ?? DEFAULT_AUTO_DENSE_BOX_TARGET_CENTER_KEEP_RATIO;
+    const minimumCenterKeepRatio =
+        options.minimumCenterKeepRatio ?? DEFAULT_AUTO_DENSE_BOX_MINIMUM_CENTER_KEEP_RATIO;
+    const minimumAxisInflation = options.minimumAxisInflation ?? DEFAULT_AUTO_DENSE_BOX_MINIMUM_AXIS_INFLATION;
+    const minimumVolumeInflation = options.minimumVolumeInflation ?? DEFAULT_AUTO_DENSE_BOX_MINIMUM_VOLUME_INFLATION;
+    return {
+        targetCenterKeepRatio,
+        minimumCenterKeepRatio,
+        minimumAxisInflation,
+        minimumVolumeInflation,
+    };
+}
+
+function resolveVoxelBox(data: SplatData, baseBox: BoundsBox, autoDenseBox?: AutoDenseBoxConfig): BoundsBox {
+    const autoDenseBoxOptions = resolveAutoDenseBoxOptions(autoDenseBox);
+    if (!autoDenseBoxOptions || data.counts === 0) {
+        return baseBox;
+    }
+
+    const { centerBounds, sceneBounds } = computeCenterAndSceneBounds(data);
+    const { axisInflation, volumeInflation } = getBoundsInflation(centerBounds, sceneBounds);
+    const shouldTryDenseBox =
+        axisInflation >= autoDenseBoxOptions.minimumAxisInflation ||
+        volumeInflation >= autoDenseBoxOptions.minimumVolumeInflation;
+    if (!shouldTryDenseBox) {
+        logger.info(
+            `voxel autoDenseBox skipped: bounds inflation is small ` +
+                `(axis=${axisInflation.toFixed(2)}x, volume=${volumeInflation.toFixed(2)}x)`,
+        );
+        return baseBox;
+    }
+
+    const denseBoxTrimRatio = 1 - autoDenseBoxOptions.targetCenterKeepRatio;
+    const denseBox = toBoundsBox(computeDenseBox(data, denseBoxTrimRatio));
+    const clippedDenseBox = intersectBoundsBoxes(baseBox, denseBox);
+    if (!clippedDenseBox) {
+        logger.warn(
+            `voxel autoDenseBox skipped: dense box ${formatBoundsBox(denseBox)} does not overlap base box ${formatBoundsBox(baseBox)}`,
+        );
+        return baseBox;
+    }
+
+    const centerKeepCount = countCentersInsideBounds(data, clippedDenseBox);
+    const centerKeepRatio = centerKeepCount / data.counts;
+    if (centerKeepRatio < autoDenseBoxOptions.minimumCenterKeepRatio) {
+        logger.warn(
+            `voxel autoDenseBox skipped: dense box keeps ${centerKeepCount}/${data.counts} centers ` +
+                `(${(centerKeepRatio * 100).toFixed(1)}%), below minimum ` +
+                `${(autoDenseBoxOptions.minimumCenterKeepRatio * 100).toFixed(1)}%`,
+        );
+        return baseBox;
+    }
+
+    logger.info(
+        `voxel autoDenseBox applied: bounds inflation axis=${axisInflation.toFixed(2)}x, ` +
+            `volume=${volumeInflation.toFixed(2)}x; center keep=${centerKeepCount}/${data.counts} ` +
+            `(${(centerKeepRatio * 100).toFixed(1)}%); box=${formatBoundsBox(clippedDenseBox)}`,
+    );
+    return clippedDenseBox;
 }
 
 function compressVoxelBinary(binary: Uint8Array, compression: VoxelBinaryCompression): VoxelBinaryOutput {
@@ -518,6 +723,7 @@ export async function writeVoxelFiles(
         compression?: VoxelBinaryCompression;
         nodeEncoding?: VoxelNodeEncoding;
         filterCluster?: boolean | FilterClusterOptions;
+        autoDenseBox?: AutoDenseBoxConfig;
     },
 ) {
     const compression = options?.compression ?? 'none';
@@ -528,7 +734,8 @@ export async function writeVoxelFiles(
     const floorFill = options?.floorFill ?? false;
     const floorFillDilation = options?.floorFillDilation ?? 0;
     const cpuWorkerCount = options?.cpuWorkerCount ?? -1;
-    const box = options?.box ?? { minCorner: [-100, -100, -100], maxCorner: [100, 100, 100] };
+    const baseBox = options?.box ?? DEFAULT_VOXEL_BOX;
+    const box = resolveVoxelBox(data, baseBox, options?.autoDenseBox ?? true);
     const nodeEncoding = options?.nodeEncoding ?? 'raw';
     const filterClusterOptions = options?.filterCluster ?? true;
     let sourceData = data;

@@ -3,7 +3,7 @@
 ## DEV
 
 - Add a `compression` option for voxel binary output with `none`, `gzip`, and `zstd` modes.
-- Add a `filterCluster` fallback when the default seed keeps too few gaussians.
+- Improve voxel robustness with a `filterCluster` fallback for weak default seeds and automatic dense bounds for scale outliers.
 
 ## 1.4.2
 
