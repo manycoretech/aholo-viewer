@@ -1,4 +1,15 @@
-on: workflow_dispatch
+on:
+  push:
+    branches:
+      - 'master'
+    paths:
+      - 'packages/splat-transform-native/source/**'
+  pull_request:
+    branches:
+      - 'master'
+    paths:
+      - 'packages/splat-transform-native/source/**'
+  workflow_dispatch:
 
 name: build native
 
