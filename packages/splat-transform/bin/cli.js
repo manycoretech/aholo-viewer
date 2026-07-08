@@ -125,7 +125,7 @@ const cli = yargs(hideBin(process.argv))
         builder(argv) {
             argv.option('type', {
                 alias: 't',
-                choices: ['ply', 'spz', 'splat', 'sog'],
+                choices: ['ply', 'spz', 'splat', 'sog', 'esz'],
                 demandOption: true,
                 describe: 'output file type',
                 type: 'string',

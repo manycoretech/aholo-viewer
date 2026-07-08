@@ -1,7 +1,15 @@
+import fs from 'node:fs';
+import { Writable } from 'node:stream';
 import { unzipSync } from 'fflate';
 import { type IFile, PlyFile, SpzFile, KsplatFile, SplatFile, SogFile, LccFile, EszFile } from '../file/index.js';
 import { ColIdx, type ISingleSplat, SplatData } from '../SplatData.js';
 import { SH_MAPS } from '../constant.js';
+
+export interface ISplatData {
+    counts: number;
+    shDegree: number;
+    table: Float32Array[];
+}
 
 export enum SplatFileType {
     PLY,
@@ -124,6 +132,25 @@ export function createSplatFile(
         }
     }
     return file;
+}
+
+export async function writeSplatFile(
+    filepath: string,
+    data: SplatData,
+    enableMortonSort: boolean,
+    compressLevel?: number,
+    spzVersion?: number,
+) {
+    let indices: Uint32Array | undefined;
+    if (!enableMortonSort) {
+        indices = new Uint32Array(data.counts);
+        for (let i = 0; i < data.counts; i++) {
+            indices[i] = i;
+        }
+    }
+    const file = createSplatFile(filepath, undefined, compressLevel, spzVersion);
+    const stream = Writable.toWeb(fs.createWriteStream(filepath)) as WritableStream<Uint8Array>;
+    await file.write(stream, data, indices);
 }
 
 export function combineSplatData(source: SplatData[]): SplatData {

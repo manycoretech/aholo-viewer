@@ -1,4 +1,4 @@
-import { Quaternion, deferred } from './utils/index.js';
+import { Quaternion, deferred, type ISplatData } from './utils/index.js';
 import { SH_MAPS } from './constant.js';
 
 export interface ISingleSplat {
@@ -211,5 +211,21 @@ export class SplatData {
     destroy() {
         this.counts = 0;
         this.table = [];
+    }
+
+    serialize(): ISplatData {
+        return {
+            counts: this.counts,
+            shDegree: this.shDegree,
+            table: this.table,
+        };
+    }
+
+    deserialize(data: ISplatData) {
+        const { counts, shDegree, table } = data;
+        this.counts = counts;
+        this.shDegree = shDegree;
+        this.shCounts = SH_MAPS[shDegree];
+        this.table = table;
     }
 }

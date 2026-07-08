@@ -1,4 +1,4 @@
-interface Deferred<T = void> {
+export interface Deferred<T = void> {
     resolve: (value: T | PromiseLike<T>) => void;
     reject: (reason: any) => void;
     promise: Promise<T>;
@@ -101,6 +101,7 @@ export * from './sh-rotate.js';
 export * from './splat.js';
 export * from './k-means/index.js';
 export * from './quantize-1d.js';
+export * from './worker.js';
 export * from './webgpu.js';
 export * from './voxel/common.js';
 export * from './voxel/voxelize.js';
