@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 #include <eigen3/Eigen/Dense>
 #include <numbers>
 #include <splat/splat.h>
@@ -9,35 +10,39 @@
 #include <utility>
 
 namespace splat {
-SH::SH() noexcept : ptr(nullptr), size_(0) {
+SH::SH() noexcept : size_(0), ptr(nullptr) {
 }
 
-SH::SH(size_t size) noexcept : size_(size) {
-    this->ptr = new float[size];
+SH::SH(size_t size) : size_(size), ptr(size > 0 ? std::make_unique<float[]>(size) : nullptr) {
 }
 
-SH::SH(const SH& other) noexcept : size_(other.size_) {
-    this->ptr = new float[this->size_];
-    std::copy(other.ptr, other.ptr + this->size_, this->ptr);
+SH::SH(const SH& other) : size_(other.size_), ptr(other.size_ > 0 ? std::make_unique<float[]>(other.size_) : nullptr) {
+    if (this->ptr != nullptr) {
+        std::copy(other.ptr.get(), other.ptr.get() + this->size_, this->ptr.get());
+    }
 }
 
 SH::SH(SH&& other) noexcept : size_(std::exchange(other.size_, 0)),
                               ptr(std::exchange(other.ptr, nullptr)) {
 }
 
-SH& SH::operator=(const SH& other) noexcept {
-    this->release();
-    this->size_ = other.size_;
-    this->ptr = new float[this->size_];
-    std::copy(other.ptr, other.ptr + this->size_, this->ptr);
-
+SH& SH::operator=(const SH& other) {
+    if (this != &other) {
+        this->reset();
+        if (other.size_ > 0) {
+            this->ptr = std::make_unique<float[]>(other.size_);
+            std::copy(other.ptr.get(), other.ptr.get() + other.size_, this->ptr.get());
+        }
+        this->size_ = other.size_;
+    }
     return *this;
 }
-SH& SH::operator=(SH&& other) noexcept {
-    this->release();
-    this->size_ = std::exchange(other.size_, 0);
-    this->ptr = std::exchange(other.ptr, nullptr);
 
+SH& SH::operator=(SH&& other) noexcept {
+    if (this != &other) {
+        this->size_ = std::exchange(other.size_, 0);
+        this->ptr = std::exchange(other.ptr, nullptr);
+    }
     return *this;
 }
 
@@ -48,7 +53,7 @@ void SH::swap(SH& other) noexcept {
 
 SH& SH::set_zero() noexcept {
     if (this->ptr) {
-        std::memset(this->ptr, 0, 4 * this->size_);
+        std::memset(this->ptr.get(), 0, sizeof(float) * this->size_);
     }
 
     return *this;
@@ -72,16 +77,13 @@ float& SH::operator[](size_t index) {
     return this->ptr[index];
 }
 
-void SH::release() noexcept {
-    if (this->ptr) {
-        delete[] this->ptr;
-        this->ptr = nullptr;
-        this->size_ = 0;
-    }
+void SH::reset() noexcept {
+    this->ptr.reset();
+    this->size_ = 0;
 }
 
 float* SH::data() noexcept {
-    return this->ptr;
+    return this->ptr.get();
 }
 
 size_t SH::size() const noexcept {
@@ -89,7 +91,6 @@ size_t SH::size() const noexcept {
 }
 
 SH::~SH() noexcept {
-    this->release();
 }
 
 void Gaussian::compute_bounding_box(float k) {

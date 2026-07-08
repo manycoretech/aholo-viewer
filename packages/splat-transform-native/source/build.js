@@ -9,6 +9,7 @@ const require = createRequire(import.meta.url);
 
 await yargs(hideBin(process.argv))
     .scriptName('build')
+    .showHelpOnFail(false)
     .strict()
     .command({
         command: ['build', '$0'],

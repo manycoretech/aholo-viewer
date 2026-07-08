@@ -8,11 +8,11 @@ namespace splat {
 class SH {
 public:
     SH() noexcept;
-    SH(size_t size) noexcept;
-    SH(const SH& other) noexcept;
+    SH(size_t size);
+    SH(const SH& other);
     SH(SH&& other) noexcept;
 
-    SH& operator=(const SH& other) noexcept;
+    SH& operator=(const SH& other);
     SH& operator=(SH&& other) noexcept;
 
     void swap(SH& other) noexcept;
@@ -29,10 +29,10 @@ public:
     ~SH() noexcept;
 
 private:
-    void release() noexcept;
+    void reset() noexcept;
 
     size_t size_;
-    float* ptr;
+    std::unique_ptr<float[]> ptr;
 };
 
 struct Gaussian {
