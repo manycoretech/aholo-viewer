@@ -17,7 +17,7 @@
 namespace threading {
 class ThreadPool {
 public:
-    ThreadPool(size_t thread_count = std::thread::hardware_concurrency()) noexcept;
+    ThreadPool(size_t thread_count = std::thread::hardware_concurrency());
     ThreadPool(ThreadPool&& other) noexcept;
 
     template<typename F, typename... Args,

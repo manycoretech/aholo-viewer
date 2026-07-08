@@ -6,6 +6,7 @@
 - replace `commander` with `yargs`
 - use `Float32Array` instead of `Buffer` for splat output
 - parallelize splat writes with workers
+- add exception handle for native module
 
 ## 1.6.2
 

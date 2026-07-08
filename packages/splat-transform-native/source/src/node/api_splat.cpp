@@ -2,6 +2,7 @@
 #include <atomic>
 #include <cassert>
 #include <container_helpers.h>
+#include <future_helpers.h>
 #include <node/api_buffer.h>
 #include <node/api_splat.h>
 #include <node/api_thread_pool.h>
@@ -87,9 +88,7 @@ inline splat::Splat read_splat(const std::vector<std::span<float>>& buffers, siz
 
     process_gaussian(gaussian_per_thread * used_threads, gaussian_count - gaussian_per_thread * used_threads);
 
-    for (auto& future : futures) {
-        future.wait();
-    }
+    helpers::future::drain_futures(futures);
 
     assert(read_count.load(std::memory_order_acquire) == gaussian_count);
 
@@ -161,9 +160,7 @@ inline std::vector<Napi::Float32Array> write_splat(
 
     process_gaussian(gaussian_per_thread * used_threads, splat.gaussians.size() - gaussian_per_thread * used_threads);
 
-    for (auto& future : futures) {
-        future.wait();
-    }
+    helpers::future::drain_futures(futures);
 
     assert(written_count.load(std::memory_order_acquire) == splat.gaussians.size());
 
@@ -237,8 +234,7 @@ Napi::Value generate_lod(const Napi::CallbackInfo& info) {
             futures.push_back(pool.submit_task(process_block, i));
         }
 
-        for (auto& f : futures) {
-            auto block = f.get();
+        helpers::future::drain_futures(futures, [&](::splat::lod::SplatLod block) {
             auto base_offset = static_cast<uint32_t>(results.size());
             {
                 auto& bbx = block.splats.front().bounding_box;
@@ -254,7 +250,7 @@ Napi::Value generate_lod(const Napi::CallbackInfo& info) {
             for (auto& splat : block.splats) {
                 results.push_back(std::move(splat));
             }
-        }
+        });
 
         // release blocks
         {

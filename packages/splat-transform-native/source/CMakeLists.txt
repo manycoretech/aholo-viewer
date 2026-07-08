@@ -29,6 +29,7 @@ list(APPEND BINDING_SOURCE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/node/binding.cpp"
 )
 list(APPEND BINDING_HEADER_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/future_helpers.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/container_helpers.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/thread_pool.h"
     # GAUSSIAN SPLAT

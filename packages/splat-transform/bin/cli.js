@@ -24,6 +24,7 @@ function readJsonConfig(config) {
 const cli = yargs(hideBin(process.argv))
     .scriptName('splat-transform')
     .version(packageJson.version)
+    .showHelpOnFail(false)
     .parserConfiguration({
         'boolean-negation': false,
         'duplicate-arguments-array': false,

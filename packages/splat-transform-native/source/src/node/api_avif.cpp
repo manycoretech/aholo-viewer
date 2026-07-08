@@ -1,5 +1,6 @@
 #include <avif/avif_cxx.h>
 #include <bit>
+#include <future_helpers.h>
 #include <memory>
 #include <node/api_avif.h>
 #include <node/api_buffer.h>
@@ -227,9 +228,9 @@ Napi::Value avif_encode_rgba_batched(const Napi::CallbackInfo& info) {
             futures.push_back(pool.submit_task(avif_encode_rga_impl, std::span(buffer.Data(), buffer.Length()), width, height, quality, max_thread));
         }
 
-        for (auto i = 0; i < input_count; i++) {
-            outputs[i] = futures[i].get().make_buffer(env);
-        }
+        helpers::future::drain_futures(futures, [&](RawData&& data, size_t i) {
+            outputs[i] = data.make_buffer(env);
+        });
     }
 
     return outputs;
@@ -276,14 +277,13 @@ Napi::Value avif_decode_rgba_batched(const Napi::CallbackInfo& info) {
             futures.push_back(pool.submit_task(avif_decode_rgba_impl, std::span(input.Data(), input.Length()), max_thread));
         }
 
-        for (auto i = 0; i < input_count; i++) {
+        helpers::future::drain_futures(futures, [&](RGBImageData&& rgb, size_t i) {
             auto object = Napi::Object::New(env);
-            auto&& rgb = futures[i].get();
             object.Set("width", Napi::Number::New(env, rgb.data().width));
             object.Set("height", Napi::Number::New(env, rgb.data().height));
             object.Set("data", rgb.make_buffer(env));
             outputs[i] = object;
-        }
+        });
     }
 
     return outputs;

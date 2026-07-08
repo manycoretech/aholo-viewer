@@ -118,7 +118,7 @@ void Gaussian::decompose_covariance() {
     auto eigen_vectors = eigen_solver.eigenvectors();
 
     if (eigen_values.hasNaN()) {
-        throw std::runtime_error("Found Nans!");
+        throw std::runtime_error("Found Nans in covariance decomposing!");
     }
 
     int loops = 0;

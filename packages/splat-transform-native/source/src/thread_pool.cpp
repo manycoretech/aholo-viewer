@@ -7,7 +7,7 @@
 #include <utility>
 
 namespace threading {
-ThreadPool::ThreadPool(size_t thread_count) noexcept
+ThreadPool::ThreadPool(size_t thread_count)
     : state(std::make_unique<State>()) {
     if (thread_count == 0) {
         thread_count = 1;
