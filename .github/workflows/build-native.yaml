@@ -18,7 +18,6 @@ env:
 
 jobs:
   build-splat-transform-native:
-    if: github.ref == 'refs/heads/master'
     name: Build splat-transform native (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
