@@ -1,11 +1,11 @@
 #include <algorithm>
-#include <bit>
 #include <cstdint>
-#include <cstdlib>
 #include <future>
+#include <future_helpers.h>
 #include <memory>
 #include <node/api_spatial.h>
 #include <node/api_thread_pool.h>
+#include <random>
 #include <span>
 #include <thread>
 #include <thread_pool.h>
@@ -51,11 +51,21 @@ Napi::Value cluster_average(const Napi::CallbackInfo& info) {
 
     auto& pool = thread_pool_wrapper->impl();
     auto partials = std::vector<PartialAverage>();
+    auto fallback_rows = std::vector<size_t>(cluster_count, 0);
+    if (row_size > 0) {
+        std::random_device random_device;
+        auto seed = (static_cast<uint64_t>(random_device()) << 32) ^ static_cast<uint64_t>(random_device());
+        auto rng = std::mt19937_64(seed);
+        auto row_distribution = std::uniform_int_distribution<size_t>(0, row_size - 1);
+        for (auto& row_index : fallback_rows) {
+            row_index = row_distribution(rng);
+        }
+    }
 
     auto process_rows = [&](size_t begin, size_t end) -> PartialAverage {
         auto partial = PartialAverage {
-            std::make_unique<float[]>(cluster_count * col_size),
-            std::make_unique<size_t[]>(cluster_count),
+            .sums = std::make_unique<float[]>(cluster_count * col_size),
+            .counts = std::make_unique<size_t[]>(cluster_count),
         };
         for (auto row_index = begin; row_index < end; row_index++) {
             auto cluster_index = labels[row_index];
@@ -88,7 +98,7 @@ Napi::Value cluster_average(const Napi::CallbackInfo& info) {
             }
 
             if (count == 0) {
-                auto row_index = static_cast<size_t>(std::rand()) % row_size;
+                auto row_index = fallback_rows[cluster_index];
                 for (auto column_index = 0; column_index < col_size; column_index++) {
                     output[column_index][cluster_index] = data_table[column_index][row_index];
                 }
@@ -116,9 +126,9 @@ Napi::Value cluster_average(const Napi::CallbackInfo& info) {
         }
 
         partials.reserve(row_tasks.size());
-        for (auto& task : row_tasks) {
-            partials.push_back(task.get());
-        }
+        helpers::future::drain_futures(row_tasks, [&](PartialAverage&& data) {
+            partials.push_back(std::move(data));
+        });
     }
 
     {
@@ -132,9 +142,7 @@ Napi::Value cluster_average(const Napi::CallbackInfo& info) {
             auto end = std::min(begin + clusters_per_thread, cluster_count);
             tasks.push_back(pool.submit_task(reduce_clusters, begin, end));
         }
-        for (auto& task : tasks) {
-            task.get();
-        }
+        helpers::future::drain_futures(tasks);
     }
 
     return env.Null();

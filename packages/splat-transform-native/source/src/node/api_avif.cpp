@@ -24,8 +24,13 @@ public:
     void operator()(Napi::Env env, uint8_t* data) noexcept {}
 
     RawData& operator=(RawData&& other) noexcept {
-        this->data_ = other.data_;
-        other.data_ = AVIF_DATA_EMPTY;
+        if (this != &other) {
+            if (this->data_.data != nullptr) {
+                avifRWDataFree(&this->data_);
+            }
+            this->data_ = other.data_;
+            other.data_ = AVIF_DATA_EMPTY;
+        }
         return *this;
     }
 
@@ -64,12 +69,17 @@ public:
     RGBImageData(avifRGBImage&& data) noexcept : data_(data) {
         data = { 0 };
     }
-    RGBImageData(const RawData& other) = delete;
+    RGBImageData(const RGBImageData& other) = delete;
     void operator()(Napi::Env env, uint8_t* data) noexcept {}
 
     RGBImageData& operator=(RGBImageData&& other) noexcept {
-        this->data_ = other.data_;
-        other.data_ = { 0 };
+        if (this != &other) {
+            if (this->data_.pixels != nullptr) {
+                avifRGBImageFreePixels(&this->data_);
+            }
+            this->data_ = other.data_;
+            other.data_ = { 0 };
+        }
         return *this;
     }
 

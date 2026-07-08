@@ -71,6 +71,12 @@ void ThreadPool::State::stop() noexcept {
     }
 
     {
+        auto lk = std::unique_lock(this->queue_mutex);
+        auto _ = std::move(this->tasks);
+        lk.unlock();
+    }
+
+    {
         auto lk = std::lock_guard(this->worker_mutex);
         for (auto& worker : this->workers) {
             worker->stop();

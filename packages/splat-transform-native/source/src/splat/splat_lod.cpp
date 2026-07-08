@@ -378,7 +378,7 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
 
         // trace hard working on current block.
         if (step >= max_step / 2) {
-            printf("block: %zd, step: %d, required: %zd, current: %zd(%.2f%%)\n",
+            printf("block: %zu, step: %d, required: %zu, current: %zu(%.2f%%)\n",
                 id, step, target_count, current.gaussians.size(),
                 static_cast<double>(current.gaussians.size()) / static_cast<double>(target_count) * 100.0);
         }
