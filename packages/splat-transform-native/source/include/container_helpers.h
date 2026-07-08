@@ -5,11 +5,6 @@
 
 namespace helpers::container {
 
-template<typename T, typename U>
-concept to_vector = requires(T&& a) {
-    std::vector<U>(std::forward<U>(a));
-};
-
 template<typename R, typename V>
 concept range_of = std::ranges::range<R> && std::same_as<std::ranges::range_value_t<R>, V>;
 

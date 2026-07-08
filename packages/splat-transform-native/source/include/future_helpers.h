@@ -23,7 +23,7 @@ concept future_range = std::ranges::range<T> && requires {
 };
 
 template<future_range T>
-using future_range_value_t = typename future_value<std::ranges::range_value_t<std::remove_cvref_t<T>>>::type;
+using future_range_value_t = future_value<std::ranges::range_value_t<std::remove_cvref_t<T>>>::type;
 } // namespace detail
 
 template<detail::future_range T>
