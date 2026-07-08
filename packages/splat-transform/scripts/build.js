@@ -18,6 +18,7 @@ async function build() {
 
 await yargs(hideBin(process.argv))
     .scriptName('build')
+    .showHelpOnFail(false)
     .strict()
     .command({
         command: ['build', '$0'],

@@ -1,7 +1,7 @@
 import type { SparseVoxelGrid, Bounds } from './common.js';
-import { coplanarMerge } from './coplanar-merge.js';
-import { marchingCubes, type Mesh } from './marching-cubes.js';
-import { voxelFaces } from './voxel-faces.js';
+import { coplanarMerge } from './coplanarMerge.js';
+import { marchingCubes, type Mesh } from './marchingCubes.js';
+import { voxelFaces } from './voxelFaces.js';
 import { logger } from '../Logger.js';
 
 export type CollisionMeshShape = 'smooth' | 'faces';

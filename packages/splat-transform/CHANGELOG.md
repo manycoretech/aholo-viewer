@@ -1,5 +1,9 @@
 # Changelog
 
+## DEV
+
+- rename files, move workers to standalone directories
+
 ## 1.6.3
 
 - add `split` command

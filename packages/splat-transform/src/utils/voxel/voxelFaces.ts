@@ -1,5 +1,5 @@
 import type { Bounds } from './common.js';
-import type { Mesh } from './marching-cubes.js';
+import type { Mesh } from './marchingCubes.js';
 import { BLOCK_EMPTY, BLOCK_SOLID, BLOCKS_PER_WORD, EVEN_BITS, type SparseVoxelGrid, readBlockType } from './common.js';
 
 const HASH_MUL = 0x9e3779b9;

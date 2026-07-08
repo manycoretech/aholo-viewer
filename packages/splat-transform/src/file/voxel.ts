@@ -19,7 +19,7 @@ import {
     filterCluster,
     type FilterClusterOptions,
     type FilterClusterRuntimeOptions,
-} from '../utils/voxel/filter-cluster.js';
+} from '../utils/voxel/filterCluster.js';
 import {
     alignGridBounds,
     ALPHA_THRESHOLD,

@@ -1,6 +1,6 @@
 import { SplatData } from '../SplatData.js';
 import { writeVoxelFiles, type AutoDenseBoxConfig, type VoxelBinaryCompression } from '../file/voxel.js';
-import type { FilterClusterOptions } from '../utils/voxel/filter-cluster.js';
+import type { FilterClusterOptions } from '../utils/voxel/filterCluster.js';
 import type { VoxelNodeEncoding } from '../utils/voxel/binary.js';
 import { type Context, BaseTask } from './BaseTask.js';
 

@@ -1,4 +1,4 @@
-import type { Mesh } from './marching-cubes.js';
+import type { Mesh } from './marchingCubes.js';
 
 const NORMAL_EPS = 1e-3;
 const PLANE_REL_EPS = 1e-3;

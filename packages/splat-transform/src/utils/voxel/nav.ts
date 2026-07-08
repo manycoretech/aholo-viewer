@@ -9,7 +9,7 @@ import {
     writeBlockType,
     type Bounds,
 } from './common.js';
-import { gpuDilate3 } from './gpu-dilation.js';
+import { gpuDilate3 } from './gpuDilation.js';
 import { logger } from '../Logger.js';
 
 interface NavSeed {

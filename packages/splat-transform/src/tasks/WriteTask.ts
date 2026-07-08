@@ -35,7 +35,7 @@ export class WriteTask extends BaseTask<Config> {
         } = config;
         const pool = new WorkerPool(
             'splat-write',
-            () => new Worker(new URL('./write_worker.js', import.meta.url)),
+            () => new Worker(new URL('../workers/write.js', import.meta.url)),
             parallelCounts,
         );
 
