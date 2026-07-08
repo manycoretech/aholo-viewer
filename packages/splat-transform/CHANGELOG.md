@@ -1,6 +1,6 @@
 # Changelog
 
-## DEV
+## 1.6.3
 
 - add `split` command
 - replace `commander` with `yargs`
