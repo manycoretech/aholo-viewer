@@ -3,6 +3,7 @@
 ## DEV
 
 - rename files, move workers to standalone directories
+- make native implementation more stable
 
 ## 1.6.3
 
