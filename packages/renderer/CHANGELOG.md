@@ -1,5 +1,19 @@
 # ChangeLOG
 
+## 1.6.0
+
+1. Features
+    - add ESZ v2 splat loading with a Zstandard streaming container and low/high layout support.
+    - optimize SPZ v4 loading with streaming parsing to reduce parse time and peak worker memory.
+2. Fixes
+    - fix `SplatReorderMaterial` mobile compatibility by packing splat reorder ranges into `ivec4` uniforms.
+    - fix `SuperCompressedSplatData` SH quantization overflow and second-order SH coefficient offsets.
+    - fix worker message cleanup.
+3. Changes
+    - upgrade bundled EGS packages to standard ESM packaging with limited public package exports.
+    - optimize splat stream parsing to reduce intermediate buffers and data copies.
+    - ESZ v1 files are no longer supported.
+
 ## 1.5.1
 
 1. Fixes
