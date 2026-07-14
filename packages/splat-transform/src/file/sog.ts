@@ -1,17 +1,17 @@
 import { unzipSync, zipSync, type Zippable } from 'fflate';
 import { Buffer } from 'node:buffer';
 import { decodeWebP, encodeWebP, WebPLosslessProfile } from '../native/index.js';
-import { type ISingleSplat, type SplatData, ColIdx } from '../SplatData.js';
+import { type SplatData, ColIdx } from '../SplatData.js';
 import { SH_C0, SH_MAPS, NUM_F_REST_TO_SH_DEGREE } from '../constant.js';
 import {
     getOrCreateDevice,
     kMeans,
     logger,
-    mortonSort,
     quantize1d,
     isUrl,
     extractFromRootDir,
     clamp,
+    createSingleSplat,
 } from '../utils/index.js';
 import type { IFile } from './IFile.js';
 
@@ -223,23 +223,7 @@ export class SogFile implements IFile {
             A_LUT[i] = 1.0 / (1.0 + Math.exp(-(colorMinA + colorRangeA * i)));
         }
 
-        const single: ISingleSplat = {
-            x: 0,
-            y: 0,
-            z: 0,
-            sx: 0,
-            sy: 0,
-            sz: 0,
-            qx: 0,
-            qy: 0,
-            qz: 0,
-            qw: 0,
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-            shN: [],
-        };
+        const single = createSingleSplat();
         for (let i = 0; i < counts; i++) {
             const i4 = i * 4;
 
@@ -314,23 +298,7 @@ export class SogFile implements IFile {
         const rangeZ = (centerMaxZ - centerMinZ) / 65535;
         const SCALE_LUT = scaleCodebook.map(v => Math.exp(v));
 
-        const single: ISingleSplat = {
-            x: 0,
-            y: 0,
-            z: 0,
-            sx: 0,
-            sy: 0,
-            sz: 0,
-            qx: 0,
-            qy: 0,
-            qz: 0,
-            qw: 0,
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-            shN: [],
-        };
+        const single = createSingleSplat();
         for (let i = 0; i < counts; i++) {
             const i4 = i * 4;
 
@@ -434,28 +402,12 @@ export class SogFile implements IFile {
         data.finishBlock();
     }
 
-    async write(stream: WritableStream<Uint8Array>, data: SplatData, indices: Uint32Array = mortonSort(data)) {
+    async write(stream: WritableStream<Uint8Array>, data: SplatData, indices: Uint32Array) {
         const { counts, shDegree, shCounts, table } = data;
         const width = Math.ceil(Math.sqrt(counts) / 4) * 4;
         const height = Math.ceil(counts / width / 4) * 4;
         const channels = 4;
-        const single: ISingleSplat = {
-            x: 0,
-            y: 0,
-            z: 0,
-            sx: 0,
-            sy: 0,
-            sz: 0,
-            qx: 0,
-            qy: 0,
-            qz: 0,
-            qw: 0,
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-            shN: new Array(shCounts),
-        };
+        const single = createSingleSplat(shCounts);
         const webPProfile = new WebPLosslessProfile();
         const output: Zippable = {};
         const meta: SogMetadataV2 = {

@@ -1,679 +1,656 @@
-import { constants as zlibConstants, zstdCompressSync, zstdDecompressSync } from 'node:zlib';
-import type { ISingleSplat, SplatData } from '../SplatData.js';
+import { Duplex } from 'node:stream';
+import { createGzip, createZstdDecompress, zstdCompressSync, constants as zlibConstant } from 'node:zlib';
+import { ColIdx, type SplatData } from '../SplatData.js';
 import { SH_C0, SH_MAPS } from '../constant.js';
-import { BufferReader, fromHalf, clamp, StreamChunkDecoder, mortonSort } from '../utils/index.js';
+import { ByteStreamCursor, clamp, StreamChunkDecoder, fromHalf } from '../utils/index.js';
 import type { IFile } from './IFile.js';
 
 const SPZ_MAGIC = 0x5053474e; // NGSP = Niantic gaussian splat
-const SPZ_VERSION = 3;
-const ZSTD_COMPRESSION_LEVEL = 12;
+const SPZ_VERSION = 4;
+const SPZ_LEGACY_VERSION = 3;
+const SPZ_FRACTIONAL_BITS = 12;
+const SPZ_FRACTIONAL = 1 << SPZ_FRACTIONAL_BITS;
 const FLAG_ANTIALIASED = 0x1;
+const MAX_SAFE_STREAM_SIZE = BigInt(Number.MAX_SAFE_INTEGER);
+const STREAM_CHUNK_BYTE_LENGTH = 128 * 1024;
+const SPZ_STREAM_HEADER_BYTE_LENGTH = 32;
+const SPZ_TOC_ENTRY_BYTE_LENGTH = 16;
 
 const COLOR_SCALE = SH_C0 / 0.15;
 const rotation: number[] = new Array(4);
 const SH_SCALE1 = 1 << 3;
 const SH_SCALE2 = 1 << 4;
-export class SpzFile implements IFile {
-    readonly compressLevel: number;
-    readonly spzVersion: number;
+const SCALE_LUT = new Float32Array(256);
+const COLOR_LUT = new Float32Array(256);
+for (let i = 0; i < 256; i++) {
+    SCALE_LUT[i] = Math.exp(i / 16 - 10);
+    COLOR_LUT[i] = (i / 255 - 0.5) * COLOR_SCALE + 0.5;
+}
 
-    constructor(compressLevel: number, spzVersion: number = SPZ_VERSION) {
-        if (spzVersion !== 3 && spzVersion !== 4) {
-            throw new Error(`Unsupported SPZ version: ${spzVersion}`);
+async function decodeAttribute(
+    cursor: ByteStreamCursor,
+    data: SplatData,
+    blockOffset: number,
+    version: number,
+    counts: number,
+    shCounts: number,
+    fractionalBits: number,
+) {
+    const isF16 = version < 2;
+    const useSmallestThreeQuat = version >= 3;
+    const fractionInv = 1 / (1 << fractionalBits);
+    const setCenter = data.setCenter.bind(data) as SplatData['setCenter'];
+    const setAlpha = data.setAlpha.bind(data) as SplatData['setAlpha'];
+    const setColor = data.setColor.bind(data) as SplatData['setColor'];
+    const setScale = data.setScale.bind(data) as SplatData['setScale'];
+    const setQuat = data.setQuat.bind(data) as SplatData['setQuat'];
+    const setShN = data.setShN.bind(data) as SplatData['setShN'];
+    const shN: number[] = new Array(shCounts).fill(0);
+
+    const decoder = new StreamChunkDecoder(cursor);
+    await decoder.decode([
+        {
+            init: () => [counts, isF16 ? 6 : 9],
+            decode: (offset, counts, buf) => {
+                offset += blockOffset;
+                let x: number, y: number, z: number;
+                for (let i = 0; i < counts; i++) {
+                    if (isF16) {
+                        const o = i * 6;
+                        x = fromHalf((buf[o + 1] << 8) | buf[o]);
+                        y = fromHalf((buf[o + 3] << 8) | buf[o + 2]);
+                        z = fromHalf((buf[o + 5] << 8) | buf[o + 4]);
+                    } else {
+                        const o = i * 9;
+                        x = (((buf[o + 2] << 24) | (buf[o + 1] << 16) | (buf[o] << 8)) >> 8) * fractionInv;
+                        y = (((buf[o + 5] << 24) | (buf[o + 4] << 16) | (buf[o + 3] << 8)) >> 8) * fractionInv;
+                        z = (((buf[o + 8] << 24) | (buf[o + 7] << 16) | (buf[o + 6] << 8)) >> 8) * fractionInv;
+                    }
+                    setCenter(offset + i, x, y, z);
+                }
+            },
+        },
+        {
+            init: () => [counts, 1],
+            decode: (offset, counts, buf) => {
+                offset += blockOffset;
+                for (let i = 0; i < counts; i++) {
+                    setAlpha(offset + i, buf[i] / 255);
+                }
+            },
+        },
+        {
+            init: () => [counts, 3],
+            decode: (offset, counts, buf) => {
+                offset += blockOffset;
+                for (let i = 0; i < counts; i++) {
+                    const o = i * 3;
+                    setColor(offset + i, COLOR_LUT[buf[o]], COLOR_LUT[buf[o + 1]], COLOR_LUT[buf[o + 2]]);
+                }
+            },
+        },
+        {
+            init: () => [counts, 3],
+            decode: (offset, counts, buf) => {
+                offset += blockOffset;
+                for (let i = 0; i < counts; i++) {
+                    const o = i * 3;
+                    setScale(offset + i, SCALE_LUT[buf[o]], SCALE_LUT[buf[o + 1]], SCALE_LUT[buf[o + 2]]);
+                }
+            },
+        },
+        {
+            init: () => [counts, useSmallestThreeQuat ? 4 : 3],
+            decode: (offset, counts, buf) => {
+                offset += blockOffset;
+                let qx: number, qy: number, qz: number, qw: number;
+                for (let i = 0; i < counts; i++) {
+                    if (!useSmallestThreeQuat) {
+                        const o = i * 3;
+                        qx = buf[o] / 127.5 - 1;
+                        qy = buf[o + 1] / 127.5 - 1;
+                        qz = buf[o + 2] / 127.5 - 1;
+                        qw = Math.sqrt(Math.max(0, 1 - qx * qx - qy * qy - qz * qz));
+                    } else {
+                        const o = i * 4;
+                        const packed = buf[o] | (buf[o + 1] << 8) | (buf[o + 2] << 16) | (buf[o + 3] << 24);
+                        const largest = packed >>> 30;
+                        let temp = packed;
+                        let sum = 0;
+                        for (let j = 3; j >= 0; j--) {
+                            if (j === largest) {
+                                continue;
+                            }
+                            const mag = temp & 0x1ff;
+                            const sign = (temp >>> 9) & 1;
+                            temp >>>= 10;
+
+                            const v = Math.SQRT1_2 * (mag / 0x1ff) * (sign ? -1 : 1);
+                            rotation[j] = v;
+                            sum += v * v;
+                        }
+                        rotation[largest] = Math.sqrt(1 - sum);
+                        qx = rotation[0];
+                        qy = rotation[1];
+                        qz = rotation[2];
+                        qw = rotation[3];
+                    }
+                    setQuat(offset + i, qx, qy, qz, qw);
+                }
+            },
+        },
+        {
+            init: () => [shCounts > 0 ? counts : 0, shCounts],
+            decode: (offset, counts, buf) => {
+                offset += blockOffset;
+                for (let i = 0; i < counts; i++) {
+                    const o = i * shCounts;
+                    for (let j = 0; j < shCounts; j++) {
+                        shN[j] = (buf[o + j] - 128) / 128;
+                    }
+                    setShN(offset + i, shN);
+                }
+            },
+        },
+    ]);
+}
+
+async function pipeZstdStream(
+    cursor: ByteStreamCursor,
+    writer: WritableStreamDefaultWriter<Uint8Array>,
+    compressedSize: number,
+    uncompressedSize: number,
+    streamIndex: number,
+) {
+    const zstd = Duplex.toWeb(createZstdDecompress({ chunkSize: STREAM_CHUNK_BYTE_LENGTH }));
+    const zstdWriter = zstd.writable.getWriter();
+    let produced = 0;
+    const pipePromise = zstd.readable.pipeTo(
+        new WritableStream<Uint8Array>({
+            async write(chunk) {
+                produced += chunk.byteLength;
+                if (produced > uncompressedSize) {
+                    throw new Error(`Invalid SPZ v4 decompressed size at index ${streamIndex}`);
+                }
+                await writer.write(chunk);
+            },
+        }),
+    );
+    const feedPromise = (async () => {
+        await cursor.readChunks(compressedSize, chunk => zstdWriter.write(chunk));
+        await zstdWriter.close();
+    })();
+
+    try {
+        await Promise.all([feedPromise, pipePromise]);
+    } catch (error) {
+        await zstdWriter.abort(error).catch(() => {});
+        await Promise.allSettled([feedPromise, pipePromise]);
+        throw error;
+    }
+
+    if (produced !== uncompressedSize) {
+        throw new Error(`Invalid SPZ v4 decompressed size at index ${streamIndex}`);
+    }
+}
+
+export class SpzFile implements IFile {
+    readonly version: number;
+    readonly compressLevel: number;
+
+    constructor(version: number = SPZ_LEGACY_VERSION, compressLevel: number = version === SPZ_LEGACY_VERSION ? 6 : 7) {
+        if (version !== 3 && version !== 4) {
+            throw new Error(`Unsupported SPZ version: ${version}`);
         }
+        this.version = version;
         this.compressLevel = compressLevel;
-        this.spzVersion = spzVersion;
+    }
+
+    private async readStream(stream: ReadableStream<Uint8Array>, data: SplatData) {
+        const cursor = new ByteStreamCursor(stream);
+        const header = await cursor.readExact(32);
+        const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+        if (view.getUint32(0, true) !== SPZ_MAGIC) {
+            throw new Error('Invalid SPZ file');
+        }
+        const version = view.getUint32(4, true);
+        if (version !== SPZ_VERSION) {
+            throw new Error(`Unsupported SPZ version: ${version}`);
+        }
+        const counts = view.getUint32(8, true);
+        const shDegree = view.getUint8(12);
+        const shCounts = SH_MAPS[shDegree];
+        if (shCounts === undefined) {
+            throw new Error(`Unsupported SPZ SH degree: ${shDegree}`);
+        }
+        const fractionalBits = view.getUint8(13);
+        const numStreams = view.getUint8(15);
+        const tocByteOffset = view.getUint32(16, true);
+        const expectedSizes = [counts * 9, counts, counts * 3, counts * 3, counts * 4];
+        if (shDegree > 0) {
+            expectedSizes.push(counts * shCounts);
+        }
+        if (numStreams !== expectedSizes.length) {
+            throw new Error(`Invalid SPZ v4 stream count: ${numStreams}`);
+        }
+        if (tocByteOffset < 32) {
+            throw new Error(`Invalid SPZ v4 TOC offset: ${tocByteOffset}`);
+        }
+
+        if (tocByteOffset > 32) {
+            await cursor.skip(tocByteOffset - 32);
+        }
+
+        const toc = await cursor.readExact(numStreams * 16);
+        const tocView = new DataView(toc.buffer, toc.byteOffset, toc.byteLength);
+        const blockOffset = await data.initBlock(counts, shDegree);
+        const attributeStream = new TransformStream<Uint8Array, Uint8Array>();
+        const attributeCursor = new ByteStreamCursor(attributeStream.readable);
+        const decodeAttributePromise = decodeAttribute(
+            attributeCursor,
+            data,
+            blockOffset,
+            version,
+            counts,
+            shCounts,
+            fractionalBits,
+        );
+        const writer = attributeStream.writable.getWriter();
+        for (let i = 0; i < expectedSizes.length; i++) {
+            const entryOffset = i * 16;
+            const compressedSize64 = tocView.getBigUint64(entryOffset, true);
+            const uncompressedSize64 = tocView.getBigUint64(entryOffset + 8, true);
+            if (compressedSize64 > MAX_SAFE_STREAM_SIZE || uncompressedSize64 > MAX_SAFE_STREAM_SIZE) {
+                throw new Error(`SPZ stream size is too large at index ${i}`);
+            }
+
+            const compressedSize = Number(compressedSize64);
+            const uncompressedSize = Number(uncompressedSize64);
+            if (uncompressedSize !== expectedSizes[i]) {
+                throw new Error(`Invalid SPZ v4 stream size at index ${i}`);
+            }
+            await pipeZstdStream(cursor, writer, compressedSize, uncompressedSize, i);
+        }
+        await writer.close();
+        await decodeAttributePromise;
+    }
+
+    private async readLegacyStream(stream: ReadableStream<Uint8Array>, data: SplatData) {
+        const source = stream.pipeThrough<Uint8Array>(
+            new DecompressionStream('gzip') as TransformStream<Uint8Array, Uint8Array>,
+        );
+        const cursor = new ByteStreamCursor(source);
+        const header = await cursor.readExact(16);
+        const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+        if (view.getUint32(0, true) !== SPZ_MAGIC) {
+            throw new Error('Invalid SPZ file');
+        }
+
+        const version = view.getUint32(4, true);
+        if (version < 1 || version > SPZ_LEGACY_VERSION) {
+            throw new Error(`Unsupported SPZ version: ${version}`);
+        }
+        const counts = view.getUint32(8, true);
+        const shDegree = view.getUint8(12);
+        const shCounts = SH_MAPS[shDegree];
+        if (shCounts === undefined) {
+            throw new Error(`Unsupported SPZ SH degree: ${shDegree}`);
+        }
+        const fractionalBits = view.getUint8(13);
+        const blockOffset = await data.initBlock(counts, shDegree);
+        await decodeAttribute(cursor, data, blockOffset, version, counts, shCounts, fractionalBits);
     }
 
     async read(stream: ReadableStream<Uint8Array>, _contentLength: number, data: SplatData) {
-        const setCenter = data.setCenter.bind(data) as SplatData['setCenter'];
-        const setAlpha = data.setAlpha.bind(data) as SplatData['setAlpha'];
-        const setColor = data.setColor.bind(data) as SplatData['setColor'];
-        const setScale = data.setScale.bind(data) as SplatData['setScale'];
-        const setQuat = data.setQuat.bind(data) as SplatData['setQuat'];
-        const setShN = data.setShN.bind(data) as SplatData['setShN'];
-
-        const SCALE_LUT = new Float32Array(256);
-        for (let i = 0; i < 256; i++) {
-            SCALE_LUT[i] = Math.exp(i / 16 - 10);
-        }
-        const COLOR_LUT = new Float32Array(256);
-        for (let i = 0; i < 256; i++) {
-            COLOR_LUT[i] = (i / 255 - 0.5) * COLOR_SCALE + 0.5;
-        }
-
-        let version: number = SPZ_VERSION;
-        let counts: number = 0;
-        let shDegree: number = 0;
-        let fractionalBits: number = 12;
-        let flags: number = FLAG_ANTIALIASED;
-        let reserved: number = 0;
-
-        let isF16 = false;
-        let useSmallestThreeQuat = true;
-        let fraction = 1;
-        let fractionInv = 1;
-        let shCounts = 0;
-        let BlockOffset: number = 0;
-        const shN: number[] = [];
-
-        const reader = new BufferReader();
-        const decoder = new StreamChunkDecoder(reader);
-        decoder.setDecoders([
-            {
-                init: () => [1, 16],
-                decode: async (_offset, _counts, buf) => {
-                    const header = new DataView(buf.buffer);
-                    if (header.getUint32(0, true) !== SPZ_MAGIC) {
-                        throw new Error('Invalid SPZ file');
-                    }
-                    ({ version, counts, shDegree, fractionalBits, flags, extra: reserved } = readSpzHeader(header));
-                    if (version < 1 || version > 3) {
-                        throw new Error(`Unsupported SPZ version: ${version}`);
-                    }
-
-                    isF16 = version < 2;
-                    useSmallestThreeQuat = version >= 3;
-                    fraction = 1 << fractionalBits;
-                    fractionInv = 1 / fraction;
-                    shCounts = SH_MAPS[shDegree];
-
-                    BlockOffset = await data.initBlock(counts, shDegree);
-                    if (flags || reserved) {
-                        //
-                    }
-                },
-            },
-            {
-                init: () => [counts, isF16 ? 6 : 9],
-                decode: (offset, counts, buf) => {
-                    offset += BlockOffset;
-                    let x: number, y: number, z: number;
-                    for (let i = 0; i < counts; i++) {
-                        if (isF16) {
-                            const o = i * 6;
-                            x = fromHalf((buf[o + 1] << 8) | buf[o]);
-                            y = fromHalf((buf[o + 3] << 8) | buf[o + 2]);
-                            z = fromHalf((buf[o + 5] << 8) | buf[o + 4]);
-                        } else {
-                            const o = i * 9;
-                            x = (((buf[o + 2] << 24) | (buf[o + 1] << 16) | (buf[o] << 8)) >> 8) * fractionInv;
-                            y = (((buf[o + 5] << 24) | (buf[o + 4] << 16) | (buf[o + 3] << 8)) >> 8) * fractionInv;
-                            z = (((buf[o + 8] << 24) | (buf[o + 7] << 16) | (buf[o + 6] << 8)) >> 8) * fractionInv;
-                        }
-                        setCenter(offset + i, x, y, z);
-                    }
-                },
-            },
-            {
-                init: () => [counts, 1],
-                decode: (offset, counts, buf) => {
-                    offset += BlockOffset;
-                    for (let i = 0; i < counts; i++) {
-                        setAlpha(offset + i, buf[i] / 255);
-                    }
-                },
-            },
-            {
-                init: () => [counts, 3],
-                decode: (offset, counts, buf) => {
-                    offset += BlockOffset;
-                    for (let i = 0; i < counts; i++) {
-                        const o = i * 3;
-                        setColor(offset + i, COLOR_LUT[buf[o]], COLOR_LUT[buf[o + 1]], COLOR_LUT[buf[o + 2]]);
-                    }
-                },
-            },
-            {
-                init: () => [counts, 3],
-                decode: (offset, counts, buf) => {
-                    offset += BlockOffset;
-                    for (let i = 0; i < counts; i++) {
-                        const o = i * 3;
-                        setScale(offset + i, SCALE_LUT[buf[o]], SCALE_LUT[buf[o + 1]], SCALE_LUT[buf[o + 2]]);
-                    }
-                },
-            },
-            {
-                init: () => [counts, useSmallestThreeQuat ? 4 : 3],
-                decode: (offset, counts, buf) => {
-                    offset += BlockOffset;
-                    let qx: number, qy: number, qz: number, qw: number;
-                    for (let i = 0; i < counts; i++) {
-                        if (!useSmallestThreeQuat) {
-                            const o = i * 3;
-                            qx = buf[o] / 127.5 - 1;
-                            qy = buf[o + 1] / 127.5 - 1;
-                            qz = buf[o + 2] / 127.5 - 1;
-                            qw = Math.sqrt(Math.max(0, 1 - qx * qx - qy * qy - qz * qz));
-                        } else {
-                            const o = i * 4;
-                            const packed = buf[o] | (buf[o + 1] << 8) | (buf[o + 2] << 16) | (buf[o + 3] << 24);
-
-                            const largest = packed >>> 30;
-                            let temp = packed;
-                            let sum = 0;
-                            for (let j = 3; j >= 0; j--) {
-                                if (j === largest) {
-                                    continue;
-                                }
-                                const mag = temp & 0x1ff;
-                                const sign = (temp >>> 9) & 1;
-                                temp >>>= 10;
-
-                                const v = Math.SQRT1_2 * (mag / 0x1ff) * (sign ? -1 : 1);
-                                rotation[j] = v;
-                                sum += v * v;
-                            }
-                            rotation[largest] = Math.sqrt(1 - sum);
-                            qx = rotation[0];
-                            qy = rotation[1];
-                            qz = rotation[2];
-                            qw = rotation[3];
-                        }
-                        setQuat(offset + i, qx, qy, qz, qw);
-                    }
-                },
-            },
-            {
-                init: () => [counts, shCounts],
-                decode: (offset, counts, buf) => {
-                    offset += BlockOffset;
-                    for (let i = 0; i < counts; i++) {
-                        const o = i * shCounts;
-                        for (let j = 0; j < shCounts; j++) {
-                            shN[j] = (buf[o + j] - 128) / 128;
-                        }
-                        setShN(offset + i, shN);
-                    }
-                },
-            },
-        ]);
-
-        const peeked = await peekStream(stream, 8);
-        stream = peeked.stream;
-        if (isSpzV4(peeked.prefix)) {
-            await readSpzV4Stream(stream, reader, decoder);
-            data.finishBlock();
-            return;
-        }
-
-        let source: ReadableStreamDefaultReader<Uint8Array>;
-        if (this.compressLevel === -1) {
-            source = stream.getReader();
+        const [probeStream, dataStream] = stream.tee();
+        const cursor = new ByteStreamCursor(probeStream);
+        const magicCode = await cursor.readUint32(true);
+        cursor.cancel();
+        if (magicCode === SPZ_MAGIC) {
+            await this.readStream(dataStream, data);
         } else {
-            source = stream
-                .pipeThrough<Uint8Array>(new DecompressionStream('gzip') as TransformStream<Uint8Array, Uint8Array>)
-                .getReader();
-        }
-        while (true) {
-            const { done, value } = await source.read();
-            if (done) {
-                break;
-            }
-            reader.write(value!);
-            decoder.flush();
+            await this.readLegacyStream(dataStream, data);
         }
         data.finishBlock();
     }
 
-    async write(writeStream: WritableStream<Uint8Array>, data: SplatData, indices: Uint32Array = mortonSort(data)) {
-        if (this.spzVersion === 4) {
-            await this.writeV4(writeStream, data, indices);
-        } else {
-            await this.writeV3(writeStream, data, indices);
+    private async writeStream(stream: WritableStream<Uint8Array>, data: SplatData, indices: Uint32Array) {
+        const { counts, shCounts, table } = data;
+
+        const chunks: Array<{ buffer: Uint8Array; compressedSize: number; uncompressedSize: number }> = [];
+        {
+            const xCol = table[ColIdx.x];
+            const yCol = table[ColIdx.y];
+            const zCol = table[ColIdx.z];
+            const chunk = new Uint8Array(counts * 9);
+            for (let i = 0; i < counts; i++) {
+                const index = indices[i];
+                const o = i * 9;
+                const x = clamp(xCol[index] * SPZ_FRACTIONAL, -0x7fffff, 0x7fffff);
+                chunk[o] = x & 0xff;
+                chunk[o + 1] = (x >> 8) & 0xff;
+                chunk[o + 2] = (x >> 16) & 0xff;
+                const y = clamp(yCol[index] * SPZ_FRACTIONAL, -0x7fffff, 0x7fffff);
+                chunk[o + 3] = y & 0xff;
+                chunk[o + 4] = (y >> 8) & 0xff;
+                chunk[o + 5] = (y >> 16) & 0xff;
+                const z = clamp(zCol[index] * SPZ_FRACTIONAL, -0x7fffff, 0x7fffff);
+                chunk[o + 6] = z & 0xff;
+                chunk[o + 7] = (z >> 8) & 0xff;
+                chunk[o + 8] = (z >> 16) & 0xff;
+            }
+            const buffer = zstdCompressSync(chunk, {
+                chunkSize: STREAM_CHUNK_BYTE_LENGTH,
+                params: {
+                    [zlibConstant.ZSTD_c_compressionLevel]: this.compressLevel,
+                },
+            });
+            chunks.push({ buffer, compressedSize: buffer.byteLength, uncompressedSize: chunk.byteLength });
         }
+        {
+            const alpha = data.table[ColIdx.a];
+            const chunk = new Uint8Array(counts);
+            for (let i = 0; i < counts; i++) {
+                const index = indices[i];
+                chunk[i] = clamp(Math.round(alpha[index] * 255), 0, 255);
+            }
+            const buffer = zstdCompressSync(chunk, {
+                chunkSize: STREAM_CHUNK_BYTE_LENGTH,
+                params: {
+                    [zlibConstant.ZSTD_c_compressionLevel]: this.compressLevel,
+                },
+            });
+            chunks.push({ buffer: buffer, compressedSize: buffer.byteLength, uncompressedSize: chunk.byteLength });
+        }
+        {
+            const rCol = table[ColIdx.r];
+            const gCol = table[ColIdx.g];
+            const bCol = table[ColIdx.b];
+            const chunk = new Uint8Array(counts * 3);
+            for (let i = 0; i < counts; i++) {
+                const index = indices[i];
+                const o = i * 3;
+                chunk[o] = clamp(Math.round(((rCol[index] - 0.5) / COLOR_SCALE + 0.5) * 255), 0, 255);
+                chunk[o + 1] = clamp(Math.round(((gCol[index] - 0.5) / COLOR_SCALE + 0.5) * 255), 0, 255);
+                chunk[o + 2] = clamp(Math.round(((bCol[index] - 0.5) / COLOR_SCALE + 0.5) * 255), 0, 255);
+            }
+            const buffer = zstdCompressSync(chunk, {
+                chunkSize: STREAM_CHUNK_BYTE_LENGTH,
+                params: {
+                    [zlibConstant.ZSTD_c_compressionLevel]: this.compressLevel,
+                },
+            });
+            chunks.push({ buffer, compressedSize: buffer.byteLength, uncompressedSize: chunk.byteLength });
+        }
+        {
+            const sxCol = table[ColIdx.sx];
+            const syCol = table[ColIdx.sy];
+            const szCol = table[ColIdx.sz];
+            const chunk = new Uint8Array(counts * 3);
+            for (let i = 0; i < counts; i++) {
+                const index = indices[i];
+                const o = i * 3;
+                chunk[o] = clamp(Math.round((Math.log(sxCol[index]) + 10) * 16), 0, 255);
+                chunk[o + 1] = clamp(Math.round((Math.log(syCol[index]) + 10) * 16), 0, 255);
+                chunk[o + 2] = clamp(Math.round((Math.log(szCol[index]) + 10) * 16), 0, 255);
+            }
+            const buffer = zstdCompressSync(chunk, {
+                chunkSize: STREAM_CHUNK_BYTE_LENGTH,
+                params: {
+                    [zlibConstant.ZSTD_c_compressionLevel]: this.compressLevel,
+                },
+            });
+            chunks.push({ buffer, compressedSize: buffer.byteLength, uncompressedSize: chunk.byteLength });
+        }
+        {
+            const qxCol = table[ColIdx.qx];
+            const qyCol = table[ColIdx.qy];
+            const qzCol = table[ColIdx.qz];
+            const qwCol = table[ColIdx.qw];
+            const chunk = new Uint8Array(counts * 4);
+            for (let i = 0; i < counts; i++) {
+                const index = indices[i];
+                const o = i * 4;
+                rotation[0] = qxCol[index];
+                rotation[1] = qyCol[index];
+                rotation[2] = qzCol[index];
+                rotation[3] = qwCol[index];
+                let largest = 0;
+                for (let j = 1; j < 4; j++) {
+                    if (Math.abs(rotation[j]) > Math.abs(rotation[largest])) {
+                        largest = j;
+                    }
+                }
+                const negate = rotation[largest] < 0 ? 1 : 0;
+                let packed = largest;
+                for (let j = 0; j < 4; j++) {
+                    if (j !== largest) {
+                        const sign = (rotation[j] < 0 ? 1 : 0) ^ negate;
+                        const magnitude = Math.floor(0x1ff * (Math.abs(rotation[j]) / Math.SQRT1_2) + 0.5);
+                        packed = (packed << 10) | (sign << 9) | magnitude;
+                    }
+                }
+                chunk[o] = packed & 0xff;
+                chunk[o + 1] = (packed >> 8) & 0xff;
+                chunk[o + 2] = (packed >> 16) & 0xff;
+                chunk[o + 3] = (packed >> 24) & 0xff;
+            }
+            const buffer = zstdCompressSync(chunk, {
+                chunkSize: STREAM_CHUNK_BYTE_LENGTH,
+                params: {
+                    [zlibConstant.ZSTD_c_compressionLevel]: this.compressLevel,
+                },
+            });
+            chunks.push({ buffer, compressedSize: buffer.byteLength, uncompressedSize: chunk.byteLength });
+        }
+        if (shCounts > 0) {
+            const chunk = new Uint8Array(counts * shCounts);
+            for (let i = 0; i < counts; i++) {
+                const index = indices[i];
+                const o = i * shCounts;
+                for (let j = 0; j < shCounts; j++) {
+                    const step = j < 9 ? SH_SCALE1 : SH_SCALE2;
+                    chunk[o + j] = clamp(
+                        Math.floor((Math.round(table[ColIdx.shOffset + j][index] * 128) + 128 + step / 2) / step) *
+                            step,
+                        0,
+                        255,
+                    );
+                }
+            }
+            const buffer = zstdCompressSync(chunk, {
+                chunkSize: STREAM_CHUNK_BYTE_LENGTH,
+                params: {
+                    [zlibConstant.ZSTD_c_compressionLevel]: this.compressLevel,
+                },
+            });
+            chunks.push({ buffer, compressedSize: buffer.byteLength, uncompressedSize: chunk.byteLength });
+        }
+
+        const writer = stream.getWriter();
+        const header = new Uint8Array(SPZ_STREAM_HEADER_BYTE_LENGTH);
+        const view = new DataView(header.buffer);
+        view.setUint32(0, SPZ_MAGIC, true);
+        view.setUint32(4, SPZ_VERSION, true);
+        view.setUint32(8, data.counts, true);
+        view.setUint8(12, data.shDegree);
+        view.setUint8(13, SPZ_FRACTIONAL_BITS);
+        view.setUint8(14, FLAG_ANTIALIASED);
+        view.setUint8(15, chunks.length);
+        view.setUint32(16, SPZ_STREAM_HEADER_BYTE_LENGTH, true);
+        await writer.write(header);
+
+        const toc = new Uint8Array(chunks.length * SPZ_TOC_ENTRY_BYTE_LENGTH);
+        const tocView = new DataView(toc.buffer);
+        for (let i = 0; i < chunks.length; i++) {
+            const offset = i * SPZ_TOC_ENTRY_BYTE_LENGTH;
+            tocView.setBigUint64(offset, BigInt(chunks[i].compressedSize), true);
+            tocView.setBigUint64(offset + 8, BigInt(chunks[i].uncompressedSize), true);
+        }
+        await writer.write(toc);
+
+        for (let i = 0; i < chunks.length; i++) {
+            const { buffer } = chunks[i];
+            await writer.write(buffer);
+        }
+        await writer.close();
     }
 
-    private async writeV3(writeStream: WritableStream<Uint8Array>, data: SplatData, indices: Uint32Array) {
+    private async writeLegacyStream(writeStream: WritableStream<Uint8Array>, data: SplatData, indices: Uint32Array) {
         let writer: WritableStreamDefaultWriter<Uint8Array>;
-        let pipePromise: Promise<void>;
+        let pipePromise = Promise.resolve();
         if (this.compressLevel === -1) {
             writer = writeStream.getWriter();
-            pipePromise = Promise.resolve();
         } else {
-            const compressStream = new CompressionStream('gzip') as TransformStream<Uint8Array, Uint8Array>;
-            pipePromise = compressStream.readable.pipeTo(writeStream);
-            writer = compressStream.writable.getWriter();
+            const gzip = Duplex.toWeb(createGzip({ level: this.compressLevel, chunkSize: STREAM_CHUNK_BYTE_LENGTH }));
+            writer = gzip.writable.getWriter();
+            pipePromise = gzip.readable.pipeTo(writeStream);
         }
 
-        const version: number = SPZ_VERSION;
-        const counts: number = data.counts;
-        const shDegree: number = data.shDegree;
-        const fractionalBits: number = 12;
-        const flags: number = FLAG_ANTIALIASED;
+        const header = new Uint8Array(16);
+        const view = new DataView(header.buffer);
+        view.setUint32(0, SPZ_MAGIC, true);
+        view.setUint32(4, SPZ_LEGACY_VERSION, true);
+        view.setUint32(8, data.counts, true);
+        view.setUint8(12, data.shDegree);
+        view.setUint8(13, SPZ_FRACTIONAL_BITS);
+        view.setUint8(14, FLAG_ANTIALIASED);
+        await writer.write(header);
 
-        const shCounts = getShCounts(shDegree);
-        const context = createSpzEncodeContext(data, indices, fractionalBits, shCounts);
+        const { counts, shCounts, table } = data;
+        const chunkWrite = async (
+            itemSize: number,
+            fill: (chunk: Uint8Array, offset: number, counts: number) => void,
+        ) => {
+            const chunkSize = Math.floor(STREAM_CHUNK_BYTE_LENGTH / itemSize);
+            for (let offset = 0; offset < counts; offset += chunkSize) {
+                const currentChunkCounts = Math.min(chunkSize, counts - offset);
+                const chunk = new Uint8Array(currentChunkCounts * itemSize);
+                fill(chunk, offset, currentChunkCounts);
+                writer.write(chunk);
+                if (writer.desiredSize! <= 0) {
+                    await writer.ready;
+                }
+            }
+        };
 
-        // header
-        writer.write(createSpzHeader(version, counts, shDegree, fractionalBits, flags, 0));
+        const xCol = table[ColIdx.x];
+        const yCol = table[ColIdx.y];
+        const zCol = table[ColIdx.z];
+        await chunkWrite(9, (chunk, offset, counts) => {
+            for (let i = 0; i < counts; i++) {
+                const index = indices[offset + i];
+                const o = i * 9;
+                const x = clamp(xCol[index] * SPZ_FRACTIONAL, -0x7fffff, 0x7fffff);
+                chunk[o] = x & 0xff;
+                chunk[o + 1] = (x >> 8) & 0xff;
+                chunk[o + 2] = (x >> 16) & 0xff;
+                const y = clamp(yCol[index] * SPZ_FRACTIONAL, -0x7fffff, 0x7fffff);
+                chunk[o + 3] = y & 0xff;
+                chunk[o + 4] = (y >> 8) & 0xff;
+                chunk[o + 5] = (y >> 16) & 0xff;
+                const z = clamp(zCol[index] * SPZ_FRACTIONAL, -0x7fffff, 0x7fffff);
+                chunk[o + 6] = z & 0xff;
+                chunk[o + 7] = (z >> 8) & 0xff;
+                chunk[o + 8] = (z >> 16) & 0xff;
+            }
+        });
 
-        for (const attribute of getSpzAttributes(shDegree)) {
-            await writeSpzAttribute(writer, context, attribute);
+        const alpha = data.table[ColIdx.a];
+        await chunkWrite(1, (chunk, offset, counts) => {
+            for (let i = 0; i < counts; i++) {
+                const index = indices[offset + i];
+                chunk[i] = clamp(Math.round(alpha[index] * 255), 0, 255);
+            }
+        });
+
+        const rCol = table[ColIdx.r];
+        const gCol = table[ColIdx.g];
+        const bCol = table[ColIdx.b];
+        await chunkWrite(3, (chunk, offset, counts) => {
+            for (let i = 0; i < counts; i++) {
+                const index = indices[offset + i];
+                const o = i * 3;
+                chunk[o] = clamp(Math.round(((rCol[index] - 0.5) / COLOR_SCALE + 0.5) * 255), 0, 255);
+                chunk[o + 1] = clamp(Math.round(((gCol[index] - 0.5) / COLOR_SCALE + 0.5) * 255), 0, 255);
+                chunk[o + 2] = clamp(Math.round(((bCol[index] - 0.5) / COLOR_SCALE + 0.5) * 255), 0, 255);
+            }
+        });
+
+        const sxCol = table[ColIdx.sx];
+        const syCol = table[ColIdx.sy];
+        const szCol = table[ColIdx.sz];
+        await chunkWrite(3, (chunk, offset, counts) => {
+            for (let i = 0; i < counts; i++) {
+                const index = indices[offset + i];
+                const o = i * 3;
+                chunk[o] = clamp(Math.round((Math.log(sxCol[index]) + 10) * 16), 0, 255);
+                chunk[o + 1] = clamp(Math.round((Math.log(syCol[index]) + 10) * 16), 0, 255);
+                chunk[o + 2] = clamp(Math.round((Math.log(szCol[index]) + 10) * 16), 0, 255);
+            }
+        });
+
+        const qxCol = table[ColIdx.qx];
+        const qyCol = table[ColIdx.qy];
+        const qzCol = table[ColIdx.qz];
+        const qwCol = table[ColIdx.qw];
+        await chunkWrite(4, (chunk, offset, counts) => {
+            for (let i = 0; i < counts; i++) {
+                const index = indices[offset + i];
+                const o = i * 4;
+                rotation[0] = qxCol[index];
+                rotation[1] = qyCol[index];
+                rotation[2] = qzCol[index];
+                rotation[3] = qwCol[index];
+                let largest = 0;
+                for (let j = 1; j < 4; j++) {
+                    if (Math.abs(rotation[j]) > Math.abs(rotation[largest])) {
+                        largest = j;
+                    }
+                }
+                const negate = rotation[largest] < 0 ? 1 : 0;
+                let packed = largest;
+                for (let j = 0; j < 4; j++) {
+                    if (j !== largest) {
+                        const sign = (rotation[j] < 0 ? 1 : 0) ^ negate;
+                        const magnitude = Math.floor(0x1ff * (Math.abs(rotation[j]) / Math.SQRT1_2) + 0.5);
+                        packed = (packed << 10) | (sign << 9) | magnitude;
+                    }
+                }
+                chunk[o] = packed & 0xff;
+                chunk[o + 1] = (packed >> 8) & 0xff;
+                chunk[o + 2] = (packed >> 16) & 0xff;
+                chunk[o + 3] = (packed >> 24) & 0xff;
+            }
+        });
+
+        if (shCounts > 0) {
+            await chunkWrite(shCounts, (chunk, offset, counts) => {
+                for (let i = 0; i < counts; i++) {
+                    const index = indices[offset + i];
+                    const o = i * shCounts;
+                    for (let j = 0; j < shCounts; j++) {
+                        const step = j < 9 ? SH_SCALE1 : SH_SCALE2;
+                        chunk[o + j] = clamp(
+                            Math.floor((Math.round(table[ColIdx.shOffset + j][index] * 128) + 128 + step / 2) / step) *
+                                step,
+                            0,
+                            255,
+                        );
+                    }
+                }
+            });
         }
 
         await writer.close();
         await pipePromise;
     }
 
-    private async writeV4(writeStream: WritableStream<Uint8Array>, data: SplatData, indices: Uint32Array) {
-        const version: number = 4;
-        const counts: number = data.counts;
-        const shDegree: number = data.shDegree;
-        const fractionalBits: number = 12;
-        const flags: number = FLAG_ANTIALIASED;
-
-        const shCounts = getShCounts(shDegree);
-        const context = createSpzEncodeContext(data, indices, fractionalBits, shCounts);
-        const compressed: Uint8Array[] = [];
-        const uncompressedSizes: number[] = [];
-
-        for (const attribute of getSpzAttributes(shDegree)) {
-            const chunk = createSpzAttributeChunk(context, attribute, 0, counts);
-            uncompressedSizes.push(chunk.byteLength);
-            compressed.push(
-                zstdCompressSync(chunk, {
-                    params: {
-                        [zlibConstants.ZSTD_c_compressionLevel]: ZSTD_COMPRESSION_LEVEL,
-                    },
-                }),
-            );
-        }
-
-        const tocByteOffset = 32;
-        const tocSize = compressed.length * 16;
-        const header = createSpzHeader(version, counts, shDegree, fractionalBits, flags, compressed.length, 32);
-        new DataView(header.buffer).setUint32(16, tocByteOffset, true);
-        const toc = new Uint8Array(tocSize);
-        const tocView = new DataView(toc.buffer);
-
-        for (let i = 0; i < compressed.length; i++) {
-            const entryOffset = i * 16;
-            writeUint64(tocView, entryOffset, compressed[i].byteLength);
-            writeUint64(tocView, entryOffset + 8, uncompressedSizes[i]);
-        }
-
-        const writer = writeStream.getWriter();
-        await writer.write(header);
-        await writer.write(toc);
-        for (const chunk of compressed) {
-            await writer.write(chunk);
-        }
-        await writer.close();
-    }
-}
-
-type SpzAttribute = 'position' | 'alpha' | 'color' | 'scale' | 'quat' | 'sh';
-
-interface SpzEncodeContext {
-    data: SplatData;
-    indices: Uint32Array;
-    fractionalBits: number;
-    fraction: number;
-    shCounts: number;
-    single: ISingleSplat;
-}
-
-function getShCounts(shDegree: number) {
-    const shCounts = SH_MAPS[shDegree];
-    if (shCounts === undefined) {
-        throw new Error(`Unsupported SPZ SH degree: ${shDegree}`);
-    }
-    return shCounts;
-}
-
-function createSpzEncodeContext(
-    data: SplatData,
-    indices: Uint32Array,
-    fractionalBits: number,
-    shCounts: number,
-): SpzEncodeContext {
-    return {
-        data,
-        indices,
-        fractionalBits,
-        fraction: 1 << fractionalBits,
-        shCounts,
-        single: {
-            x: 0,
-            y: 0,
-            z: 0,
-            sx: 0,
-            sy: 0,
-            sz: 0,
-            qx: 0,
-            qy: 0,
-            qz: 0,
-            qw: 0,
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-            shN: new Array(shCounts),
-        },
-    };
-}
-
-function getSpzAttributes(shDegree: number): SpzAttribute[] {
-    return shDegree > 0
-        ? ['position', 'alpha', 'color', 'scale', 'quat', 'sh']
-        : ['position', 'alpha', 'color', 'scale', 'quat'];
-}
-
-function getSpzAttributeInfo(attribute: SpzAttribute, shCounts: number) {
-    switch (attribute) {
-        case 'position':
-            return { itemSize: 9, chunkSize: 4096 };
-        case 'alpha':
-            return { itemSize: 1, chunkSize: 65536 };
-        case 'color':
-        case 'scale':
-            return { itemSize: 3, chunkSize: 16384 };
-        case 'quat':
-            return { itemSize: 4, chunkSize: 16384 };
-        case 'sh':
-            return { itemSize: shCounts, chunkSize: 1024 };
-    }
-}
-
-function createSpzAttributeChunk(context: SpzEncodeContext, attribute: SpzAttribute, offset: number, counts: number) {
-    const { data, indices, single, shCounts } = context;
-    const { itemSize } = getSpzAttributeInfo(attribute, shCounts);
-    const chunk = new Uint8Array(counts * itemSize);
-    for (let i = 0; i < counts; i++) {
-        const index = indices[offset + i];
-        switch (attribute) {
-            case 'position': {
-                data.getCenter(index, single);
-                const o = i * itemSize;
-                const ix = clamp(single.x * context.fraction, -0x7fffff, 0x7fffff);
-                chunk[o + 0] = ix & 0xff;
-                chunk[o + 1] = (ix >> 8) & 0xff;
-                chunk[o + 2] = (ix >> 16) & 0xff;
-                const iy = clamp(single.y * context.fraction, -0x7fffff, 0x7fffff);
-                chunk[o + 3] = iy & 0xff;
-                chunk[o + 4] = (iy >> 8) & 0xff;
-                chunk[o + 5] = (iy >> 16) & 0xff;
-                const iz = clamp(single.z * context.fraction, -0x7fffff, 0x7fffff);
-                chunk[o + 6] = iz & 0xff;
-                chunk[o + 7] = (iz >> 8) & 0xff;
-                chunk[o + 8] = (iz >> 16) & 0xff;
-                break;
-            }
-            case 'alpha':
-                data.getAlpha(index, single);
-                chunk[i] = clamp(Math.round(single.a * 255), 0, 255);
-                break;
-            case 'color': {
-                data.getColor(index, single);
-                const o = i * itemSize;
-                chunk[o + 0] = clamp(Math.round(((single.r - 0.5) / COLOR_SCALE + 0.5) * 255), 0, 255);
-                chunk[o + 1] = clamp(Math.round(((single.g - 0.5) / COLOR_SCALE + 0.5) * 255), 0, 255);
-                chunk[o + 2] = clamp(Math.round(((single.b - 0.5) / COLOR_SCALE + 0.5) * 255), 0, 255);
-                break;
-            }
-            case 'scale': {
-                data.getScale(index, single);
-                const o = i * itemSize;
-                chunk[o + 0] = clamp(Math.round((Math.log(single.sx) + 10) * 16), 0, 255);
-                chunk[o + 1] = clamp(Math.round((Math.log(single.sy) + 10) * 16), 0, 255);
-                chunk[o + 2] = clamp(Math.round((Math.log(single.sz) + 10) * 16), 0, 255);
-                break;
-            }
-            case 'quat': {
-                data.getQuat(index, single);
-                const o = i * itemSize;
-                rotation[0] = single.qx;
-                rotation[1] = single.qy;
-                rotation[2] = single.qz;
-                rotation[3] = single.qw;
-                let iLargest = 0;
-                for (let j = 1; j < 4; ++j) {
-                    if (Math.abs(rotation[j]) > Math.abs(rotation[iLargest])) {
-                        iLargest = j;
-                    }
-                }
-                const negate = rotation[iLargest] < 0 ? 1 : 0;
-                let comp = iLargest;
-                for (let j = 0; j < 4; ++j) {
-                    if (j !== iLargest) {
-                        const negbit = (rotation[j] < 0 ? 1 : 0) ^ negate;
-                        const mag = Math.floor(((1 << 9) - 1) * (Math.abs(rotation[j]) / Math.SQRT1_2) + 0.5);
-                        comp = (comp << 10) | (negbit << 9) | mag;
-                    }
-                }
-                chunk[o + 0] = comp & 0xff;
-                chunk[o + 1] = (comp >> 8) & 0xff;
-                chunk[o + 2] = (comp >> 16) & 0xff;
-                chunk[o + 3] = (comp >> 24) & 0xff;
-                break;
-            }
-            case 'sh': {
-                data.getShN(index, single.shN);
-                const o = i * itemSize;
-                for (let j = 0; j < itemSize; j++) {
-                    if (j < 9) {
-                        chunk[o + j] = clamp(
-                            Math.floor((Math.round(single.shN[j] * 128) + 128 + SH_SCALE1 / 2) / SH_SCALE1) * SH_SCALE1,
-                            0,
-                            255,
-                        );
-                        continue;
-                    }
-                    chunk[o + j] = clamp(
-                        Math.floor((Math.round(single.shN[j] * 128) + 128 + SH_SCALE2 / 2) / SH_SCALE2) * SH_SCALE2,
-                        0,
-                        255,
-                    );
-                }
-                break;
-            }
+    async write(writeStream: WritableStream<Uint8Array>, data: SplatData, indices: Uint32Array) {
+        if (this.version === SPZ_VERSION) {
+            await this.writeStream(writeStream, data, indices);
+        } else {
+            await this.writeLegacyStream(writeStream, data, indices);
         }
     }
-    return chunk;
-}
-
-async function writeSpzAttribute(
-    writer: WritableStreamDefaultWriter<Uint8Array>,
-    context: SpzEncodeContext,
-    attribute: SpzAttribute,
-) {
-    const { chunkSize } = getSpzAttributeInfo(attribute, context.shCounts);
-    const chunkCounts = Math.ceil(context.data.counts / chunkSize);
-    for (let i = 0; i < chunkCounts; i++) {
-        if (writer.desiredSize! <= 0) {
-            await writer.ready;
-        }
-        const offset = i * chunkSize;
-        const counts = Math.min(chunkSize, context.data.counts - offset);
-        writer.write(createSpzAttributeChunk(context, attribute, offset, counts));
-    }
-}
-
-function readUint64(view: DataView, offset: number) {
-    const low = view.getUint32(offset, true);
-    const high = view.getUint32(offset + 4, true);
-    const value = high * 0x100000000 + low;
-    if (!Number.isSafeInteger(value)) {
-        throw new Error(`SPZ stream size is too large: ${value}`);
-    }
-    return value;
-}
-
-function writeUint64(view: DataView, offset: number, value: number) {
-    if (!Number.isSafeInteger(value) || value < 0) {
-        throw new Error(`Invalid SPZ stream size: ${value}`);
-    }
-    view.setUint32(offset, value >>> 0, true);
-    view.setUint32(offset + 4, Math.floor(value / 0x100000000), true);
-}
-
-function createSpzHeader(
-    version: number,
-    counts: number,
-    shDegree: number,
-    fractionalBits: number,
-    flags: number,
-    extra: number,
-    byteLength = 16,
-) {
-    const header = new DataView(new ArrayBuffer(byteLength));
-    header.setUint32(0, SPZ_MAGIC, true);
-    header.setUint32(4, version, true);
-    header.setUint32(8, counts, true);
-    header.setUint8(12, shDegree);
-    header.setUint8(13, fractionalBits);
-    header.setUint8(14, flags);
-    header.setUint8(15, extra);
-    return new Uint8Array(header.buffer);
-}
-
-function readSpzHeader(view: DataView) {
-    return {
-        version: view.getUint32(4, true),
-        counts: view.getUint32(8, true),
-        shDegree: view.getUint8(12),
-        fractionalBits: view.getUint8(13),
-        flags: view.getUint8(14),
-        extra: view.getUint8(15),
-    };
-}
-
-function getSpzV4AttributeSizes(counts: number, shDegree: number) {
-    const shCounts = getShCounts(shDegree);
-    const sizes = [
-        counts * 9, // position
-        counts, // alpha
-        counts * 3, // color
-        counts * 3, // scale
-        counts * 4, // quat
-    ];
-    if (shDegree > 0) {
-        sizes.push(counts * shCounts); // sh
-    }
-    return sizes;
-}
-
-function isSpzV4(buffer: Uint8Array) {
-    if (buffer.byteLength < 8) {
-        return false;
-    }
-    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-    return view.getUint32(0, true) === SPZ_MAGIC && view.getUint32(4, true) === 4;
-}
-
-async function readSpzV4Stream(stream: ReadableStream<Uint8Array>, reader: BufferReader, decoder: StreamChunkDecoder) {
-    const read = createExactReader(stream);
-    const header = await read(32);
-    const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
-    const { counts, shDegree, fractionalBits, flags, extra: numStreams } = readSpzHeader(view);
-    const tocByteOffset = view.getUint32(16, true);
-    const expectedSizes = getSpzV4AttributeSizes(counts, shDegree);
-    if (numStreams !== expectedSizes.length) {
-        throw new Error(`Invalid SPZ v4 stream count: ${numStreams}`);
-    }
-    if (tocByteOffset < 32) {
-        throw new Error(`Invalid SPZ v4 TOC offset: ${tocByteOffset}`);
-    }
-
-    if (tocByteOffset > 32) {
-        await read(tocByteOffset - 32);
-    }
-
-    const toc = await read(numStreams * 16);
-    const tocView = new DataView(toc.buffer, toc.byteOffset, toc.byteLength);
-    // Reuse the legacy v3 attribute decoder after parsing the v4 container.
-    reader.write(createSpzHeader(SPZ_VERSION, counts, shDegree, fractionalBits, flags & FLAG_ANTIALIASED, 0));
-    decoder.flush();
-    for (let i = 0; i < numStreams; i++) {
-        const entryOffset = i * 16;
-        const compressedSize = readUint64(tocView, entryOffset);
-        const uncompressedSize = readUint64(tocView, entryOffset + 8);
-        if (uncompressedSize !== expectedSizes[i]) {
-            throw new Error(`Invalid SPZ v4 stream size at index ${i}`);
-        }
-
-        const compressed = await read(compressedSize);
-        const decompressed = zstdDecompressSync(compressed, {
-            maxOutputLength: uncompressedSize,
-        });
-        if (decompressed.byteLength !== uncompressedSize) {
-            throw new Error(`Invalid SPZ v4 decompressed size at index ${i}`);
-        }
-        reader.write(new Uint8Array(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength));
-        decoder.flush();
-    }
-}
-
-// Return a reader that resolves exactly byteLength bytes and keeps leftover bytes for the next read.
-function createExactReader(stream: ReadableStream<Uint8Array>) {
-    const reader = stream.getReader();
-    let chunk: Uint8Array | undefined;
-    let chunkOffset = 0;
-    return async (byteLength: number) => {
-        const result = new Uint8Array(byteLength);
-        let offset = 0;
-        while (offset < byteLength) {
-            if (!chunk || chunkOffset >= chunk.byteLength) {
-                const { done, value } = await reader.read();
-                if (done || !value) {
-                    throw new Error('Invalid SPZ v4 file: stream ended unexpectedly');
-                }
-                chunk = value;
-                chunkOffset = 0;
-            }
-            const copyLength = Math.min(byteLength - offset, chunk.byteLength - chunkOffset);
-            result.set(chunk.subarray(chunkOffset, chunkOffset + copyLength), offset);
-            chunkOffset += copyLength;
-            offset += copyLength;
-        }
-        return result;
-    };
-}
-
-// Peek leading bytes for format detection, then replay the consumed chunks through a replacement stream.
-async function peekStream(stream: ReadableStream<Uint8Array>, byteLength: number) {
-    const reader = stream.getReader();
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    while (size < byteLength) {
-        const { done, value } = await reader.read();
-        if (done || !value) {
-            break;
-        }
-        chunks.push(value);
-        size += value.byteLength;
-    }
-    const prefix = new Uint8Array(Math.min(size, byteLength));
-    let offset = 0;
-    for (const chunk of chunks) {
-        const copyLength = Math.min(chunk.byteLength, prefix.byteLength - offset);
-        prefix.set(chunk.subarray(0, copyLength), offset);
-        offset += copyLength;
-        if (offset === prefix.byteLength) {
-            break;
-        }
-    }
-    return {
-        prefix,
-        stream: new ReadableStream<Uint8Array>({
-            start(controller) {
-                for (const chunk of chunks) {
-                    controller.enqueue(chunk);
-                }
-            },
-            async pull(controller) {
-                const { done, value } = await reader.read();
-                if (done) {
-                    controller.close();
-                    return;
-                }
-                controller.enqueue(value!);
-            },
-            cancel(reason) {
-                return reader.cancel(reason);
-            },
-        }),
-    };
 }

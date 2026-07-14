@@ -1,45 +1,54 @@
-import type { BufferReader } from './BufferReader.js';
+import type { ByteStreamCursor } from './ByteStreamCursor.js';
 
 export interface ChunkDecoder {
-    init(): [number, number]; // [totals, itemSize]
+    init(): Promise<[number, number]> | [number, number]; // [totals, itemSize]
     decode(offset: number, counts: number, buffer: Uint8Array): void;
 }
 
 export class StreamChunkDecoder {
-    private reader: BufferReader;
-    private decoders: ChunkDecoder[];
-    private decodedTotals: Uint32Array;
-    private currentIndex: number = 0;
-    private currentTotals: number;
-    private currentItemSize: number;
+    constructor(private cursor: ByteStreamCursor) {}
 
-    constructor(reader: BufferReader) {
-        this.reader = reader;
-    }
+    async decode(decoders: ChunkDecoder[]) {
+        for (const decoder of decoders) {
+            const [totals, itemSize] = await decoder.init();
+            if (totals === 0 || itemSize === 0) {
+                continue;
+            }
 
-    setDecoders(decoders: ChunkDecoder[]) {
-        this.decoders = decoders;
-        this.decodedTotals = new Uint32Array(decoders.length);
-        const [totals, itemSize] = decoders[this.currentIndex].init();
-        this.currentTotals = totals;
-        this.currentItemSize = itemSize;
-    }
+            const pending = new Uint8Array(itemSize);
+            let pendingByteLength = 0;
+            let decoded = 0;
+            await this.cursor.readChunks(totals * itemSize, chunk => {
+                let chunkOffset = 0;
+                if (pendingByteLength > 0) {
+                    const copyLength = Math.min(itemSize - pendingByteLength, chunk.byteLength);
+                    pending.set(chunk.subarray(0, copyLength), pendingByteLength);
+                    pendingByteLength += copyLength;
+                    chunkOffset += copyLength;
+                    if (pendingByteLength === itemSize) {
+                        decoder.decode(decoded, 1, pending);
+                        decoded++;
+                        pendingByteLength = 0;
+                    }
+                }
 
-    flush() {
-        const { reader, decoders, decodedTotals, currentIndex, currentTotals, currentItemSize } = this;
-        const stage = decoders[currentIndex];
-        const decoded = decodedTotals[currentIndex];
-        const counts = Math.min(currentTotals - decoded, (reader.remaining / currentItemSize) | 0);
-        const buf = reader.read(counts * currentItemSize);
-        stage.decode(decoded, counts, buf);
-        decodedTotals[currentIndex] += counts;
-        if (decodedTotals[currentIndex] === currentTotals) {
-            this.currentIndex++;
-            if (this.currentIndex < decoders.length) {
-                const [totals, itemSize] = decoders[this.currentIndex]!.init();
-                this.currentTotals = totals;
-                this.currentItemSize = itemSize;
-                this.flush();
+                const counts = Math.floor((chunk.byteLength - chunkOffset) / itemSize);
+                if (counts > 0) {
+                    const batchByteLength = counts * itemSize;
+                    decoder.decode(decoded, counts, chunk.subarray(chunkOffset, chunkOffset + batchByteLength));
+                    decoded += counts;
+                    chunkOffset += batchByteLength;
+                }
+
+                if (chunkOffset < chunk.byteLength) {
+                    const remainder = chunk.subarray(chunkOffset);
+                    pending.set(remainder);
+                    pendingByteLength = remainder.byteLength;
+                }
+            });
+
+            if (pendingByteLength !== 0 || decoded !== totals) {
+                throw new Error(`Invalid stream data: expected ${totals} items, got ${decoded}`);
             }
         }
     }

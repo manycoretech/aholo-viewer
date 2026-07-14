@@ -144,6 +144,18 @@ export class Vector3 {
         return this;
     }
 
+    divideScalar(scalar: number): this {
+        const invLength = 1 / scalar;
+        this.x *= invLength;
+        this.y *= invLength;
+        this.z *= invLength;
+        return this;
+    }
+
+    normalize(): this {
+        return this.divideScalar(this.length() || 1);
+    }
+
     clone(): Vector3 {
         return new Vector3(this.x, this.y, this.z);
     }

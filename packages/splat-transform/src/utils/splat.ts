@@ -22,6 +22,26 @@ export enum SplatFileType {
     ESZ,
 }
 
+export function createSingleSplat(shCounts: number = 0): ISingleSplat {
+    return {
+        x: 0,
+        y: 0,
+        z: 0,
+        sx: 0,
+        sy: 0,
+        sz: 0,
+        qx: 0,
+        qy: 0,
+        qz: 0,
+        qw: 0,
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 0,
+        shN: new Array(shCounts).fill(0),
+    };
+}
+
 export function detectSplatFileType(filename: string, buffer: Uint8Array = new Uint8Array()) {
     let ext = filename.split('.').pop();
     if (ext === 'zip') {
@@ -89,8 +109,9 @@ export function detectSplatFileType(filename: string, buffer: Uint8Array = new U
 export function createSplatFile(
     path: string,
     buffer: Uint8Array = new Uint8Array(),
-    compressLevel: number = 6,
-    spzVersion: number = 3,
+    compressLevel?: number,
+    highPrecision?: boolean,
+    version?: number,
 ) {
     const type = detectSplatFileType(path, buffer);
     if (type === undefined) {
@@ -103,11 +124,11 @@ export function createSplatFile(
             break;
         }
         case SplatFileType.SPZ: {
-            file = new SpzFile(compressLevel, spzVersion);
+            file = new SpzFile(version, compressLevel);
             break;
         }
         case SplatFileType.USPZ: {
-            file = new SpzFile(-1);
+            file = new SpzFile(undefined, -1);
             break;
         }
         case SplatFileType.KSPLAT: {
@@ -127,7 +148,7 @@ export function createSplatFile(
             break;
         }
         case SplatFileType.ESZ: {
-            file = new EszFile();
+            file = new EszFile(highPrecision);
             break;
         }
     }
@@ -139,16 +160,19 @@ export async function writeSplatFile(
     data: SplatData,
     enableMortonSort: boolean,
     compressLevel?: number,
-    spzVersion?: number,
+    highPrecision?: boolean,
+    version?: number,
 ) {
-    let indices: Uint32Array | undefined;
-    if (!enableMortonSort) {
+    let indices: Uint32Array;
+    if (enableMortonSort) {
+        indices = mortonSort(data);
+    } else {
         indices = new Uint32Array(data.counts);
         for (let i = 0; i < data.counts; i++) {
             indices[i] = i;
         }
     }
-    const file = createSplatFile(filepath, undefined, compressLevel, spzVersion);
+    const file = createSplatFile(filepath, undefined, compressLevel, highPrecision, version);
     const stream = Writable.toWeb(fs.createWriteStream(filepath)) as WritableStream<Uint8Array>;
     await file.write(stream, data, indices);
 }
@@ -158,23 +182,7 @@ export function combineSplatData(source: SplatData[]): SplatData {
         source.reduce<number>((p, c) => p + c.counts, 0),
         Math.max(...source.map(v => v.shDegree)),
     );
-    const single: ISingleSplat = {
-        x: 0,
-        y: 0,
-        z: 0,
-        sx: 0,
-        sy: 0,
-        sz: 0,
-        qx: 0,
-        qy: 0,
-        qz: 0,
-        qw: 0,
-        r: 0,
-        g: 0,
-        b: 0,
-        a: 0,
-        shN: new Array(SH_MAPS[target.shDegree]),
-    };
+    const single = createSingleSplat(SH_MAPS[target.shDegree]);
     const shN = single.shN;
 
     let index = 0;
@@ -194,7 +202,13 @@ export function combineSplatData(source: SplatData[]): SplatData {
 }
 
 const VOXEL_COUNTS = 65535;
-export function computeDenseBox(data: SplatData, ratio: number = 0.98) {
+export function computeDenseBox(
+    data: SplatData,
+    ratio: number = 0.98,
+): {
+    min: [number, number, number];
+    max: [number, number, number];
+} {
     if (data.counts === 0) {
         return { min: [0, 0, 0], max: [0, 0, 0] };
     }
@@ -231,6 +245,13 @@ export function computeDenseBox(data: SplatData, ratio: number = 0.98) {
         if (z > maxZ) {
             maxZ = z;
         }
+    }
+
+    if (ratio >= 1) {
+        return {
+            min: [minX, minY, minZ],
+            max: [maxX, maxY, maxZ],
+        };
     }
 
     const scaleX = VOXEL_COUNTS / Math.max(maxX - minX, 1e-9);

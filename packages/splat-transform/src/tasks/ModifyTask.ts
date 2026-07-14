@@ -1,6 +1,14 @@
 import fs from 'node:fs';
 import type { ISingleSplat, SplatData } from '../SplatData.js';
-import { createSHRotateFn, fastDeleteSplat, Matrix3, Matrix4, Quaternion, Vector3 } from '../utils/index.js';
+import {
+    createSHRotateFn,
+    createSingleSplat,
+    fastDeleteSplat,
+    Matrix3,
+    Matrix4,
+    Quaternion,
+    Vector3,
+} from '../utils/index.js';
 import { type Context, BaseTask } from './BaseTask.js';
 
 interface ISplatModify {
@@ -124,23 +132,7 @@ export class ModifyTask extends BaseTask<Config> {
         );
         const tempVec = new Vector3(0, 0, 0);
         const tempQuat = new Quaternion(0, 0, 0, 1);
-        const single: ISingleSplat = {
-            x: 0,
-            y: 0,
-            z: 0,
-            sx: 0,
-            sy: 0,
-            sz: 0,
-            qx: 0,
-            qy: 0,
-            qz: 0,
-            qw: 0,
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-            shN: new Array(splat.shCounts),
-        };
+        const single: ISingleSplat = createSingleSplat(splat.shCounts);
         const shN = single.shN;
         const shCoeffs: number[] = new Array(splat.shCounts / 3).fill(0);
         const deletedTotalIndices: number[] = [];
