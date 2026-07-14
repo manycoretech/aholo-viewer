@@ -1,6 +1,6 @@
-import type { ISingleSplat, SplatData } from '../SplatData.js';
+import type { SplatData } from '../SplatData.js';
 import { SH_MAPS } from '../constant.js';
-import { fromHalf } from '../utils/index.js';
+import { createSingleSplat, fromHalf } from '../utils/index.js';
 import type { IFile } from './IFile.js';
 
 interface KSplatCompression {
@@ -237,23 +237,7 @@ export class KsplatFile implements IFile {
         } = header;
         const isHighQualitySplatData = compressionLevel === 0;
 
-        const single: ISingleSplat = {
-            x: 0,
-            y: 0,
-            z: 0,
-            sx: 0,
-            sy: 0,
-            sz: 0,
-            qx: 0,
-            qy: 0,
-            qz: 0,
-            qw: 0,
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-            shN: [],
-        };
+        const single = createSingleSplat();
         const maxSHSize = SH_MAPS[maxSHDegree];
         const shData = new Array(maxSHSize);
 
@@ -379,7 +363,7 @@ export class KsplatFile implements IFile {
         data.finishBlock();
     }
 
-    async write(_stream: WritableStream<Uint8Array>, _data: SplatData) {
+    async write(_stream: WritableStream<Uint8Array>, _data: SplatData, _indices: Uint32Array) {
         throw new Error('Method not implemented.');
     }
 }

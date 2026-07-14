@@ -1,4 +1,5 @@
-import { ColIdx, type ISingleSplat, SplatData } from '../SplatData.js';
+import { ColIdx, SplatData } from '../SplatData.js';
+import { createSingleSplat } from '../utils/splat.js';
 import { type Context, BaseTask } from './BaseTask.js';
 
 export interface Config {
@@ -131,41 +132,10 @@ export class SkeletonLodTask extends BaseTask<Config> {
         }
 
         const raw = new SplatData().init(mergeChucks.length, 0);
-
-        const result: ISingleSplat = {
-            x: 0,
-            y: 0,
-            z: 0,
-            sx: 0.005,
-            sy: 0.005,
-            sz: 0.005,
-            qx: 0,
-            qy: 0,
-            qz: 0,
-            qw: 1,
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-            shN: [],
-        };
-        const single: ISingleSplat = {
-            x: 0,
-            y: 0,
-            z: 0,
-            sx: 0,
-            sy: 0,
-            sz: 0,
-            qx: 0,
-            qy: 0,
-            qz: 0,
-            qw: 0,
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-            shN: [],
-        };
+        const result = createSingleSplat();
+        result.sx = result.sx = result.sz = 0.005;
+        result.qw = 1;
+        const single = createSingleSplat();
         for (let i = 0; i < mergeChucks.length; i++) {
             const chunk = mergeChucks[i];
             for (let j = 0; j < chunk.length; j++) {

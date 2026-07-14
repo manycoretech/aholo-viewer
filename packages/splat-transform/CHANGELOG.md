@@ -1,9 +1,12 @@
 # Changelog
 
-## DEV
+## 1.7.0
 
 - rename files, move workers to standalone directories
 - make native implementation more stable
+- replace the legacy ZIP-based ESZ container with zstd-streamed ESZ v2 and add low- and high-precision layouts
+- stream SPZ v3 writes and v4 reads with stricter validation
+- replace buffered PLY and SPLAT decoding with streaming reads to reduce peak memory usage
 
 ## 1.6.3
 

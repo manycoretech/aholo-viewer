@@ -19,8 +19,9 @@ export interface Config {
     output: string;
     parallelCounts?: number;
     enableMortonSort?: boolean;
+    version?: number;
+    highPrecision?: boolean;
     compressLevel?: number;
-    spzVersion?: number;
 }
 
 export class WriteTask extends BaseTask<Config> {
@@ -30,8 +31,9 @@ export class WriteTask extends BaseTask<Config> {
             output,
             parallelCounts = Math.max(1, os.cpus().length - 1),
             enableMortonSort = true,
+            version,
+            highPrecision,
             compressLevel,
-            spzVersion,
         } = config;
         const pool = new WorkerPool(
             'splat-write',
@@ -42,7 +44,7 @@ export class WriteTask extends BaseTask<Config> {
         const source = resources.get(input)!;
         if (source instanceof SplatData) {
             logger.info(`writing splat -> file="${output}" count=${source.counts} SH=${source.shDegree}`);
-            await writeSplatFile(output, source, enableMortonSort, compressLevel, spzVersion);
+            await writeSplatFile(output, source, enableMortonSort, compressLevel, highPrecision, version);
             logger.info(`writing done`);
             return;
         }
@@ -81,8 +83,9 @@ export class WriteTask extends BaseTask<Config> {
                     filepath,
                     data: content.serialize(),
                     enableMortonSort: enableMortonSort && !preserveOrder,
+                    version,
+                    highPrecision,
                     compressLevel,
-                    spzVersion,
                 },
                 d,
             );
@@ -109,8 +112,9 @@ interface WriteWorkerTask {
     filepath: string;
     data: ISplatData;
     enableMortonSort: boolean;
+    version: number | undefined;
+    highPrecision: boolean | undefined;
     compressLevel: number | undefined;
-    spzVersion: number | undefined;
 }
 
 function createWorkerError(filepath: string, reason: unknown): Error {

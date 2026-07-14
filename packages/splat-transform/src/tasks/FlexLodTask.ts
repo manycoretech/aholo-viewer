@@ -1,6 +1,7 @@
 import fs from 'node:fs';
-import { type ISingleSplat, SplatData } from '../SplatData.js';
+import { SplatData } from '../SplatData.js';
 import { type Context, BaseTask } from './BaseTask.js';
+import { createSingleSplat } from '../utils/index.js';
 
 export interface Config {
     input: string;
@@ -31,23 +32,7 @@ export class FlexLodTask extends BaseTask<Config> {
 
         const raw = new SplatData().init(target, splat.shDegree);
 
-        const single: ISingleSplat = {
-            x: 0,
-            y: 0,
-            z: 0,
-            sx: 0,
-            sy: 0,
-            sz: 0,
-            qx: 0,
-            qy: 0,
-            qz: 0,
-            qw: 0,
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-            shN: new Array(splat.shCounts),
-        };
+        const single = createSingleSplat(splat.shCounts);
         const shN = single.shN;
         for (let i = 0; i < target; i++) {
             splat.get(sorted[i], single);

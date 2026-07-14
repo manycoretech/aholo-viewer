@@ -11,16 +11,17 @@ logger.silent = true;
 
 parentPort.on('message', async e => {
     try {
-        const { filepath, data, enableMortonSort, compressLevel, spzVersion } = e as {
+        const { filepath, data, enableMortonSort, version, highPrecision, compressLevel } = e as {
             filepath: string;
             data: ISplatData;
             enableMortonSort: boolean;
+            version?: number;
+            highPrecision?: boolean;
             compressLevel?: number;
-            spzVersion?: number;
         };
         const splatData = new SplatData();
         splatData.deserialize(data);
-        await writeSplatFile(filepath, splatData, enableMortonSort, compressLevel, spzVersion);
+        await writeSplatFile(filepath, splatData, enableMortonSort, compressLevel, highPrecision, version);
         parentPort!.postMessage({ success: true, content: '' });
     } catch (e) {
         parentPort!.postMessage({ success: false, content: e.toString() });

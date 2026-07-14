@@ -1,6 +1,6 @@
 import { unzipSync } from 'fflate';
 import type { ISingleSplat, SplatData } from '../SplatData.js';
-import { extractFromRootDir } from '../utils/index.js';
+import { createSingleSplat, extractFromRootDir } from '../utils/index.js';
 import type { IFile } from './IFile.js';
 
 interface MetaAttribute {
@@ -143,24 +143,8 @@ export class LccFile implements IFile {
             shcoef: { min: shMin, max: shMax },
         } = attributes;
 
-        const single: ISingleSplat = {
-            x: 0,
-            y: 0,
-            z: 0,
-            sx: 0,
-            sy: 0,
-            sz: 0,
-            qx: 0,
-            qy: 0,
-            qz: 0,
-            qw: 0,
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-            shN: [],
-        };
-        const shData = new Array(45);
+        const single: ISingleSplat = createSingleSplat(45);
+        const shData = single.shN;
         let index = BlockOffset;
         for (let i = 0; i < infos.length; i++) {
             const info = infos[i];
@@ -208,7 +192,7 @@ export class LccFile implements IFile {
         data.finishBlock();
     }
 
-    async write(_stream: WritableStream<Uint8Array>, _data: SplatData) {
+    async write(_stream: WritableStream<Uint8Array>, _data: SplatData, _indices: Uint32Array) {
         throw new Error('Method not implemented.');
     }
 }
