@@ -107,6 +107,10 @@ const cli = yargs(hideBin(process.argv))
         describe: 'Generate auto-lod for gaussian splat file',
         builder(argv) {
             argv.option('ratio', { describe: 'ratio', type: 'number' })
+                .option('split-normal', {
+                    describe: 'block split reference normal',
+                    choices: [0, 1, 2, 3, 'None', 'X', 'Y', 'Z'],
+                })
                 .positional('input', { describe: 'input filepath', type: 'string' })
                 .positional('output', { describe: 'output filepath', type: 'string' });
         },
@@ -115,7 +119,11 @@ const cli = yargs(hideBin(process.argv))
                 version: 1,
                 tasks: [
                     { id: '0', type: 'Read', config: { inputs: [argv.input], output: 'cache0' } },
-                    { id: '1', type: 'AutoLod', config: { input: 'cache0', output: 'cache0', ratio: argv.ratio } },
+                    {
+                        id: '1',
+                        type: 'AutoLod',
+                        config: { input: 'cache0', output: 'cache0', ratio: argv.ratio, splitNormal: argv.splitNormal },
+                    },
                     { id: '2', type: 'Write', config: { input: 'cache0', output: argv.output } },
                 ],
             });
@@ -124,14 +132,18 @@ const cli = yargs(hideBin(process.argv))
     .command('lod:auto-chunk <input> <output>', false, {
         describe: 'Generate auto-chunk-lod for gaussian splat file',
         builder(argv) {
-            argv.option('type', {
-                alias: 't',
-                choices: ['ply', 'spz', 'splat', 'sog', 'esz'],
-                demandOption: true,
-                describe: 'output file type',
-                type: 'string',
-            })
-                .option('max-chunk-counts', { describe: 'max chunk counts', type: 'number' })
+            argv.option('max-chunk-counts', { describe: 'max chunk counts', type: 'number' })
+                .option('type', {
+                    alias: 't',
+                    choices: ['ply', 'spz', 'splat', 'sog', 'esz'],
+                    demandOption: true,
+                    describe: 'output file type',
+                    type: 'string',
+                })
+                .option('split-normal', {
+                    describe: 'block split reference normal',
+                    choices: [0, 1, 2, 3, 'None', 'X', 'Y', 'Z'],
+                })
                 .positional('input', { describe: 'input filepath', type: 'string' })
                 .positional('output', { describe: 'output directory', type: 'string' });
         },
@@ -147,6 +159,7 @@ const cli = yargs(hideBin(process.argv))
                             input: 'cache0',
                             output: 'cache0',
                             type: argv.type,
+                            splitNormal: argv.splitNormal,
                             maxChunkCounts: argv.maxChunkCounts,
                         },
                     },
@@ -158,14 +171,18 @@ const cli = yargs(hideBin(process.argv))
     .command('split <input> <output>', false, {
         describe: 'Split splat file into blocks',
         builder(argv) {
-            argv.option('type', {
-                alias: 't',
-                choices: ['ply', 'spz', 'splat', 'sog'],
-                demandOption: true,
-                describe: 'output file type',
-                type: 'string',
-            })
-                .option('precision', { describe: 'precision', type: 'number' })
+            argv.option('precision', { describe: 'precision', type: 'number' })
+                .option('type', {
+                    alias: 't',
+                    choices: ['ply', 'spz', 'splat', 'sog'],
+                    demandOption: true,
+                    describe: 'output file type',
+                    type: 'string',
+                })
+                .option('split-normal', {
+                    describe: 'block split reference normal',
+                    choices: [0, 1, 2, 3, 'None', 'X', 'Y', 'Z'],
+                })
                 .positional('input', { describe: 'input filepath', type: 'string' })
                 .positional('output', { describe: 'output directory', type: 'string' });
         },
@@ -177,7 +194,13 @@ const cli = yargs(hideBin(process.argv))
                     {
                         id: '1',
                         type: 'SplitSplatTask',
-                        config: { input: 'cache0', output: 'cache0', type: argv.type, blockPrecision: argv.precision },
+                        config: {
+                            input: 'cache0',
+                            output: 'cache0',
+                            type: argv.type,
+                            blockPrecision: argv.precision,
+                            splitNormal: argv.splitNormal,
+                        },
                     },
                     { id: '2', type: 'Write', config: { input: 'cache0', output: argv.output } },
                 ],

@@ -1,5 +1,9 @@
 # Changelog
 
+## DEV
+
+- split support reference normal axis
+
 ## 1.7.0
 
 - rename files, move workers to standalone directories

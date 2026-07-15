@@ -170,12 +170,12 @@ inline std::vector<Napi::Float32Array> write_splat(
 namespace node_api::splat {
 Napi::Value generate_lod(const Napi::CallbackInfo& info) {
     auto env = info.Env();
-    if (info.Length() < 7 || !info[0].IsArray() || !info[1].IsNumber() || !info[2].IsBuffer() || !info[3].IsNumber() || !info[4].IsNumber() || !info[5].IsNumber() || !info[6].IsObject()) {
+    if (info.Length() < 8 || !info[0].IsArray() || !info[1].IsNumber() || !info[2].IsBuffer() || !info[3].IsNumber() || !info[4].IsNumber() || !info[5].IsNumber() || !info[6].IsNumber() || !info[7].IsObject()) {
         Napi::TypeError::New(env, "Wrong Arguments").ThrowAsJavaScriptException();
         return env.Null();
     }
 
-    auto& pool = node_api::threading::ThreadPool::Unwrap(info[6].As<Napi::Object>())->impl();
+    auto& pool = node_api::threading::ThreadPool::Unwrap(info[7].As<Napi::Object>())->impl();
     size_t thread_count = pool.thread_count();
 
     auto sh_size = info[1].As<Napi::Number>().Uint32Value();
@@ -191,7 +191,8 @@ Napi::Value generate_lod(const Napi::CallbackInfo& info) {
         }
         blocks = ::splat::block::split(
             read_splat(buffers, sh_size, pool),
-            info[3].As<Napi::Number>().DoubleValue());
+            info[3].As<Napi::Number>().DoubleValue(),
+            static_cast<::splat::block::SplitNormal>(info[4].As<Napi::Number>().Int32Value()));
     }
 
     auto level_parameters = info[2].As<Napi::Buffer<::splat::lod::SplatLevelParameters>>();
@@ -212,8 +213,8 @@ Napi::Value generate_lod(const Napi::CallbackInfo& info) {
     {
         auto futures = std::vector<std::future<::splat::lod::SplatLod>>();
         auto used_threads = std::min(blocks.size(), thread_count);
-        auto min_size = info[4].As<Napi::Number>().Uint32Value();
-        auto max_step = info[5].As<Napi::Number>().Uint32Value();
+        auto min_size = info[5].As<Napi::Number>().Uint32Value();
+        auto max_step = info[6].As<Napi::Number>().Uint32Value();
 
         futures.reserve(blocks.size());
 
@@ -291,12 +292,12 @@ Napi::Value generate_lod(const Napi::CallbackInfo& info) {
 
 Napi::Value split(const Napi::CallbackInfo& info) {
     auto env = info.Env();
-    if (info.Length() < 4 || !info[0].IsArray() || !info[1].IsNumber() || !info[2].IsNumber() || !info[3].IsObject()) {
+    if (info.Length() < 5 || !info[0].IsArray() || !info[1].IsNumber() || !info[2].IsNumber() || !info[3].IsNumber() || !info[4].IsObject()) {
         Napi::TypeError::New(env, "Wrong Arguments").ThrowAsJavaScriptException();
         return env.Null();
     }
 
-    auto& pool = node_api::threading::ThreadPool::Unwrap(info[3].As<Napi::Object>())->impl();
+    auto& pool = node_api::threading::ThreadPool::Unwrap(info[4].As<Napi::Object>())->impl();
     size_t thread_count = pool.thread_count();
 
     auto sh_size = info[1].As<Napi::Number>().Uint32Value();
@@ -312,7 +313,8 @@ Napi::Value split(const Napi::CallbackInfo& info) {
         }
         blocks = ::splat::block::split(
             read_splat(buffers, sh_size, pool),
-            info[2].As<Napi::Number>().DoubleValue());
+            info[2].As<Napi::Number>().DoubleValue(),
+            static_cast<::splat::block::SplitNormal>(info[3].As<Napi::Number>().Int32Value()));
     }
 
     auto buffers_per_splat = sh_size + SPLAT_TABLE_SH_OFFSET;

@@ -55,30 +55,54 @@ struct RefSplat {
     }
 };
 
-std::array<Eigen::AlignedBox3f, 8> split_box(const Eigen::AlignedBox3f& box) {
-    auto center = box.center();
-    return {
-        Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomLeftFloor)),
-        Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomRightFloor)),
-        Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopLeftFloor)),
-        Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopRightFloor)),
-        Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomLeftCeil)),
-        Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomRightCeil)),
-        Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopLeftCeil)),
-        Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopRightCeil)),
-    };
+constexpr std::array<Eigen::AlignedBox3f::CornerType, 8> BOX_CORNERS = {
+    Eigen::AlignedBox3f::CornerType::BottomLeftFloor,
+    Eigen::AlignedBox3f::CornerType::BottomRightFloor,
+    Eigen::AlignedBox3f::CornerType::TopLeftFloor,
+    Eigen::AlignedBox3f::CornerType::TopRightFloor,
+    Eigen::AlignedBox3f::CornerType::BottomLeftCeil,
+    Eigen::AlignedBox3f::CornerType::BottomRightCeil,
+    Eigen::AlignedBox3f::CornerType::TopLeftCeil,
+    Eigen::AlignedBox3f::CornerType::TopRightCeil
+};
+
+std::vector<Eigen::AlignedBox3f> split_box(const Eigen::AlignedBox3f& box, splat::block::SplitNormal normal) {
+    Eigen::Vector3f center = box.center();
+    if (normal == splat::block::SplitNormal::None) {
+        return {
+            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomLeftFloor)),
+            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomRightFloor)),
+            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopLeftFloor)),
+            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopRightFloor)),
+            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomLeftCeil)),
+            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomRightCeil)),
+            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopLeftCeil)),
+            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopRightCeil)),
+        };
+    } else {
+        auto dim = static_cast<size_t>(normal) - 1;
+        auto flag = 1 << dim;
+        center[dim] = box.min()[dim]; // always min in normal dim.
+        auto result = std::vector<Eigen::AlignedBox3f>();
+        result.reserve(4);
+        helpers::container::append_range(result, BOX_CORNERS | std::views::filter([flag](Eigen::AlignedBox3f::CornerType corner_type) -> bool {
+            return corner_type & flag != 0;
+        }) | std::views::transform([&center, &box](Eigen::AlignedBox3f::CornerType corner_type) -> Eigen::AlignedBox3f {
+            return Eigen::AlignedBox3f().extend(center).extend(box.corner(corner_type));
+        }));
+        return result;
+    }
 }
 
-std::array<RefSplat, 8> split_block(RefSplat& splat, size_t max_block_size) {
-    auto boxes = split_box(splat.box);
-    std::array<RefSplat, 8> result { RefSplat(splat),
-        RefSplat(splat),
-        RefSplat(splat),
-        RefSplat(splat),
-        RefSplat(splat),
-        RefSplat(splat),
-        RefSplat(splat),
-        RefSplat(splat) };
+std::vector<RefSplat> split_block(RefSplat& splat, size_t max_block_size, splat::block::SplitNormal normal) {
+    auto boxes = split_box(splat.box, normal);
+    std::vector<RefSplat> result;
+
+    result.reserve(boxes.size());
+
+    for (auto i = 0; i < boxes.size(); i++) {
+        result.emplace_back(splat);
+    }
 
     for (auto& r : result) {
         r.gaussians.reserve(splat.gaussians.size() / 4);
@@ -88,7 +112,7 @@ std::array<RefSplat, 8> split_block(RefSplat& splat, size_t max_block_size) {
         auto& box = splat.source.gaussians[index].bounding_box;
         auto max_interaction = 0.0;
         auto max_interaction_index = 0;
-        for (auto i = 0; i < 8; i++) {
+        for (auto i = 0; i < boxes.size(); i++) {
             auto intersection = boxes[i].intersection(box);
             if (!intersection.isEmpty()) {
                 auto current = intersection.volume();
@@ -111,7 +135,7 @@ std::array<RefSplat, 8> split_block(RefSplat& splat, size_t max_block_size) {
 } // namespace
 
 namespace splat::block::detail {
-std::vector<Splat> split(const Splat& splat, size_t max_block_size) {
+std::vector<Splat> split(const Splat& splat, size_t max_block_size, SplitNormal normal) {
     if (splat.gaussians.size() <= max_block_size) {
         return std::vector({ splat });
     }
@@ -124,7 +148,7 @@ std::vector<Splat> split(const Splat& splat, size_t max_block_size) {
         auto r = std::move(queue.front());
         queue.pop();
         if (r.need_split) {
-            for (auto& splitted : split_block(r, max_block_size)) {
+            for (auto& splitted : split_block(r, max_block_size, normal)) {
                 queue.emplace(std::move(splitted));
             }
         } else if (r.gaussians.size() > 0) {

@@ -1,12 +1,13 @@
 import type { SplatData } from '../SplatData.js';
 import { combineSplatData, computeDenseBox } from '../utils/index.js';
 import { type Context, BaseTask, type SingleFile } from './BaseTask.js';
-import { generateSplatLod, type LevelParameter } from '../native/index.js';
+import { generateSplatLod, SplitNormal, type LevelParameter } from '../native/index.js';
 
 export interface Config {
     input: string;
     output: string;
     type: string;
+    splitNormal?: SplitNormal | keyof typeof SplitNormal;
     maxChunkCounts?: number;
     levels?: LevelParameter[];
 }
@@ -33,7 +34,14 @@ const DefaultLevels: LevelParameter[] = [
 
 export class AutoChunkLodTask extends BaseTask<Config> {
     override async exec(config: Config, { logger, resources }: Context) {
-        const { input, output, type, maxChunkCounts = 400000, levels = DefaultLevels } = config;
+        const {
+            input,
+            output,
+            type,
+            maxChunkCounts = 400000,
+            levels = DefaultLevels,
+            splitNormal = SplitNormal.None,
+        } = config;
         const inputData = resources.get(input);
         // TODO: array support...
         const splat = Array.isArray(inputData) ? (inputData[0].content as SplatData) : (inputData as SplatData);
@@ -50,6 +58,7 @@ export class AutoChunkLodTask extends BaseTask<Config> {
                 splat,
                 levels,
                 Math.min(1, maxChunkCounts / splat.counts),
+                typeof splitNormal === 'string' ? SplitNormal[splitNormal] : splitNormal,
                 2000,
                 20,
             );

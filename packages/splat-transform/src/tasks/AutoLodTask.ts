@@ -1,18 +1,19 @@
 import type { SplatData } from '../SplatData.js';
 import { combineSplatData } from '../utils/index.js';
-import { generateSplatLod } from '../native/index.js';
+import { generateSplatLod, SplitNormal } from '../native/index.js';
 import { type Context, BaseTask } from './BaseTask.js';
 
 export interface Config {
     input: string;
     output: string;
+    splitNormal?: SplitNormal | keyof typeof SplitNormal;
     counts?: number;
     ratio?: number;
 }
 
 export class AutoLodTask extends BaseTask<Config> {
     override async exec(config: Config, { logger, resources }: Context) {
-        const { input, output, counts = Infinity, ratio = 0.3 } = config;
+        const { input, output, counts = Infinity, ratio = 0.3, splitNormal = SplitNormal.None } = config;
         const inputData = resources.get(input);
         // TODO: array support...
         const splat = Array.isArray(inputData) ? (inputData[0].content as SplatData) : (inputData as SplatData);
@@ -28,6 +29,7 @@ export class AutoLodTask extends BaseTask<Config> {
                 { precision: target / splat.counts, scaleBoost: 1.0 },
             ],
             0.2,
+            typeof splitNormal === 'string' ? SplitNormal[splitNormal] : splitNormal,
             2000,
             20,
         );

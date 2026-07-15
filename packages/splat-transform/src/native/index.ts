@@ -3,6 +3,13 @@ import { SplatData } from '../SplatData.js';
 import { Buffer } from 'node:buffer';
 import { getNativePackageName } from './utils.js';
 
+export enum SplitNormal {
+    None,
+    X,
+    Y,
+    Z,
+}
+
 declare namespace NativeModule {
     interface SplatLodResult {
         /**
@@ -51,11 +58,18 @@ declare namespace NativeModule {
             shSize: number,
             parameters: Buffer,
             blockPrecision: number,
+            splitNormal: SplitNormal,
             minSize: number,
             maxStep: number,
             threadPool: ThreadPool,
         ): SplatLodResult;
-        split_splat(data: Buffer[], shSize: number, blockPrecision: number, threadPool: ThreadPool): SplatSplitResult;
+        split_splat(
+            data: Buffer[],
+            shSize: number,
+            blockPrecision: number,
+            splitNormal: SplitNormal,
+            threadPool: ThreadPool,
+        ): SplatSplitResult;
         webp_encode_rgba(color: Buffer, width: number, height: number, quality: number): Buffer;
         webp_encode_rgba_lossless(color: Buffer, width: number, height: number): Buffer;
         webp_decode_rgba(data: Buffer): {
@@ -148,6 +162,7 @@ export function generateSplatLod(
     splat: SplatData,
     levelParameters: LevelParameter[],
     blockPrecision: number,
+    splitNormal: number,
     minSize: number,
     maxStep: number,
 ): BlockedResult {
@@ -178,6 +193,7 @@ export function generateSplatLod(
         splat.shCounts,
         buffer,
         blockPrecision,
+        splitNormal,
         minSize,
         maxStep,
         defaultThreadPool(),
@@ -220,7 +236,7 @@ export function generateSplatLod(
     return { splats, blocks };
 }
 
-export function splitSplat(splat: SplatData, blockPrecision: number): BlockedResult {
+export function splitSplat(splat: SplatData, blockPrecision: number, splitNormal: SplitNormal): BlockedResult {
     if (splat.counts === 0) {
         return {
             splats: [splat],
@@ -237,6 +253,7 @@ export function splitSplat(splat: SplatData, blockPrecision: number): BlockedRes
         inputBuffers,
         splat.shCounts,
         blockPrecision,
+        splitNormal,
         defaultThreadPool(),
     );
     const blocks: BlockedSplats[] = [];
