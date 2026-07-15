@@ -8,7 +8,10 @@ import {
 } from '@manycore/aholo-viewer';
 import type { RenderRuntime, RuntimeConfigPanel, RuntimeIndexedDBStorage } from '../../client/render-runtime.js';
 
-const LodConfig: Omit<SplatUtils.LodConfig, 'debuggerEnabled' | 'debuggerType' | 'distanceStep'> & {
+const LodConfig: Omit<
+    SplatUtils.LodConfig,
+    'debuggerEnabled' | 'debuggerType' | 'distanceStep' | 'mergeNodeEnabled'
+> & {
     highPrecisionEnabled: boolean;
     maxBudgetMillions: number;
 } = {
