@@ -86,7 +86,7 @@ std::vector<Eigen::AlignedBox3f> split_box(const Eigen::AlignedBox3f& box, splat
         auto result = std::vector<Eigen::AlignedBox3f>();
         result.reserve(4);
         helpers::container::append_range(result, BOX_CORNERS | std::views::filter([flag](Eigen::AlignedBox3f::CornerType corner_type) -> bool {
-            return corner_type & flag != 0;
+            return (corner_type & flag) != 0;
         }) | std::views::transform([&center, &box](Eigen::AlignedBox3f::CornerType corner_type) -> Eigen::AlignedBox3f {
             return Eigen::AlignedBox3f().extend(center).extend(box.corner(corner_type));
         }));
