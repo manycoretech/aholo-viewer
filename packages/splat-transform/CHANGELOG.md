@@ -3,6 +3,7 @@
 ## DEV
 
 - split support reference normal axis
+- merge small neighbor blocks
 
 ## 1.7.0
 

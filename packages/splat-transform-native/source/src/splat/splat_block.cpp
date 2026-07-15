@@ -8,6 +8,11 @@
 #include <vector>
 
 namespace {
+struct SplittedBox {
+    Eigen::AlignedBox3f box;
+    std::vector<size_t> neighbors;
+};
+
 struct RefSplat {
     const splat::Splat& source;
     std::vector<size_t> gaussians;
@@ -66,30 +71,51 @@ constexpr std::array<Eigen::AlignedBox3f::CornerType, 8> BOX_CORNERS = {
     Eigen::AlignedBox3f::CornerType::TopRightCeil
 };
 
-std::vector<Eigen::AlignedBox3f> split_box(const Eigen::AlignedBox3f& box, splat::block::SplitNormal normal) {
+std::vector<SplittedBox> split_box(const Eigen::AlignedBox3f& box, splat::block::SplitNormal normal) {
     Eigen::Vector3f center = box.center();
     if (normal == splat::block::SplitNormal::None) {
         return {
-            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomLeftFloor)),
-            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomRightFloor)),
-            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopLeftFloor)),
-            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopRightFloor)),
-            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomLeftCeil)),
-            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomRightCeil)),
-            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopLeftCeil)),
-            Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopRightCeil)),
+            SplittedBox {
+                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomLeftFloor)),
+                .neighbors = { 1, 2, 4 } },
+            SplittedBox {
+                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomRightFloor)),
+                .neighbors = { 0, 3, 5 } },
+            SplittedBox {
+                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopLeftFloor)),
+                .neighbors = { 0, 3, 6 } },
+            SplittedBox {
+                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopRightFloor)),
+                .neighbors = { 1, 2, 7 } },
+            SplittedBox {
+                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomLeftCeil)),
+                .neighbors = { 0, 5, 6 } },
+            SplittedBox {
+                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomRightCeil)),
+                .neighbors = { 1, 4, 7 } },
+            SplittedBox {
+                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopLeftCeil)),
+                .neighbors = { 2, 4, 7 } },
+            SplittedBox {
+                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopRightCeil)),
+                .neighbors = { 3, 5, 6 } },
         };
     } else {
         auto dim = static_cast<size_t>(normal) - 1;
         auto flag = 1 << dim;
         center[dim] = box.min()[dim]; // always min in normal dim.
-        auto result = std::vector<Eigen::AlignedBox3f>();
+        auto result = std::vector<SplittedBox>();
         result.reserve(4);
         helpers::container::append_range(result, BOX_CORNERS | std::views::filter([flag](Eigen::AlignedBox3f::CornerType corner_type) -> bool {
             return (corner_type & flag) != 0;
-        }) | std::views::transform([&center, &box](Eigen::AlignedBox3f::CornerType corner_type) -> Eigen::AlignedBox3f {
-            return Eigen::AlignedBox3f().extend(center).extend(box.corner(corner_type));
+        }) | std::views::transform([&center, &box](Eigen::AlignedBox3f::CornerType corner_type) -> SplittedBox {
+            return SplittedBox {
+                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(corner_type)),
+            };
         }));
+        for (size_t i = 0; i < result.size(); i++) {
+            result[i].neighbors = { i ^ 1, i ^ 2 };
+        }
         return result;
     }
 }
@@ -113,7 +139,7 @@ std::vector<RefSplat> split_block(RefSplat& splat, size_t max_block_size, splat:
         auto max_interaction = 0.0;
         auto max_interaction_index = 0;
         for (auto i = 0; i < boxes.size(); i++) {
-            auto intersection = boxes[i].intersection(box);
+            auto intersection = boxes[i].box.intersection(box);
             if (!intersection.isEmpty()) {
                 auto current = intersection.volume();
                 if (current > max_interaction) {
@@ -126,8 +152,32 @@ std::vector<RefSplat> split_block(RefSplat& splat, size_t max_block_size, splat:
     }
 
     for (auto i = 0; i < result.size(); i++) {
-        result[i].box = boxes[i];
+        result[i].box = boxes[i].box;
         result[i].compute_need_split(splat.box, max_block_size);
+    }
+
+    std::vector<bool> used;
+    used.assign(result.size(), false);
+
+    for (auto i = 0; i < result.size(); i++) {
+        if (!result[i].need_split && !used[i]) {
+            for (auto n : boxes[i].neighbors) {
+                if (!used[n]) {
+                    if (result[i].gaussians.size() + result[n].gaussians.size() <= max_block_size) {
+                        result[i].gaussians.reserve(result[i].gaussians.size() + result[n].gaussians.size());
+                        // merge neighbor boxes
+                        helpers::container::append_range(result[i].gaussians, result[n].gaussians);
+                        result[i].box.extend(result[n].box);
+                        // cleanup result n
+                        result[n].box.setEmpty();
+                        result[n].gaussians.clear();
+                        used[i] = true;
+                        used[n] = true;
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     return result;
