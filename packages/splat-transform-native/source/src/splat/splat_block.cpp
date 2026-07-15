@@ -120,6 +120,44 @@ std::vector<SplittedBox> split_box(const Eigen::AlignedBox3f& box, splat::block:
     }
 }
 
+std::vector<std::pair<size_t, size_t>> find_mergeable_pairs(
+    const std::vector<RefSplat>& splats, const std::vector<SplittedBox>& boxes, size_t max_block_size) {
+    std::vector<bool> unavailable(splats.size(), false);
+    std::vector<std::pair<size_t, size_t>> current;
+    std::vector<std::pair<size_t, size_t>> best;
+
+    auto search = [&](auto&& self, size_t index) -> void {
+        while (index < splats.size() && unavailable[index]) {
+            index++;
+        }
+        if (index == splats.size()) {
+            if (current.size() > best.size()) {
+                best = current;
+            }
+            return;
+        }
+
+        unavailable[index] = true;
+        if (!splats[index].need_split && !splats[index].gaussians.empty()) {
+            for (auto neighbor : boxes[index].neighbors) {
+                if (!unavailable[neighbor] && !splats[neighbor].need_split && !splats[neighbor].gaussians.empty() &&
+                    splats[index].gaussians.size() + splats[neighbor].gaussians.size() <= max_block_size) {
+                    unavailable[neighbor] = true;
+                    current.emplace_back(index, neighbor);
+                    self(self, index + 1);
+                    current.pop_back();
+                    unavailable[neighbor] = false;
+                }
+            }
+        }
+        self(self, index + 1);
+        unavailable[index] = false;
+    };
+
+    search(search, 0);
+    return best;
+}
+
 std::vector<RefSplat> split_block(RefSplat& splat, size_t max_block_size, splat::block::SplitNormal normal) {
     auto boxes = split_box(splat.box, normal);
     std::vector<RefSplat> result;
@@ -156,28 +194,15 @@ std::vector<RefSplat> split_block(RefSplat& splat, size_t max_block_size, splat:
         result[i].compute_need_split(splat.box, max_block_size);
     }
 
-    std::vector<bool> used;
-    used.assign(result.size(), false);
-
-    for (auto i = 0; i < result.size(); i++) {
-        if (!result[i].need_split && !used[i]) {
-            for (auto n : boxes[i].neighbors) {
-                if (!used[n]) {
-                    if (result[i].gaussians.size() + result[n].gaussians.size() <= max_block_size) {
-                        result[i].gaussians.reserve(result[i].gaussians.size() + result[n].gaussians.size());
-                        // merge neighbor boxes
-                        helpers::container::append_range(result[i].gaussians, result[n].gaussians);
-                        result[i].box.extend(result[n].box);
-                        // cleanup result n
-                        result[n].box.setEmpty();
-                        result[n].gaussians.clear();
-                        used[i] = true;
-                        used[n] = true;
-                        break;
-                    }
-                }
-            }
-        }
+    // try merge small block neighbors
+    for (auto [i, n] : find_mergeable_pairs(result, boxes, max_block_size)) {
+        result[i].gaussians.reserve(result[i].gaussians.size() + result[n].gaussians.size());
+        // merge neighbor boxes
+        helpers::container::append_range(result[i].gaussians, result[n].gaussians);
+        result[i].box.extend(result[n].box);
+        // cleanup neighbor result
+        result[n].box.setEmpty();
+        result[n].gaussians.clear();
     }
 
     return result;
