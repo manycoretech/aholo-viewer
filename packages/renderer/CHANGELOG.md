@@ -1,5 +1,12 @@
 # ChangeLOG
 
+## 1.6.1
+
+1. Features
+    - add `SplatUtils.LodConfig.mergeNodeEnabled` to control LOD node merging and reduce scheduling peaks.
+2. Fixes
+    - fix incomplete LOD coverage when the total splat count of the lowest levels exceeds `maxBudget`.
+
 ## 1.6.0
 
 1. Features
