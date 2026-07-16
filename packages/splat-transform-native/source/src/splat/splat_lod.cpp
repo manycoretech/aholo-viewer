@@ -250,7 +250,7 @@ static double compute_edge_cost(const splat::Splat& splat, const std::vector<Gau
 }
 
 inline static bool validate_gaussian(const splat::Gaussian& gaussian) {
-    return gaussian.scale.cwiseNotEqual(0.0f).all() &&
+    return gaussian.scale.cwiseGreater(0.0f).all() &&
            gaussian.opacity >= OPACITY_PRUNE_THRESHOLD;
 }
 } // namespace

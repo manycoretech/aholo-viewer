@@ -55,7 +55,6 @@ struct RefSplat {
             .gaussians = std::move(gaussians),
             .bounding_box = this->box,
         };
-        result.compute_compact_bounding_box();
         return result;
     }
 };
@@ -227,7 +226,10 @@ std::vector<Splat> split(const Splat& splat, size_t max_block_size, SplitNormal 
                 queue.emplace(std::move(splitted));
             }
         } else if (r.gaussians.size() > 0) {
-            results.emplace_back(r.to_owned());
+            auto&& result = r.to_owned();
+            // use compacted bonding box to reduce outlier
+            result.compute_compact_bounding_box();
+            results.emplace_back(std::move(result));
         }
     }
 

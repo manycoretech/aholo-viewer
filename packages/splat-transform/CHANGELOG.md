@@ -4,6 +4,7 @@
 
 - split support reference normal axis
 - merge small neighbor blocks
+- strict gaussian validation
 
 ## 1.7.0
 
