@@ -47,6 +47,8 @@ struct Gaussian {
     void compute_covariance();
     void decompose_covariance();
     void compute_bounding_box(float k = 3.0f);
+    void make_valid();
+    bool validate(float opacity_prune = 0.0f) const;
     float area() const;
 };
 

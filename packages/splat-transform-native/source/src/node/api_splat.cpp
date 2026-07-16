@@ -76,6 +76,7 @@ inline splat::Splat read_splat(const std::vector<std::span<float>>& buffers, siz
             }
 
             gaussian.rotation.normalize();
+            gaussian.make_valid();
             gaussian.compute_covariance();
             gaussian.compute_bounding_box();
         }

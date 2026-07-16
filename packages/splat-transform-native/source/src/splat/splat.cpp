@@ -162,6 +162,25 @@ float Gaussian::area() const {
     return 4.0f * std::numbers::pi_v<float> * std::pow(numerator / 3.0f, 1.0f / P);
 }
 
+bool Gaussian::validate(float opacity_prune) const {
+    return this->scale.allFinite() &&
+           this->scale.cwiseGreater(0.0f).all() &&
+           std::isfinite(this->opacity) &&
+           this->opacity >= opacity_prune;
+}
+
+void Gaussian::make_valid() {
+    if (!this->scale.allFinite() || !this->scale.cwiseGreater(0.0f).all()) {
+        this->scale = Eigen::Vector3f(
+            std::numeric_limits<float>::epsilon(),
+            std::numeric_limits<float>::epsilon(),
+            std::numeric_limits<float>::epsilon());
+    }
+    if (!std::isfinite(this->opacity)) {
+        this->opacity = 0.0f;
+    }
+}
+
 void Splat::compute_bounding_box() {
     this->bounding_box = Eigen::AlignedBox3f();
     for (auto& gaussian : this->gaussians) {

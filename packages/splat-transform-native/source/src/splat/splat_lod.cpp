@@ -248,11 +248,6 @@ static double compute_edge_cost(const splat::Splat& splat, const std::vector<Gau
 
     return geo + c_sh;
 }
-
-inline static bool validate_gaussian(const splat::Gaussian& gaussian) {
-    return gaussian.scale.cwiseGreater(0.0f).all() &&
-           gaussian.opacity >= OPACITY_PRUNE_THRESHOLD;
-}
 } // namespace
 
 namespace splat::lod::detail {
@@ -274,7 +269,9 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
 
     // prune gaussians
     current.gaussians.reserve(input.gaussians.size());
-    helpers::container::append_range(current.gaussians, input.gaussians | std::views::filter(validate_gaussian));
+    helpers::container::append_range(current.gaussians, input.gaussians | std::views::filter([](const splat::Gaussian& g) -> bool {
+        return g.validate(OPACITY_PRUNE_THRESHOLD);
+    }));
 
     while (current.gaussians.size() > target_count && current.gaussians.size() > 0 && step < max_step) {
         GaussianCloud cloud(current);
@@ -362,7 +359,7 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
         for (auto& pair : pairs) {
             auto [u, v] = pair;
             auto g = merge_gaussians(current, { u, v }, scale_boost);
-            if (validate_gaussian(g)) {
+            if (g.validate(OPACITY_PRUNE_THRESHOLD)) {
                 generated.gaussians.push_back(std::move(g));
             }
         }

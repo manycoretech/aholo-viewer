@@ -4,7 +4,7 @@
 
 - split support reference normal axis
 - merge small neighbor blocks
-- strict gaussian validation
+- strict gaussian validation, try make input valid.
 
 ## 1.7.0
 
