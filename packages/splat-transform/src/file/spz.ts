@@ -1,8 +1,7 @@
-import { Duplex } from 'node:stream';
 import { createGzip, createZstdDecompress, zstdCompressSync, constants as zlibConstant } from 'node:zlib';
 import { ColIdx, type SplatData } from '../SplatData.js';
 import { SH_C0, SH_MAPS } from '../constant.js';
-import { ByteStreamCursor, clamp, StreamChunkDecoder, fromHalf } from '../utils/index.js';
+import { ByteStreamCursor, clamp, StreamChunkDecoder, fromHalf, duplexToWeb } from '../utils/index.js';
 import type { IFile } from './IFile.js';
 
 const SPZ_MAGIC = 0x5053474e; // NGSP = Niantic gaussian splat
@@ -162,7 +161,7 @@ async function pipeZstdStream(
     uncompressedSize: number,
     streamIndex: number,
 ) {
-    const zstd = Duplex.toWeb(createZstdDecompress({ chunkSize: STREAM_CHUNK_BYTE_LENGTH }));
+    const zstd = duplexToWeb(createZstdDecompress({ chunkSize: STREAM_CHUNK_BYTE_LENGTH }));
     const zstdWriter = zstd.writable.getWriter();
     let produced = 0;
     const pipePromise = zstd.readable.pipeTo(
@@ -502,7 +501,7 @@ export class SpzFile implements IFile {
         if (this.compressLevel === -1) {
             writer = writeStream.getWriter();
         } else {
-            const gzip = Duplex.toWeb(createGzip({ level: this.compressLevel, chunkSize: STREAM_CHUNK_BYTE_LENGTH }));
+            const gzip = duplexToWeb(createGzip({ level: this.compressLevel, chunkSize: STREAM_CHUNK_BYTE_LENGTH }));
             writer = gzip.writable.getWriter();
             pipePromise = gzip.readable.pipeTo(writeStream);
         }

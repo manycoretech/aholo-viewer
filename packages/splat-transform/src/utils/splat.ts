@@ -1,9 +1,9 @@
 import fs from 'node:fs';
-import { Writable } from 'node:stream';
 import { unzipSync } from 'fflate';
 import { type IFile, PlyFile, SpzFile, KsplatFile, SplatFile, SogFile, LccFile, EszFile } from '../file/index.js';
 import { ColIdx, type ISingleSplat, SplatData } from '../SplatData.js';
 import { SH_MAPS } from '../constant.js';
+import { writableToWeb } from './stream.js';
 
 export interface ISplatData {
     counts: number;
@@ -173,7 +173,7 @@ export async function writeSplatFile(
         }
     }
     const file = createSplatFile(filepath, undefined, compressLevel, highPrecision, version);
-    const stream = Writable.toWeb(fs.createWriteStream(filepath)) as WritableStream<Uint8Array>;
+    const stream = writableToWeb(fs.createWriteStream(filepath)) as WritableStream<Uint8Array>;
     await file.write(stream, data, indices);
 }
 

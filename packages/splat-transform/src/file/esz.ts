@@ -1,4 +1,3 @@
-import { Duplex } from 'node:stream';
 import { createZstdCompress, createZstdDecompress } from 'node:zlib';
 import { ColIdx, type SplatData } from '../SplatData.js';
 import {
@@ -13,6 +12,7 @@ import {
     computeDenseBox,
     ByteStreamCursor,
     StreamChunkDecoder,
+    duplexToWeb,
 } from '../utils/index.js';
 import type { IFile } from './IFile.js';
 import { decodeWebP, encodeWebP, WebPLosslessProfile } from '../native/index.js';
@@ -88,7 +88,7 @@ export class EszFile implements IFile {
      */
     layout: PackLayout;
 
-    constructor(highPrecision: boolean = false) {
+    constructor(highPrecision: boolean = true) {
         this.layout = highPrecision ? PackLayout.High : PackLayout.Low;
     }
 
@@ -316,7 +316,7 @@ export class EszFile implements IFile {
     }
 
     async read(stream: ReadableStream<Uint8Array>, _contentLength: number, data: SplatData) {
-        const zstd = Duplex.toWeb(createZstdDecompress({ chunkSize: STREAM_CHUNK_BYTE_LENGTH }));
+        const zstd = duplexToWeb(createZstdDecompress({ chunkSize: STREAM_CHUNK_BYTE_LENGTH }));
         const cursor = new ByteStreamCursor(stream.pipeThrough(zstd as any));
 
         if ((await cursor.readUint32(true)) !== ESZ_MAGIC) {
@@ -543,7 +543,7 @@ export class EszFile implements IFile {
                     view.setFloat32(o + 8, zCol[idx], true);
                     view.setUint16(o + 12, toHalf(aCol[idx]), true);
                 }
-                await writer.write(buffer.slice(0, batchCounts * HIGH_PRECISION_STRIDE));
+                await writer.write(buffer.subarray(0, batchCounts * HIGH_PRECISION_STRIDE));
             }
         }
         {
@@ -576,7 +576,7 @@ export class EszFile implements IFile {
                     const angleInt = clamp((oct[2] * 4095) | 0, 0, 4095);
                     view.setUint32(o + 12, ((angleInt << 20) | (quantV << 10) | quantU) >>> 0, true);
                 }
-                await writer.write(buffer.slice(0, batchCounts * HIGH_PRECISION_STRIDE));
+                await writer.write(buffer.subarray(0, batchCounts * HIGH_PRECISION_STRIDE));
             }
         }
 
@@ -603,13 +603,13 @@ export class EszFile implements IFile {
                         );
                     }
                 }
-                await writer.write(buffer.slice(0, batchCounts * HIGH_PRECISION_STRIDE));
+                await writer.write(buffer.subarray(0, batchCounts * HIGH_PRECISION_STRIDE));
             }
         }
     }
 
     async write(stream: WritableStream<Uint8Array>, data: SplatData, indices: Uint32Array) {
-        const zstd = Duplex.toWeb(createZstdCompress({ chunkSize: STREAM_CHUNK_BYTE_LENGTH }));
+        const zstd = duplexToWeb(createZstdCompress({ chunkSize: STREAM_CHUNK_BYTE_LENGTH }));
         const pipePromise = zstd.readable.pipeTo(stream);
         const writer = zstd.writable.getWriter() as WritableStreamDefaultWriter<Uint8Array>;
 

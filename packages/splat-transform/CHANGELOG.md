@@ -1,5 +1,9 @@
 # Changelog
 
+## DEV
+
+- fix use `WritableStream` from `Writable` won't wait write finish
+
 ## 1.7.1
 
 - split support reference normal axis
