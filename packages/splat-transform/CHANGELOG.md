@@ -1,6 +1,6 @@
 # Changelog
 
-## DEV
+## 1.7.1
 
 - split support reference normal axis
 - merge small neighbor blocks
