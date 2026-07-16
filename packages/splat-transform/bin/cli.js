@@ -171,10 +171,10 @@ const cli = yargs(hideBin(process.argv))
     .command('split <input> <output>', false, {
         describe: 'Split splat file into blocks',
         builder(argv) {
-            argv.option('precision', { describe: 'precision', type: 'number' })
+            argv.option('max-chunk-counts', { describe: 'max-chunk-counts', type: 'number' })
                 .option('type', {
                     alias: 't',
-                    choices: ['ply', 'spz', 'splat', 'sog'],
+                    choices: ['ply', 'spz', 'splat', 'sog', 'esz'],
                     demandOption: true,
                     describe: 'output file type',
                     type: 'string',
@@ -198,7 +198,7 @@ const cli = yargs(hideBin(process.argv))
                             input: 'cache0',
                             output: 'cache0',
                             type: argv.type,
-                            blockPrecision: argv.precision,
+                            maxChunkCounts: argv.maxChunkCounts,
                             splitNormal: argv.splitNormal,
                         },
                     },

@@ -7,20 +7,20 @@ export interface Config {
     output: string;
     type: string;
     splitNormal?: SplitNormal | keyof typeof SplitNormal;
-    blockPrecision?: number;
+    maxChunkCounts?: number;
 }
 
 export class SplitSplatTask extends BaseTask<Config> {
     override exec(config: Config, { logger, resources }: Context) {
-        const { input, output, type, blockPrecision = 0.5, splitNormal = SplitNormal.None } = config;
+        const { input, output, type, maxChunkCounts = 400000, splitNormal = SplitNormal.None } = config;
         const splat = resources.get(input) as SplatData;
         logger.info(`loaded -> "${input}"`);
-        logger.info(`block precision -> ${blockPrecision}`);
+        logger.info(`block precision -> ${maxChunkCounts}`);
         logger.info('splitting splat');
         logger.time('split elapsed');
         const { splats } = splitSplat(
             splat,
-            blockPrecision,
+            Math.min(1, maxChunkCounts / splat.counts),
             typeof splitNormal === 'string' ? SplitNormal[splitNormal] : splitNormal,
         );
         logger.timeEnd('split elapsed');

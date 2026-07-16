@@ -543,7 +543,7 @@ export class EszFile implements IFile {
                     view.setFloat32(o + 8, zCol[idx], true);
                     view.setUint16(o + 12, toHalf(aCol[idx]), true);
                 }
-                await writer.write(buffer.subarray(0, batchCounts * HIGH_PRECISION_STRIDE));
+                await writer.write(buffer.slice(0, batchCounts * HIGH_PRECISION_STRIDE));
             }
         }
         {
@@ -576,7 +576,7 @@ export class EszFile implements IFile {
                     const angleInt = clamp((oct[2] * 4095) | 0, 0, 4095);
                     view.setUint32(o + 12, ((angleInt << 20) | (quantV << 10) | quantU) >>> 0, true);
                 }
-                await writer.write(buffer.subarray(0, batchCounts * HIGH_PRECISION_STRIDE));
+                await writer.write(buffer.slice(0, batchCounts * HIGH_PRECISION_STRIDE));
             }
         }
 
@@ -603,7 +603,7 @@ export class EszFile implements IFile {
                         );
                     }
                 }
-                await writer.write(buffer.subarray(0, batchCounts * HIGH_PRECISION_STRIDE));
+                await writer.write(buffer.slice(0, batchCounts * HIGH_PRECISION_STRIDE));
             }
         }
     }

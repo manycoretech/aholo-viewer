@@ -5,6 +5,7 @@
 - split support reference normal axis
 - merge small neighbor blocks
 - strict gaussian validation, try make input valid.
+- fix esz stream output
 
 ## 1.7.0
 
