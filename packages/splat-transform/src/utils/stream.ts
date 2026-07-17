@@ -88,7 +88,6 @@ export function writableToWeb(writable: Writable) {
                 }
                 return d.promise;
             },
-
             close() {
                 if (controller) {
                     writable.end();
@@ -96,7 +95,6 @@ export function writableToWeb(writable: Writable) {
                 }
                 return completion;
             },
-
             abort(reason) {
                 writable.destroy(taggedError('WritableStream aborted', reason));
             },
