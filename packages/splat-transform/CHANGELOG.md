@@ -1,5 +1,9 @@
 # Changelog
 
+## DEV
+
+- make `writableToWeb` more robust
+
 ## 1.7.2
 
 - fix use `WritableStream` from `Writable` won't wait write finish
