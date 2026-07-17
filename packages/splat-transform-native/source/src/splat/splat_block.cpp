@@ -59,6 +59,8 @@ struct RefSplat {
     }
 };
 
+// Eigen's CornerType is dim bit encoded.
+// bit_n indicates max(1) or min(0) on dim_n.
 constexpr std::array<Eigen::AlignedBox3f::CornerType, 8> BOX_CORNERS = {
     Eigen::AlignedBox3f::CornerType::BottomLeftFloor,
     Eigen::AlignedBox3f::CornerType::BottomRightFloor,
@@ -105,6 +107,10 @@ std::vector<SplittedBox> split_box(const Eigen::AlignedBox3f& box, splat::block:
         center[dim] = box.min()[dim]; // always min in normal dim.
         auto result = std::vector<SplittedBox>();
         result.reserve(4);
+
+        // construct splitted from min on dim corner, and max on dim corner.
+        // for input dim SplitNormal.X.
+        // the filtered corner was [BottomRightFloor, TopRightFloor, BottomRightCeil, TopRightCeil].
         helpers::container::append_range(result, BOX_CORNERS | std::views::filter([flag](Eigen::AlignedBox3f::CornerType corner_type) -> bool {
             return (corner_type & flag) != 0;
         }) | std::views::transform([&center, &box](Eigen::AlignedBox3f::CornerType corner_type) -> SplittedBox {
@@ -112,6 +118,7 @@ std::vector<SplittedBox> split_box(const Eigen::AlignedBox3f& box, splat::block:
                 .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(corner_type)),
             };
         }));
+        // according the order before, the neighbor's index can use xor.
         for (size_t i = 0; i < result.size(); i++) {
             result[i].neighbors = { i ^ 1, i ^ 2 };
         }
@@ -125,6 +132,7 @@ std::vector<std::pair<size_t, size_t>> find_mergeable_pairs(
     std::vector<std::pair<size_t, size_t>> current;
     std::vector<std::pair<size_t, size_t>> best;
 
+    // from index search max available pairs.
     auto search = [&](auto&& self, size_t index) -> void {
         while (index < splats.size() && unavailable[index]) {
             index++;
@@ -196,7 +204,7 @@ std::vector<RefSplat> split_block(RefSplat& splat, size_t max_block_size, splat:
     // try merge small block neighbors
     for (auto [i, n] : find_mergeable_pairs(result, boxes, max_block_size)) {
         result[i].gaussians.reserve(result[i].gaussians.size() + result[n].gaussians.size());
-        // merge neighbor boxes
+        // merge neighbor
         helpers::container::append_range(result[i].gaussians, result[n].gaussians);
         result[i].box.extend(result[n].box);
         // cleanup neighbor result
