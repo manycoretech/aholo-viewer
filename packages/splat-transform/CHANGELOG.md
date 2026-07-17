@@ -1,6 +1,6 @@
 # Changelog
 
-## DEV
+## 1.7.2
 
 - fix use `WritableStream` from `Writable` won't wait write finish
 - simplify `split_box`
