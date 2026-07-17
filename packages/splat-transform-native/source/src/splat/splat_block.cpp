@@ -8,11 +8,6 @@
 #include <vector>
 
 namespace {
-struct SplittedBox {
-    Eigen::AlignedBox3f box;
-    std::vector<size_t> neighbors;
-};
-
 struct RefSplat {
     const splat::Splat& source;
     std::vector<size_t> gaussians;
@@ -72,40 +67,21 @@ constexpr std::array<Eigen::AlignedBox3f::CornerType, 8> BOX_CORNERS = {
     Eigen::AlignedBox3f::CornerType::TopRightCeil
 };
 
-std::vector<SplittedBox> split_box(const Eigen::AlignedBox3f& box, splat::block::SplitNormal normal) {
+std::vector<Eigen::AlignedBox3f> split_box(const Eigen::AlignedBox3f& box, splat::block::SplitNormal normal) {
     Eigen::Vector3f center = box.center();
+    auto result = std::vector<Eigen::AlignedBox3f>();
+
+    auto create_box = [&center, &box](Eigen::AlignedBox3f::CornerType corner_type) -> Eigen::AlignedBox3f {
+        return Eigen::AlignedBox3f().extend(center).extend(box.corner(corner_type));
+    };
+
     if (normal == splat::block::SplitNormal::None) {
-        return {
-            SplittedBox {
-                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomLeftFloor)),
-                .neighbors = { 1, 2, 4 } },
-            SplittedBox {
-                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomRightFloor)),
-                .neighbors = { 0, 3, 5 } },
-            SplittedBox {
-                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopLeftFloor)),
-                .neighbors = { 0, 3, 6 } },
-            SplittedBox {
-                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopRightFloor)),
-                .neighbors = { 1, 2, 7 } },
-            SplittedBox {
-                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomLeftCeil)),
-                .neighbors = { 0, 5, 6 } },
-            SplittedBox {
-                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::BottomRightCeil)),
-                .neighbors = { 1, 4, 7 } },
-            SplittedBox {
-                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopLeftCeil)),
-                .neighbors = { 2, 4, 7 } },
-            SplittedBox {
-                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(Eigen::AlignedBox3f::CornerType::TopRightCeil)),
-                .neighbors = { 3, 5, 6 } },
-        };
+        result.reserve(8);
+        helpers::container::append_range(result, BOX_CORNERS | std::views::transform(create_box));
     } else {
         auto dim = static_cast<size_t>(normal) - 1;
         auto flag = 1 << dim;
         center[dim] = box.min()[dim]; // always min in normal dim.
-        auto result = std::vector<SplittedBox>();
         result.reserve(4);
 
         // construct splitted from min on dim corner, and max on dim corner.
@@ -113,21 +89,13 @@ std::vector<SplittedBox> split_box(const Eigen::AlignedBox3f& box, splat::block:
         // the filtered corner was [BottomRightFloor, TopRightFloor, BottomRightCeil, TopRightCeil].
         helpers::container::append_range(result, BOX_CORNERS | std::views::filter([flag](Eigen::AlignedBox3f::CornerType corner_type) -> bool {
             return (corner_type & flag) != 0;
-        }) | std::views::transform([&center, &box](Eigen::AlignedBox3f::CornerType corner_type) -> SplittedBox {
-            return SplittedBox {
-                .box = Eigen::AlignedBox3f().extend(center).extend(box.corner(corner_type)),
-            };
-        }));
-        // according the order before, the neighbor's index can use xor.
-        for (size_t i = 0; i < result.size(); i++) {
-            result[i].neighbors = { i ^ 1, i ^ 2 };
-        }
-        return result;
+        }) | std::views::transform(create_box));
     }
+    return result;
 }
 
 std::vector<std::pair<size_t, size_t>> find_mergeable_pairs(
-    const std::vector<RefSplat>& splats, const std::vector<SplittedBox>& boxes, size_t max_block_size) {
+    const std::vector<RefSplat>& splats, size_t max_block_size) {
     std::vector<bool> unavailable(splats.size(), false);
     std::vector<std::pair<size_t, size_t>> current;
     std::vector<std::pair<size_t, size_t>> best;
@@ -146,7 +114,9 @@ std::vector<std::pair<size_t, size_t>> find_mergeable_pairs(
 
         unavailable[index] = true;
         if (!splats[index].need_split && !splats[index].gaussians.empty()) {
-            for (auto neighbor : boxes[index].neighbors) {
+            // Split boxes follow hypercube corner order. Toggling one index bit selects a face neighbor.
+            for (size_t neighbor_mask = 1; neighbor_mask < splats.size(); neighbor_mask <<= 1) {
+                auto neighbor = index ^ neighbor_mask;
                 if (!unavailable[neighbor] && !splats[neighbor].need_split && !splats[neighbor].gaussians.empty() &&
                     splats[index].gaussians.size() + splats[neighbor].gaussians.size() <= max_block_size) {
                     unavailable[neighbor] = true;
@@ -184,7 +154,7 @@ std::vector<RefSplat> split_block(RefSplat& splat, size_t max_block_size, splat:
         auto max_interaction = 0.0;
         auto max_interaction_index = 0;
         for (auto i = 0; i < boxes.size(); i++) {
-            auto intersection = boxes[i].box.intersection(box);
+            auto intersection = boxes[i].intersection(box);
             if (!intersection.isEmpty()) {
                 auto current = intersection.volume();
                 if (current > max_interaction) {
@@ -197,12 +167,12 @@ std::vector<RefSplat> split_block(RefSplat& splat, size_t max_block_size, splat:
     }
 
     for (auto i = 0; i < result.size(); i++) {
-        result[i].box = boxes[i].box;
+        result[i].box = boxes[i];
         result[i].compute_need_split(splat.box, max_block_size);
     }
 
     // try merge small block neighbors
-    for (auto [i, n] : find_mergeable_pairs(result, boxes, max_block_size)) {
+    for (auto [i, n] : find_mergeable_pairs(result, max_block_size)) {
         result[i].gaussians.reserve(result[i].gaussians.size() + result[n].gaussians.size());
         // merge neighbor
         helpers::container::append_range(result[i].gaussians, result[n].gaussians);

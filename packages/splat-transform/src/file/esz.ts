@@ -88,7 +88,7 @@ export class EszFile implements IFile {
      */
     layout: PackLayout;
 
-    constructor(highPrecision: boolean = true) {
+    constructor(highPrecision: boolean = false) {
         this.layout = highPrecision ? PackLayout.High : PackLayout.Low;
     }
 

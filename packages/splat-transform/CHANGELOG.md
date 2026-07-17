@@ -3,6 +3,7 @@
 ## DEV
 
 - fix use `WritableStream` from `Writable` won't wait write finish
+- simplify `split_box`
 
 ## 1.7.1
 
