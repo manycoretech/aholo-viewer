@@ -3,6 +3,7 @@
 ## DEV
 
 - make `writableToWeb` more robust
+- fix precision may not enough during build_cache
 
 ## 1.7.2
 

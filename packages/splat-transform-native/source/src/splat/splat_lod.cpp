@@ -112,8 +112,8 @@ static void build_cache(const splat::Splat& splat, std::vector<GaussianCache>& c
     for (auto& gaussian : splat.gaussians) {
         auto rotation = Eigen::Matrix3d(Eigen::Quaterniond(gaussian.rotation.w(), gaussian.rotation.x(), gaussian.rotation.y(), gaussian.rotation.z()));
         auto t = rotation.transpose();
-        Eigen::Vector3f vf = gaussian.scale.cwiseMax(1e-12f).cwiseSquare();
-        Eigen::Vector3d v = Eigen::Vector3d(vf.x(), vf.y(), vf.z()) + VECTOR_EPS;
+        Eigen::Vector3d scale = gaussian.scale.cast<double>();
+        Eigen::Vector3d v = scale.cwiseMax(1e-12f).cwiseSquare() + VECTOR_EPS;
         Eigen::Vector3d safe_v = v.cwiseMax(1e-30);
 
         caches.push_back(GaussianCache {
@@ -123,7 +123,7 @@ static void build_cache(const splat::Splat& splat, std::vector<GaussianCache>& c
             .variances = v,
             .inv_diag = VECTOR_ONE.array() / safe_v.array(),
             .log_det = safe_v.array().log().sum(),
-            .mass = TWO_PI_POW_1_5 * gaussian.opacity * gaussian.scale.prod() + 1e-12 });
+            .mass = TWO_PI_POW_1_5 * gaussian.opacity * scale.prod() + 1e-12 });
     }
 }
 
