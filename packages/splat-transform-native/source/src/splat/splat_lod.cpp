@@ -46,7 +46,7 @@ using KDTree = nanoflann::KDTreeSingleIndexAdaptor<
     nanoflann::L2_Simple_Adaptor<float, GaussianCloud>,
     GaussianCloud, 3>;
 
-// https://github.com/graphdeco-inria/gaussian-hierarchy/
+// https://repo-sam.inria.fr/fungraph/hierarchical-3d-gaussians/
 static splat::Gaussian merge_gaussians(const splat::Splat& input, const std::vector<uint32_t>& idx, float scale_boost) {
     splat::Gaussian out;
     out.mean.setZero();
@@ -170,6 +170,7 @@ static double log_add_exp(double a, double b) {
     return m + std::log(std::exp(a - m) + std::exp(b - m));
 };
 
+// https://saliteta.github.io/NanoGS/
 static double compute_edge_cost(const splat::Splat& splat, const std::vector<GaussianCache>& caches, const std::vector<Eigen::Vector3d>& samples, std::tuple<uint32_t, uint32_t>& edge) {
     auto [i, j] = edge;
     auto& u = splat.gaussians[i];
