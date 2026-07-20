@@ -4,6 +4,7 @@
 
 - make `writableToWeb` more robust
 - fix precision may not enough during build_cache
+- make `AutoChunkLod` level merging and permanent-file selection configurable with `merged` and `permanent`
 
 ## 1.7.2
 

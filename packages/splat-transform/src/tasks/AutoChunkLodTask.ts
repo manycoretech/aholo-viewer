@@ -3,13 +3,18 @@ import { combineSplatData, computeDenseBox } from '../utils/index.js';
 import { type Context, BaseTask, type SingleFile } from './BaseTask.js';
 import { generateSplatLod, SplitNormal, type LevelParameter } from '../native/index.js';
 
+export interface ChunkLevelParameter extends LevelParameter {
+    permanent?: boolean;
+    merged?: boolean;
+}
+
 export interface Config {
     input: string;
     output: string;
     type: string;
     splitNormal?: SplitNormal | keyof typeof SplitNormal;
     maxChunkCounts?: number;
-    levels?: LevelParameter[];
+    levels?: ChunkLevelParameter[];
 }
 
 interface OutputBlock {
@@ -24,12 +29,12 @@ interface OutputBlock {
     }>;
 }
 
-const DefaultLevels: LevelParameter[] = [
+const DefaultLevels: ChunkLevelParameter[] = [
     { precision: 1.0, scaleBoost: 1 },
     { precision: 0.5, scaleBoost: 1 },
     { precision: 0.25, scaleBoost: 1 },
-    { precision: 0.05, scaleBoost: 1.01 },
-    { precision: 0.01, scaleBoost: 1.02 },
+    { precision: 0.05, scaleBoost: 1.01, permanent: true, merged: true },
+    { precision: 0.01, scaleBoost: 1.02, permanent: true, merged: true },
 ];
 
 export class AutoChunkLodTask extends BaseTask<Config> {
@@ -64,43 +69,34 @@ export class AutoChunkLodTask extends BaseTask<Config> {
             );
             logger.timeEnd('generate elapsed');
 
-            const chunkL3Idx: number[] = [];
-            const chunkL4Idx: number[] = [];
-            for (let i = 0; i < blocks.length; i++) {
-                const block = blocks[i];
-                chunkL4Idx.push(block.refs[4]);
-                if (block.refs[3] !== block.refs[4]) {
-                    chunkL3Idx.push(block.refs[3]);
-                }
-            }
             const layout = new Map<number, { idx: number; offset: number; counts: number }>();
-            {
-                const chunkL4 = combineSplatData(chunkL4Idx.map(idx => splats[idx]));
-                outputs.push({ name: `chunk_0.${type}`, content: chunkL4, preserveOrder: true });
-                permanentFiles.push(0);
-                let offset = 0;
-                for (let i = 0; i < chunkL4Idx.length; i++) {
-                    const idx = chunkL4Idx[i];
-                    const counts = splats[idx].counts;
-                    layout.set(idx, { idx: 0, offset, counts });
-                    offset += counts;
+
+            for (let levelIdx = levels.length - 1; levelIdx >= 0; levelIdx--) {
+                if (!levels[levelIdx].merged) {
+                    continue;
                 }
-            }
-            if (chunkL3Idx.length > 0) {
-                const chunkL3 = combineSplatData(chunkL3Idx.map(idx => splats[idx]));
-                outputs.push({ name: `chunk_1.${type}`, content: chunkL3, preserveOrder: true });
-                permanentFiles.push(1);
+
+                const refs = [...new Set(blocks.map(block => block.refs[levelIdx]))].filter(ref => !layout.has(ref));
+                if (refs.length === 0) {
+                    continue;
+                }
+
+                const idx = outputs.length;
+                outputs.push({
+                    name: `chunk_${idx}.${type}`,
+                    content: combineSplatData(refs.map(ref => splats[ref])),
+                    preserveOrder: true,
+                });
                 let offset = 0;
-                for (let i = 0; i < chunkL3Idx.length; i++) {
-                    const idx = chunkL3Idx[i];
-                    const counts = splats[idx].counts;
-                    layout.set(idx, { idx: 1, offset, counts });
+                for (const ref of refs) {
+                    const counts = splats[ref].counts;
+                    layout.set(ref, { idx, offset, counts });
                     offset += counts;
                 }
             }
 
             for (let i = 0; i < splats.length; i++) {
-                if (chunkL3Idx.includes(i) || chunkL4Idx.includes(i)) {
+                if (layout.has(i)) {
                     continue;
                 }
                 const idx = outputs.length;
@@ -123,6 +119,21 @@ export class AutoChunkLodTask extends BaseTask<Config> {
                         };
                     }),
                 });
+            }
+
+            const permanentFileSet = new Set<number>();
+            for (let levelIdx = 0; levelIdx < levels.length; levelIdx++) {
+                if (!levels[levelIdx].permanent) {
+                    continue;
+                }
+                for (const block of blocks) {
+                    permanentFileSet.add(layout.get(block.refs[levelIdx])!.idx);
+                }
+            }
+            for (let i = 0; i < outputs.length; i++) {
+                if (permanentFileSet.has(i)) {
+                    permanentFiles.push(i);
+                }
             }
         }
 
