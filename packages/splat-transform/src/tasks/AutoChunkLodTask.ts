@@ -4,8 +4,8 @@ import { type Context, BaseTask, type SingleFile } from './BaseTask.js';
 import { generateSplatLod, SplitNormal, type LevelParameter } from '../native/index.js';
 
 export interface ChunkLevelParameter extends LevelParameter {
-    permanentEnabled?: boolean;
-    mergedEnabled?: boolean;
+    permanent?: boolean;
+    merged?: boolean;
 }
 
 export interface Config {
@@ -33,8 +33,8 @@ const DefaultLevels: ChunkLevelParameter[] = [
     { precision: 1.0, scaleBoost: 1 },
     { precision: 0.5, scaleBoost: 1 },
     { precision: 0.25, scaleBoost: 1 },
-    { precision: 0.05, scaleBoost: 1.01, permanentEnabled: true, mergedEnabled: true },
-    { precision: 0.01, scaleBoost: 1.02, permanentEnabled: true, mergedEnabled: true },
+    { precision: 0.05, scaleBoost: 1.01, permanent: true, merged: true },
+    { precision: 0.01, scaleBoost: 1.02, permanent: true, merged: true },
 ];
 
 export class AutoChunkLodTask extends BaseTask<Config> {
@@ -72,7 +72,7 @@ export class AutoChunkLodTask extends BaseTask<Config> {
             const layout = new Map<number, { idx: number; offset: number; counts: number }>();
 
             for (let levelIdx = levels.length - 1; levelIdx >= 0; levelIdx--) {
-                if (!levels[levelIdx].mergedEnabled) {
+                if (!levels[levelIdx].merged) {
                     continue;
                 }
 
@@ -123,7 +123,7 @@ export class AutoChunkLodTask extends BaseTask<Config> {
 
             const permanentFileSet = new Set<number>();
             for (let levelIdx = 0; levelIdx < levels.length; levelIdx++) {
-                if (!levels[levelIdx].permanentEnabled) {
+                if (!levels[levelIdx].permanent) {
                     continue;
                 }
                 for (const block of blocks) {
