@@ -1,5 +1,13 @@
 # ChangeLOG
 
+## 1.6.2
+
+1. Fixes
+    - fix ESZ and SOG image decoding when the encoded image data uses a sliced buffer.
+    - fix Zstandard parsing for small files.
+2. Changes
+    - set the maximum splat parsing worker count to one fewer than `navigator.hardwareConcurrency`.
+
 ## 1.6.1
 
 1. Features
