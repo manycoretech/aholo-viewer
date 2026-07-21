@@ -1,5 +1,15 @@
 # ChangeLOG
 
+## 1.7.0
+
+1. Features
+    - add and export `SplatModifier` for composing custom shader-based splat rendering and animation behavior.
+    - add `Splat.setModifiers()` for attaching modifiers and updating their uniform values at runtime.
+2. Changes
+    - use `SplatModifier` for LOD debug coloring.
+3. Breaking Changes
+    - remove subgroup transform support, including `Splat.groupTex` and `Splat.groupTransformTex`.
+
 ## 1.6.2
 
 1. Fixes

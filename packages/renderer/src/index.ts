@@ -22,6 +22,7 @@ export {
     LineBasicMaterial as LineMaterial,
     FatLineMaterial,
     Splat,
+    SplatModifier,
     Mesh,
     Sprite,
     Points,
