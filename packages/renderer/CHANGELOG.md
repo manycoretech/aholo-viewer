@@ -1,6 +1,6 @@
 # ChangeLOG
 
-## 1.7.1
+## 1.7.2
 
 1. Changes
     - update the `SplatModifier` shader block factory callback to receive `language: 'wgsl' | 'glsl'` instead of `isWebgpu: boolean`.
