@@ -39,7 +39,7 @@
     "@manycore/aholo-splat-dev-server": "workspace:*",
     "@manycore/aholo-splat-transform": "workspace:*",
     "husky": "^9.1.7",
-    "lint-staged": "^17.0.8",
+    "lint-staged": "^17.1.0",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.74.0",
     "typedoc": "^0.28.20",
