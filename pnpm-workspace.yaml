@@ -15,6 +15,9 @@ allowBuilds:
   sharp: false
   webgpu: false
 
+catalog:
+  'typescript': '^6.0.3'
+
 overrides:
   '@internal/utils': 'workspace:*'
   '@qunhe/egs-typings': 'workspace:*'
@@ -34,5 +37,4 @@ overrides:
   '@manycore/aholo-splat-transform-win32-x64-msvc': 'workspace:*'
   '@manycore/aholo-splat-transform-darwin-arm64': 'workspace:*'
   '@types/node': '^22.20.0'
-  'typescript': '^6.0.3'
   'esbuild': '^0.28.1'

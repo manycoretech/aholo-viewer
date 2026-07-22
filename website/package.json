@@ -25,7 +25,7 @@
     "@astrojs/check": "^0.9.9",
     "@tweakpane/core": "^2.0.5",
     "@types/node": "^22.20.0",
-    "typescript": "^6.0.3",
+    "typescript": "catalog:",
     "vite-plugin-checker": "^0.14.4"
   }
 }

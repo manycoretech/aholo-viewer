@@ -4,6 +4,12 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    typescript:
+      specifier: ^6.0.3
+      version: 6.0.3
+
 overrides:
   '@internal/utils': workspace:*
   '@qunhe/egs-typings': workspace:*
@@ -23,7 +29,6 @@ overrides:
   '@manycore/aholo-splat-transform-win32-x64-msvc': workspace:*
   '@manycore/aholo-splat-transform-darwin-arm64': workspace:*
   '@types/node': ^22.20.0
-  typescript: ^6.0.3
   esbuild: ^0.28.1
 
 importers:
@@ -55,7 +60,7 @@ importers:
         specifier: ^0.28.20
         version: 0.28.20(typescript@6.0.3)
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   external/egs-core/packages/egs:
@@ -71,7 +76,7 @@ importers:
         specifier: workspace:*
         version: link:../egs-typings
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   external/egs-core/packages/egs-animation:
@@ -90,7 +95,7 @@ importers:
         specifier: ^7.7.1
         version: 7.7.1
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   external/egs-core/packages/egs-lib:
@@ -100,7 +105,7 @@ importers:
         version: 2.8.1
     devDependencies:
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   external/egs-core/packages/egs-typings:
@@ -122,7 +127,7 @@ importers:
         version: 2.8.1
     devDependencies:
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   external/egs-core/packages/loaders/gltf-loader:
@@ -135,7 +140,7 @@ importers:
         version: 2.8.1
     devDependencies:
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   external/egs-core/packages/loaders/splat-loader:
@@ -151,7 +156,7 @@ importers:
         version: 2.8.1
     devDependencies:
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   external/egs-core/packages/loaders/texture-loader:
@@ -164,7 +169,7 @@ importers:
         version: link:../../egs-lib
     devDependencies:
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   external/egs-core/packages/utils/splat-utils:
@@ -183,7 +188,7 @@ importers:
         version: 2.8.1
     devDependencies:
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   external/egs-core/tools/utils:
@@ -198,7 +203,7 @@ importers:
         specifier: ^13.0.6
         version: 13.0.6
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   external/splat-dev-server:
@@ -246,7 +251,7 @@ importers:
         specifier: ^2.8.1
         version: 2.8.1
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   packages/splat-transform:
@@ -268,7 +273,7 @@ importers:
         specifier: ^0.1.71
         version: 0.1.71
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
     optionalDependencies:
       '@manycore/aholo-splat-transform-darwin-arm64':
@@ -349,7 +354,7 @@ importers:
         specifier: ^22.20.0
         version: 22.20.1
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vite-plugin-checker:
         specifier: ^0.14.4
@@ -361,7 +366,7 @@ packages:
     resolution: {integrity: sha512-A5UW8uIuErLWEoRQvzgXpO1gTjUFtK8r7nU2Z7GewAMxUb7bPvpk11qaKKgxqXlHJWlAvaaxy+Xg28A6bmQ1Tg==}
     hasBin: true
     peerDependencies:
-      typescript: ^6.0.3
+      typescript: ^5.0.0 || ^6.0.0
 
   '@astrojs/compiler-binding-darwin-arm64@0.3.1':
     resolution: {integrity: sha512-IEmEF2fUIlTHtpeE/isyEGVOB14cEyh/LZOFYt6wn3jNyVpdC8aR5OZ+RzFUR/f+8ZDM1LaMwZKvoA7eMyJeFw==}
@@ -1543,7 +1548,7 @@ packages:
   '@volar/kit@2.4.28':
     resolution: {integrity: sha512-cKX4vK9dtZvDRaAzeoUdaAJEew6IdxHNCRrdp5Kvcl6zZOqb6jTOfk3kXkIkG3T7oTFXguEMt5+9ptyqYR84Pg==}
     peerDependencies:
-      typescript: ^6.0.3
+      typescript: '*'
 
   '@volar/language-core@2.4.28':
     resolution: {integrity: sha512-w4qhIJ8ZSitgLAkVay6AbcnC7gP3glYM3fYwKV3srj8m494E3xtrCv6E+bWviiK/8hs6e6t1ij1s2Endql7vzQ==}
@@ -2789,13 +2794,18 @@ packages:
     engines: {node: '>= 18', pnpm: '>= 10'}
     hasBin: true
     peerDependencies:
-      typescript: ^6.0.3
+      typescript: 5.0.x || 5.1.x || 5.2.x || 5.3.x || 5.4.x || 5.5.x || 5.6.x || 5.7.x || 5.8.x || 5.9.x || 6.0.x
 
   typesafe-path@0.2.2:
     resolution: {integrity: sha512-OJabfkAg1WLZSqJAJ0Z6Sdt3utnbzr/jh+NAHoyWHJe8CMSy79Gm085094M9nvTPy22KzTVn5Zq5mbapCI/hPA==}
 
   typescript-auto-import-cache@0.3.6:
     resolution: {integrity: sha512-RpuHXrknHdVdK7wv/8ug3Fr0WNsNi5l5aB8MYYuXhq2UH5lnEB1htJ1smhtD5VeCsGr2p8mUDtd83LCQDFVgjQ==}
+
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
 
   typescript@6.0.3:
     resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
@@ -2938,7 +2948,7 @@ packages:
       optionator: ^0.9.4
       oxlint: '>=1'
       stylelint: '>=16.26.1'
-      typescript: ^6.0.3
+      typescript: '*'
       vite: '>=5.4.21'
       vue-tsc: ~2.2.10 || ^3.0.0
     peerDependenciesMeta:
@@ -3642,7 +3652,7 @@ snapshots:
       resolve: 1.22.12
       semver: 7.7.4
       source-map: 0.6.1
-      typescript: 6.0.3
+      typescript: 5.9.3
     transitivePeerDependencies:
       - '@types/node'
 
@@ -5521,6 +5531,8 @@ snapshots:
   typescript-auto-import-cache@0.3.6:
     dependencies:
       semver: 7.8.5
+
+  typescript@5.9.3: {}
 
   typescript@6.0.3: {}
 

@@ -62,6 +62,6 @@
   "devDependencies": {
     "@types/node": "^22.20.0",
     "@webgpu/types": "^0.1.71",
-    "typescript": "^6.0.3"
+    "typescript": "catalog:"
   }
 }
