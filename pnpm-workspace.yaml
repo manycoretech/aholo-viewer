@@ -17,6 +17,7 @@ allowBuilds:
 
 catalog:
   'typescript': '^6.0.3'
+  'tslib': '^2.8.1'
 
 overrides:
   '@internal/utils': 'workspace:*'

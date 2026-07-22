@@ -6,6 +6,9 @@ settings:
 
 catalogs:
   default:
+    tslib:
+      specifier: ^2.8.1
+      version: 2.8.1
     typescript:
       specifier: ^6.0.3
       version: 6.0.3
@@ -69,7 +72,7 @@ importers:
         specifier: workspace:*
         version: link:../egs-lib
       tslib:
-        specifier: ^2.8.1
+        specifier: 'catalog:'
         version: 2.8.1
     devDependencies:
       '@qunhe/egs-typings':
@@ -88,7 +91,7 @@ importers:
         specifier: ^7.8.5
         version: 7.8.5
       tslib:
-        specifier: ^2.8.1
+        specifier: 'catalog:'
         version: 2.8.1
     devDependencies:
       '@types/semver':
@@ -101,7 +104,7 @@ importers:
   external/egs-core/packages/egs-lib:
     dependencies:
       tslib:
-        specifier: ^2.8.1
+        specifier: 'catalog:'
         version: 2.8.1
     devDependencies:
       typescript:
@@ -123,7 +126,7 @@ importers:
         specifier: workspace:*
         version: link:../../egs-lib
       tslib:
-        specifier: ^2.8.1
+        specifier: 'catalog:'
         version: 2.8.1
     devDependencies:
       typescript:
@@ -136,7 +139,7 @@ importers:
         specifier: workspace:*
         version: link:../../egs
       tslib:
-        specifier: ^2.8.1
+        specifier: 'catalog:'
         version: 2.8.1
     devDependencies:
       typescript:
@@ -152,7 +155,7 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
       tslib:
-        specifier: ^2.8.1
+        specifier: 'catalog:'
         version: 2.8.1
     devDependencies:
       typescript:
@@ -184,7 +187,7 @@ importers:
         specifier: workspace:*
         version: link:../../loaders/splat-loader
       tslib:
-        specifier: ^2.8.1
+        specifier: 'catalog:'
         version: 2.8.1
     devDependencies:
       typescript:
@@ -248,7 +251,7 @@ importers:
         specifier: ^0.28.1
         version: 0.28.1
       tslib:
-        specifier: ^2.8.1
+        specifier: 'catalog:'
         version: 2.8.1
       typescript:
         specifier: 'catalog:'
@@ -260,7 +263,7 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
       tslib:
-        specifier: ^2.8.1
+        specifier: 'catalog:'
         version: 2.8.1
       yargs:
         specifier: ^18.0.0
@@ -335,7 +338,7 @@ importers:
         specifier: ^0.55.1
         version: 0.55.1
       tslib:
-        specifier: ^2.8.1
+        specifier: 'catalog:'
         version: 2.8.1
       tweakpane:
         specifier: ^4.0.5

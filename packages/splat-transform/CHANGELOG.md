@@ -1,6 +1,6 @@
 # Changelog
 
-## DEV
+## 1.7.3
 
 - make `writableToWeb` more robust
 - fix precision may not enough during build_cache
