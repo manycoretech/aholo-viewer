@@ -1,6 +1,7 @@
 import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { resolveCatalogs, applyCatalogs } from '@internal/utils/catalogs.js';
 
 const packages = JSON.parse(
     child_process.execSync('pnpm list --filter=@manycore/* -r -depth -1 --json', { stdio: 'pipe' }).toString('utf-8'),
@@ -32,44 +33,6 @@ const packages = JSON.parse(
 
 const publishedPackages = [];
 
-const publishDependencyFields = ['dependencies', 'peerDependencies', 'optionalDependencies'];
-
-function resolveCatalogs() {
-    const data = {};
-    const result = {};
-    let r = child_process
-        .execSync('pnpm config get catalogs --location=project --json', { stdio: 'pipe' })
-        .toString('utf-8');
-    if (r) {
-        Object.assign(data, JSON.parse(r));
-    } else {
-        r = child_process
-            .execSync('pnpm config get catalog --location=project --json', { stdio: 'pipe' })
-            .toString('utf-8');
-        if (r) {
-            Object.assign(data, JSON.parse(r));
-        }
-    }
-
-    for (const key of Object.keys(data)) {
-        if (typeof data[key] === 'string') {
-            if (!result[key]) {
-                result[key] = {};
-            }
-            result[key]['default'] = data[key];
-        } else {
-            const versions = data[key];
-            for (const p of Object.keys(versions)) {
-                if (!result[p]) {
-                    result[p] = {};
-                }
-                result[p][`${key}`] = versions[p];
-            }
-        }
-    }
-    return result;
-}
-
 const catalogs = resolveCatalogs();
 
 for (const p of packages) {
@@ -97,24 +60,13 @@ for (const p of packages) {
         // run build command if exists
         child_process.execSync('pnpm run --if-present build', { stdio: 'inherit', cwd });
 
-        // cleanup package.json before publish
+        // cleanup & resolve package.json before publish
         delete clonedPackageJson.scripts;
         delete clonedPackageJson.devDependencies;
-        for (const field of publishDependencyFields) {
-            const dependencies = clonedPackageJson[field];
-            if (dependencies) {
-                for (const p of Object.keys(dependencies)) {
-                    if (dependencies[p].startsWith('catalog:')) {
-                        const version = dependencies[p].slice('catalog:'.length) || 'default';
-                        dependencies[p] = catalogs[p][version];
-                    }
-                }
-            }
-        }
+        applyCatalogs(clonedPackageJson, ['dependencies', 'peerDependencies', 'optionalDependencies'], catalogs);
+
         fs.writeFileSync(path.resolve(cwd, 'package.json'), JSON.stringify(clonedPackageJson, undefined, 2), 'utf-8');
-
         child_process.execSync('npm publish --access public', { stdio: 'inherit', cwd });
-
         // restore package.json
         fs.writeFileSync(path.resolve(cwd, 'package.json'), JSON.stringify(packageJson, undefined, 2), 'utf-8');
         publishedPackages.push({
