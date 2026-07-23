@@ -17,8 +17,9 @@ const INSPECTOR_REFRESH_INTERVAL_MS = 100;
 const DEFAULT_REFRESH_RATE = 60;
 const FPS_GRAPH_HEADROOM = 1.5;
 
-type MonacoModule = typeof import('monaco-editor/esm/vs/editor/editor.api.js');
+type MonacoModule = typeof import('monaco-editor/editor/editor.api.js');
 type MonacoTextModel = ReturnType<MonacoModule['editor']['createModel']>;
+type TypeScriptContribution = typeof import('monaco-editor/languages/features/typescript/register.js');
 interface RenderStats {
     drawCalls: number;
     objects: number;
@@ -52,23 +53,6 @@ interface PlaygroundConfig {
         path: string;
         content: string;
     }>;
-}
-
-interface TypeScriptContribution {
-    ModuleKind: {
-        ESNext: number;
-    };
-    ModuleResolutionKind: {
-        NodeJs: number;
-    };
-    ScriptTarget: {
-        ES2020: number;
-    };
-    typescriptDefaults: {
-        addExtraLib(content: string, filePath?: string): unknown;
-        setCompilerOptions(options: Record<string, unknown>): void;
-        setDiagnosticsOptions(options: Record<string, unknown>): void;
-    };
 }
 
 interface MonacoRuntime {
@@ -486,8 +470,8 @@ async function loadMonaco() {
     if (!monacoPromise) {
         monacoPromise = (async () => {
             const [{ default: EditorWorker }, { default: TypeScriptWorker }] = await Promise.all([
-                import('monaco-editor/esm/vs/editor/editor.worker.js?worker&inline'),
-                import('monaco-editor/esm/vs/language/typescript/ts.worker.js?worker&inline'),
+                import('monaco-editor/editor/editor.worker.js?worker&inline'),
+                import('monaco-editor/languages/features/typescript/ts.worker.js?worker&inline'),
             ]);
 
             (self as unknown as { MonacoEnvironment: unknown }).MonacoEnvironment = {
@@ -499,10 +483,11 @@ async function loadMonaco() {
                 },
             };
 
-            const monaco = await import('monaco-editor/esm/vs/editor/editor.api.js');
-            await import('monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js');
-            const typescript =
-                (await import('monaco-editor/esm/vs/language/typescript/monaco.contribution.js')) as unknown as TypeScriptContribution;
+            const monaco = await import('monaco-editor/editor/editor.api.js');
+            await import('monaco-editor/editor/contrib/suggest/browser/suggestController.js');
+            await import('monaco-editor/features/hover/register.js');
+            await import('monaco-editor/languages/definitions/typescript/register.js');
+            const typescript = await import('monaco-editor/languages/features/typescript/register.js');
 
             return {
                 monaco,
