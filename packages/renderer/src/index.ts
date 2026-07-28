@@ -85,6 +85,7 @@ import * as SplatLoader from './splat-loader.js';
 import * as DracoLoader from './draco-loader.js';
 import * as GLTFLoader from './gltf-loader.js';
 import * as SplatUtils from './splat-utils.js';
+export * as XR from './xr.js';
 
 import {
     Application,

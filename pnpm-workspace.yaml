@@ -30,6 +30,7 @@ overrides:
   '@qunhe/egs-draco-loader': 'workspace:*'
   '@qunhe/egs-splat-loader': 'workspace:*'
   '@qunhe/egs-splat-utils': 'workspace:*'
+  '@qunhe/egs-xr': 'workspace:*'
   '@manycore/aholo-splat-transform': 'workspace:*'
   '@manycore/aholo-splat-dev-server': 'workspace:*'
   '@manycore/aholo-splat-transform-linux-arm64-gnu': 'workspace:*'

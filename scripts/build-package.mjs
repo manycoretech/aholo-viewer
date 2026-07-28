@@ -162,6 +162,7 @@ async function bundleDeclarations() {
                 '@qunhe/egs-draco-loader',
                 '@qunhe/egs-splat-loader',
                 '@qunhe/egs-splat-utils',
+                '@qunhe/egs-xr',
                 '@qunhe/egs-lib',
             ],
         },

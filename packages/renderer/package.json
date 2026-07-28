@@ -54,6 +54,7 @@
     "@qunhe/egs-splat-loader": "workspace:*",
     "@qunhe/egs-splat-utils": "workspace:*",
     "@qunhe/egs-texture-loader": "workspace:*",
+    "@qunhe/egs-xr": "workspace:*",
     "@types/node": "^22.20.0",
     "esbuild": "^0.28.1",
     "tslib": "catalog:",
