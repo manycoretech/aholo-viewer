@@ -1,9 +1,15 @@
 # ChangeLOG
 
-## DEV
+## 1.8.0
 
 1. Features
-    - add `XR` implement
+    - add and export the `XR` namespace.
+    - add `LodSplat.setModifiers()` for applying `SplatModifier` instances to LOD splats.
+    - add `LodConfig.frustumCullingEnabled` to control unloading LOD blocks outside the camera frustum; enabled by default.
+2. Changes
+    - update the default LOD distance step to `{ distance: 10, step: 2 }` and improve scheduling for large scenes.
+3. Breaking Changes
+    - remove `LodConfig.outsidePenalty`, `behindPenalty`, `behindTolerance`, and `behindDistanceTolerance`.
 
 ## 1.7.2
 

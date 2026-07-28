@@ -10,7 +10,7 @@ import type { RenderRuntime, RuntimeConfigPanel, RuntimeIndexedDBStorage } from 
 
 const LodConfig: Omit<
     SplatUtils.LodConfig,
-    'debuggerEnabled' | 'debuggerType' | 'distanceStep' | 'mergeNodeEnabled'
+    'debuggerEnabled' | 'debuggerType' | 'distanceStep' | 'mergeNodeEnabled' | 'frustumCullingEnabled'
 > & {
     highPrecisionEnabled: boolean;
     maxBudgetMillions: number;
@@ -18,10 +18,6 @@ const LodConfig: Omit<
     minLevel: 0,
     maxBudget: 6000000,
     backgroundPenalty: 0.5,
-    outsidePenalty: 0.4,
-    behindPenalty: 0.1,
-    behindTolerance: -0.2,
-    behindDistanceTolerance: 2,
     hysteresisTicks: 4,
     schedulerParallelCounts: 4,
     schedulerExistingTaskLimit: 64,
@@ -160,38 +156,6 @@ function initConfigPanel(splat: SplatUtils.LodSplat, configPanel: RuntimeConfigP
             max: 1,
             min: 0,
             step: 0.05,
-        })
-        .on('change', applyConfig);
-    visibility
-        .addBinding(LodConfig, 'outsidePenalty', {
-            label: 'Outside',
-            max: 1,
-            min: 0,
-            step: 0.05,
-        })
-        .on('change', applyConfig);
-    visibility
-        .addBinding(LodConfig, 'behindPenalty', {
-            label: 'Behind',
-            max: 1,
-            min: 0,
-            step: 0.05,
-        })
-        .on('change', applyConfig);
-    visibility
-        .addBinding(LodConfig, 'behindTolerance', {
-            label: 'Behind dot',
-            max: 0.5,
-            min: -1,
-            step: 0.05,
-        })
-        .on('change', applyConfig);
-    visibility
-        .addBinding(LodConfig, 'behindDistanceTolerance', {
-            label: 'Behind dist',
-            max: 12,
-            min: 0,
-            step: 0.5,
         })
         .on('change', applyConfig);
     visibility
