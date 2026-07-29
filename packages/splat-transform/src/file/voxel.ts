@@ -508,7 +508,7 @@ async function writeVoxels(
         voxelBounds.min.y >= voxelBounds.max.y ||
         voxelBounds.min.z >= voxelBounds.max.z
     ) {
-        throw new Error(`voxel box does not overlap scene bounds: box=${JSON.stringify(box)}`);
+        throw new Error(`voxel box does not overlap scene bounds: voxelBounds=${JSON.stringify(voxelBounds)}`);
     }
     if (voxelResolution !== requestedVoxelResolution) {
         logger.info(`voxel effective resolution=${voxelResolution} (requested=${requestedVoxelResolution})`);

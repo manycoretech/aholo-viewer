@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.4
+
+- fix CPU voxel worker startup
+
 ## 1.7.3
 
 - make `writableToWeb` more robust

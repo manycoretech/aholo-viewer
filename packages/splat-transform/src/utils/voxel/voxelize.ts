@@ -552,7 +552,6 @@ export async function cpuVoxelize(
         let nextTaskId = 1;
         const pool = Array.from({ length: workers }, (_v, slotId) => {
             const worker = new Worker(new URL('../../workers/voxelize.js', import.meta.url), {
-                eval: true,
                 workerData: {
                     workerId: slotId,
                     voxelResolution,
