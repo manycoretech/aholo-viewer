@@ -1,6 +1,6 @@
 {
   "name": "@manycore/aholo-splat-transform",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "description": "Transform & filter Gaussian splats file",
   "author": "egs",
   "repository": {
