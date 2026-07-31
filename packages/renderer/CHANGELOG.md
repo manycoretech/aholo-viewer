@@ -1,5 +1,10 @@
 # ChangeLOG
 
+## 1.8.1
+
+1. Fixes
+    - fix quaternion decoding in `CompressedSplatData` for compressed splat data.
+
 ## 1.8.0
 
 1. Features

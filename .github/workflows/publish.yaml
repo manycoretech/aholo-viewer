@@ -21,7 +21,7 @@ jobs:
         with:
           submodules: recursive
       - name: Setup node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Check splat-transform publish status
@@ -50,7 +50,7 @@ jobs:
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
       - name: Download native packages
         if: steps.splat-transform.outputs.needs_publish == 'true'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: splat-transform-*
           path: packages/splat-transform-native

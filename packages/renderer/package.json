@@ -1,6 +1,6 @@
 {
   "name": "@manycore/aholo-viewer",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "A compact TypeScript renderer core used by the Aholo Viewer website and examples.",
   "author": "egs",
   "repository": {

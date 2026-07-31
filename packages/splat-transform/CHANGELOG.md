@@ -1,5 +1,9 @@
 # Changelog
 
+## DEV
+
+- upgrade yargs
+
 ## 1.7.4
 
 - fix CPU voxel worker startup

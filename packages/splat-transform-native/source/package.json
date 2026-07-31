@@ -6,7 +6,7 @@
   "dependencies": {
     "cmake-js": "^8.0.0",
     "node-addon-api": "^8.9.0",
-    "yargs": "^18.0.0"
+    "yargs": "^18.1.0"
   },
   "scripts": {
     "build:native:win32-arm64": "node ./build.js build --preset arm64-windows-static --target win32-arm64-msvc",

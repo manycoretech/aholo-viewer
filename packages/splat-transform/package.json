@@ -50,7 +50,7 @@
   "dependencies": {
     "fflate": "^0.8.3",
     "tslib": "catalog:",
-    "yargs": "^18.0.0"
+    "yargs": "^18.1.0"
   },
   "optionalDependencies": {
     "@manycore/aholo-splat-transform-darwin-arm64": "workspace:*",
