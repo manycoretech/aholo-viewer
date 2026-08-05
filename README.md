@@ -86,7 +86,7 @@ Project-local skills live in `.codex/skills/`. Use `AGENTS.md` for the current s
 
 ## External Source
 
-`external/egs-core` is a required upstream submodule. `external/splat-transform` is a required workspace package and must stay in the repo. Treat upstream code under `external/` as read-only unless a task explicitly targets that package.
+`external/egs-core` is a required upstream submodule. Treat upstream code under `external/` as read-only unless a task explicitly targets that package.
 
 ## API Docs
 
