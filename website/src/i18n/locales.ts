@@ -1,4 +1,4 @@
-export const defaultLocale = 'zh-CN' as const;
+export const defaultLocale = 'en-US' as const;
 
 export const localeStorageKey = 'aholo:locale';
 
