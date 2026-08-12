@@ -17,6 +17,9 @@ SUPPORTED OUTPUTS
 `;
 
 function readJsonConfig(config) {
+    if (config === '-') {
+        config = 0;
+    }
     const content = fs.readFileSync(config, { encoding: 'utf-8' });
     return JSON.parse(content);
 }
@@ -35,12 +38,12 @@ const cli = yargs(hideBin(process.argv))
     .strict()
     .command({
         command: '$0 <config>',
-        describe: 'Execute a task pipeline from configuration file',
+        describe: 'Execute a task pipeline from configuration file, - for stdin',
         builder(argv) {
             argv.positional('config', { describe: 'pipeline config file', type: 'string' });
         },
         async handler(argv) {
-            await run(readJsonConfig(argv.config));
+            await run(readJsonConfig(argv.config || '-'));
         },
     })
     .command('create <input> <output>', false, {

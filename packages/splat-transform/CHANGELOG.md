@@ -3,6 +3,7 @@
 ## DEV
 
 - upgrade yargs
+- allow stdin input for pipeline mode
 
 ## 1.7.4
 
