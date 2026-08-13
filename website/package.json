@@ -14,7 +14,7 @@
     "@astrojs/markdown-satteri": "^0.3.5",
     "@manycore/aholo-viewer": "workspace:*",
     "@tweakpane/plugin-essentials": "^0.2.1",
-    "astro": "^7.1.6",
+    "astro": "^7.2.1",
     "lz-string": "^1.5.0",
     "monaco-editor": "^0.56.0",
     "tslib": "catalog:",
