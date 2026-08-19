@@ -4,17 +4,31 @@ on:
       - 'master'
     paths:
       - 'packages/splat-transform-native/source/**'
+      - '.github/workflows/build-native.yaml'
+      - '.github/build-native-linux.Dockerfile'
   pull_request:
     branches:
       - 'master'
     paths:
       - 'packages/splat-transform-native/source/**'
+      - '.github/workflows/build-native.yaml'
+      - '.github/build-native-linux.Dockerfile'
   workflow_dispatch:
+    inputs:
+      force-image-update:
+        description: 'Force rebuild and re-upload the Linux build image cache'
+        required: false
+        type: boolean
+        default: false
 
 name: build native
 
 env:
   NODE_VERSION: 24
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build-splat-transform-native:
@@ -34,12 +48,14 @@ jobs:
             shell: pwsh
           - target: linux-x64-gnu
             native-script: build:native:linux-x64-gnu
-            os: ubuntu-22.04
+            os: ubuntu-26.04
             shell: bash
+            arch: amd64
           - target: linux-arm64-gnu
             native-script: build:native:linux-arm64-gnu
-            os: ubuntu-22.04-arm
+            os: ubuntu-26.04-arm
             shell: bash
+            arch: arm64
           - target: darwin-arm64
             native-script: build:native:darwin-arm64
             os: macos-26
@@ -58,32 +74,42 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install workspace dependencies
-        run: |
-          corepack enable
-          corepack install
-          pnpm install
+      - name: Login to GitHub Container Registry
+        if: startsWith(matrix.os, 'ubuntu')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup env (Linux)
         if: startsWith(matrix.os, 'ubuntu')
+        env:
+          CMAKE_VERSION: 4.4.2
+          NINJA_VERSION: 1.13.2
+          CAN_PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
+          FORCE_IMAGE_UPDATE: ${{ github.event_name == 'workflow_dispatch' && inputs.force-image-update == true }}
         run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod a+x ./llvm.sh
-          sudo ./llvm.sh 21
-          sudo apt-get update
-          sudo apt-get install -y clang-21 clang-tools-21 lld-21 ninja-build pkg-config nasm
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 20
-          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-21 20
-          sudo update-alternatives --install /usr/bin/cc cc /usr/bin/clang-21 20
-          sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-21 20
-          sudo update-alternatives --set clang /usr/bin/clang-21
-          sudo update-alternatives --set clang++ /usr/bin/clang++-21
-          sudo update-alternatives --set cc /usr/bin/clang-21
-          sudo update-alternatives --set c++ /usr/bin/clang++-21
-          cmake --version
-          cc --version
-          c++ --version
-          ninja --version
+          repo_lc="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
+          cache_hash="$({ printf '%s\n%s\n%s\n' "${CMAKE_VERSION}" "${NINJA_VERSION}" "${NODE_VERSION}"; cat .github/build-native-linux.Dockerfile; } | sha256sum | cut -c1-16)"
+          image="ghcr.io/${repo_lc}/aholo-native-linux:${{ matrix.arch }}-${cache_hash}"
+          if [ "${FORCE_IMAGE_UPDATE}" = "true" ] || ! docker pull "${image}"; then
+            docker build \
+              --build-arg CMAKE_VERSION="${CMAKE_VERSION}" \
+              --build-arg NINJA_VERSION="${NINJA_VERSION}" \
+              --build-arg NODE_VERSION="${NODE_VERSION}" \
+              -t aholo-native-linux:22.04 \
+              -f .github/build-native-linux.Dockerfile \
+              .github
+            docker run --rm aholo-native-linux:22.04 bash -lc \
+              'cmake --version; cc --version; c++ --version; ninja --version; node --version; fnm --version; vcpkg version'
+            if [ "${CAN_PUSH}" = "true" ]; then
+              docker tag aholo-native-linux:22.04 "${image}"
+              docker push "${image}"
+            fi
+          else
+            docker tag "${image}" aholo-native-linux:22.04
+          fi
 
       - name: Setup env (macOS)
         if: startsWith(matrix.os, 'macos')
@@ -105,8 +131,8 @@ jobs:
           }
           "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
 
-      - name: Setup vcpkg (Unix)
-        if: ${{ !startsWith(matrix.os, 'windows') }}
+      - name: Setup vcpkg (macOS)
+        if: startsWith(matrix.os, 'macos')
         run: |
           if [ -n "${VCPKG_INSTALLATION_ROOT:-}" ] && [ -d "${VCPKG_INSTALLATION_ROOT}" ]; then
             vcpkg_root="${VCPKG_INSTALLATION_ROOT}"
@@ -117,9 +143,23 @@ jobs:
           fi
           echo "VCPKG_ROOT=${vcpkg_root}" >> "${GITHUB_ENV}"
 
+      - name: Build splat-transform native (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            -e AHOLO_SKIP_SUBMODULE_UPDATE=1 \
+            aholo-native-linux:22.04 \
+            bash -lc 'corepack enable && corepack install && pnpm install && pnpm --dir packages/splat-transform-native/source run ${{ matrix.native-script }}'
+
       - name: Build splat-transform native
-        working-directory: packages/splat-transform-native/source
-        run: pnpm run ${{ matrix.native-script }}
+        if: ${{ !startsWith(matrix.os, 'ubuntu') }}
+        run: |
+          corepack enable
+          corepack install
+          pnpm install
+          pnpm --dir packages/splat-transform-native/source run ${{ matrix.native-script }}
 
       - name: Validate native package (Windows)
         if: startsWith(matrix.os, 'windows')
