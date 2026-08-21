@@ -33,6 +33,13 @@ export default defineConfig({
                 allowTernary: true,
             },
         ],
+        'no-unused-vars': [
+            'error',
+            {
+                argsIgnorePattern: '^_',
+                varsIgnorePattern: '^_',
+            },
+        ],
         'unicorn/no-new-array': 'off',
         'no-extra-boolean-cast': 'off',
         'typescript/no-this-alias': 'off',

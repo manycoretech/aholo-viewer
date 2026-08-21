@@ -61,7 +61,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
-    "@webgpu/types": "^0.1.71",
+    "@webgpu/types": "^0.1.72",
     "typescript": "catalog:"
   }
 }
