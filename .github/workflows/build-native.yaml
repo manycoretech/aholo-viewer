@@ -15,24 +15,125 @@ on:
       - '.github/build-native-linux.Dockerfile'
   workflow_dispatch:
     inputs:
-      force-image-update:
-        description: 'Force rebuild and re-upload the Linux build image cache'
+      force-build-image:
+        description: Force a fresh rebuild of the Linux build image
         required: false
-        type: boolean
         default: false
+        type: boolean
 
 name: build native
 
 env:
   NODE_VERSION: 24
+  CMAKE_VERSION: 4.4.2
+  NINJA_VERSION: 1.13.2
 
 permissions:
   contents: read
   packages: write
 
 jobs:
+  build-linux-image:
+    name: Build native Linux image (${{ matrix.arch }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
+    runs-on: ${{ matrix.os }}
+    outputs:
+      hash: ${{ steps.image.outputs.hash }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            os: ubuntu-26.04
+          - arch: arm64
+            os: ubuntu-26.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Resolve Linux image metadata
+        id: image
+        shell: bash
+        run: |
+          repo_lc="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
+          cache_hash="$({ printf '%s\n%s\n%s\n' "${CMAKE_VERSION}" "${NINJA_VERSION}" "${NODE_VERSION}"; cat .github/build-native-linux.Dockerfile; } | sha256sum | cut -c1-16)"
+          base="ghcr.io/${repo_lc}/aholo-native-linux"
+          echo "hash=${cache_hash}" >> "${GITHUB_OUTPUT}"
+          echo "platform-ref=${base}:${cache_hash}-${{ matrix.arch }}" >> "${GITHUB_OUTPUT}"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push native Linux image
+        uses: docker/build-push-action@v7
+        with:
+          context: .github
+          file: .github/build-native-linux.Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          pull: ${{ inputs['force-build-image'] == true }}
+          no-cache: ${{ inputs['force-build-image'] == true }}
+          tags: ${{ steps.image.outputs.platform-ref }}
+          build-args: |
+            CMAKE_VERSION=${{ env.CMAKE_VERSION }}
+            NINJA_VERSION=${{ env.NINJA_VERSION }}
+            NODE_VERSION=${{ env.NODE_VERSION }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/aholo-native-linux:latest
+          cache-to: type=inline
+          provenance: false
+
+  publish-linux-image:
+    name: Publish multi-platform Linux image
+    needs: build-linux-image
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Resolve Linux image metadata
+        id: image
+        shell: bash
+        run: |
+          repo_lc="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
+          echo "base=ghcr.io/${repo_lc}/aholo-native-linux" >> "${GITHUB_OUTPUT}"
+          echo "hash=${{ needs.build-linux-image.outputs.hash }}" >> "${GITHUB_OUTPUT}"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Publish multi-platform Linux manifest
+        shell: bash
+        run: |
+          base="${{ steps.image.outputs.base }}"
+          cache_hash="${{ steps.image.outputs.hash }}"
+          manifest_tags=(--tag "${base}:${cache_hash}")
+
+          if [ "${GITHUB_REF}" = "refs/heads/master" ]; then
+            manifest_tags+=(--tag "${base}:latest")
+          fi
+
+          docker buildx imagetools create "${manifest_tags[@]}" \
+            "${base}:${cache_hash}-amd64" \
+            "${base}:${cache_hash}-arm64"
+          docker buildx imagetools inspect "${base}:${cache_hash}"
+
   build-splat-transform-native:
     name: Build splat-transform native (${{ matrix.target }})
+    needs:
+      - build-linux-image
+      - publish-linux-image
+    if: ${{ always() && ((needs.build-linux-image.result == 'success' && needs.publish-linux-image.result == 'success') || (needs.build-linux-image.result == 'skipped' && needs.publish-linux-image.result == 'skipped')) }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -76,40 +177,39 @@ jobs:
 
       - name: Login to GitHub Container Registry
         if: startsWith(matrix.os, 'ubuntu')
-        uses: docker/login-action@v3
+        continue-on-error: ${{ needs.build-linux-image.result == 'skipped' }}
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup env (Linux)
+      - name: Set up Docker Buildx
         if: startsWith(matrix.os, 'ubuntu')
-        env:
-          CMAKE_VERSION: 4.4.2
-          NINJA_VERSION: 1.13.2
-          CAN_PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
-          FORCE_IMAGE_UPDATE: ${{ github.event_name == 'workflow_dispatch' && inputs.force-image-update == true }}
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and load native Linux image
+        if: startsWith(matrix.os, 'ubuntu')
+        uses: docker/build-push-action@v7
+        with:
+          context: .github
+          file: .github/build-native-linux.Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          push: false
+          tags: aholo-native-linux:22.04
+          build-args: |
+            CMAKE_VERSION=${{ env.CMAKE_VERSION }}
+            NINJA_VERSION=${{ env.NINJA_VERSION }}
+            NODE_VERSION=${{ env.NODE_VERSION }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/aholo-native-linux:latest
+          provenance: false
+
+      - name: Validate Linux build image
+        if: startsWith(matrix.os, 'ubuntu')
         run: |
-          repo_lc="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
-          cache_hash="$({ printf '%s\n%s\n%s\n' "${CMAKE_VERSION}" "${NINJA_VERSION}" "${NODE_VERSION}"; cat .github/build-native-linux.Dockerfile; } | sha256sum | cut -c1-16)"
-          image="ghcr.io/${repo_lc}/aholo-native-linux:${{ matrix.arch }}-${cache_hash}"
-          if [ "${FORCE_IMAGE_UPDATE}" = "true" ] || ! docker pull "${image}"; then
-            docker build \
-              --build-arg CMAKE_VERSION="${CMAKE_VERSION}" \
-              --build-arg NINJA_VERSION="${NINJA_VERSION}" \
-              --build-arg NODE_VERSION="${NODE_VERSION}" \
-              -t aholo-native-linux:22.04 \
-              -f .github/build-native-linux.Dockerfile \
-              .github
-            docker run --rm aholo-native-linux:22.04 bash -lc \
-              'cmake --version; cc --version; c++ --version; ninja --version; node --version; fnm --version; vcpkg version'
-            if [ "${CAN_PUSH}" = "true" ]; then
-              docker tag aholo-native-linux:22.04 "${image}"
-              docker push "${image}"
-            fi
-          else
-            docker tag "${image}" aholo-native-linux:22.04
-          fi
+          docker run --rm aholo-native-linux:22.04 bash -lc \
+            'cmake --version; cc --version; c++ --version; ninja --version; node --version; fnm --version; vcpkg version'
 
       - name: Setup env (macOS)
         if: startsWith(matrix.os, 'macos')
