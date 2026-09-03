@@ -11,10 +11,10 @@
     ".clean": "node scripts/clean.mjs"
   },
   "dependencies": {
-    "@astrojs/markdown-satteri": "^0.3.8",
+    "@astrojs/markdown-satteri": "^0.4.0",
     "@manycore/aholo-viewer": "workspace:*",
     "@tweakpane/plugin-essentials": "^0.2.1",
-    "astro": "^7.2.7",
+    "astro": "^7.2.10",
     "lz-string": "^1.5.0",
     "monaco-editor": "^0.56.0",
     "tslib": "catalog:",
