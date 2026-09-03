@@ -1,9 +1,10 @@
 # Changelog
 
-## DEV
+## 1.7.5
 
 - upgrade yargs
 - allow stdin input for pipeline mode
+- fix ModifyTask Invalid array length
 
 ## 1.7.4
 

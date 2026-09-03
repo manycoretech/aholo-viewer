@@ -85,11 +85,12 @@ async function createSplatModify(path: string, counts: number) {
 
     if (!modelMatrix.equals(Matrix4.ONE)) {
         const indices = new Array(counts - usedCounts);
+        let idx = 0;
         for (let i = 0; i < used.length; i++) {
             if (used[i]) {
                 continue;
             }
-            indices.push(i);
+            indices[idx++] = i;
         }
 
         const matrix = modelMatrix;
