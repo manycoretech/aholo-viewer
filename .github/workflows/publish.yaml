@@ -60,8 +60,6 @@ jobs:
           github-token: ${{ github.token }}
       - name: Publish packages
         id: publish-packages
-        env:
-          NPM_TOKEN: ${{secrets.NPM_TOKEN}}
         run: |
           set -o pipefail
           publish_log="$(mktemp)"
