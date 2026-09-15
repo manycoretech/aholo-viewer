@@ -9,12 +9,12 @@
 
 namespace {
 struct RefSplat {
-    const splat::Splat& source;
+    splat::Splat& source;
     std::vector<size_t> gaussians;
     Eigen::AlignedBox3f box;
     bool need_split;
 
-    RefSplat(const splat::Splat& splat) : source(splat), box(splat.bounding_box), need_split(true) {
+    RefSplat(splat::Splat& splat) : source(splat), box(splat.bounding_box), need_split(true) {
         this->gaussians.reserve(splat.gaussians.size());
         for (auto i = 0; i < splat.gaussians.size(); i++) {
             this->gaussians.push_back(i);
@@ -38,10 +38,10 @@ struct RefSplat {
 
     splat::Splat to_owned() {
         std::vector<splat::Gaussian> gaussians;
-        std::vector<float> sh;
         gaussians.reserve(this->gaussians.size());
         for (auto index : this->gaussians) {
-            gaussians.push_back(this->source.gaussians[index]);
+            // Each source index belongs to exactly one leaf block.
+            gaussians.push_back(std::move(this->source.gaussians[index]));
         }
         {
             auto _ = std::move(this->gaussians);
@@ -187,13 +187,14 @@ std::vector<RefSplat> split_block(RefSplat& splat, size_t max_block_size, splat:
 } // namespace
 
 namespace splat::block::detail {
-std::vector<Splat> split(const Splat& splat, size_t max_block_size, SplitNormal normal) {
+std::vector<Splat> split(Splat&& splat, size_t max_block_size, SplitNormal normal) {
+    std::vector<Splat> results;
     if (splat.gaussians.size() <= max_block_size) {
-        return std::vector({ splat });
+        results.emplace_back(std::move(splat));
+        return results;
     }
 
     std::queue<RefSplat> queue;
-    std::vector<Splat> results;
     queue.emplace(splat);
 
     while (!queue.empty()) {

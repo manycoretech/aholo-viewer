@@ -293,7 +293,6 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
         edges.reserve(current.gaussians.size() * k_eff);
         caches.clear();
         caches.reserve(current.gaussians.size());
-        generated.gaussians.reserve(current.gaussians.size() / 2);
 
         build_cache(current, caches);
 
@@ -340,7 +339,7 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
 
             used.assign(current.gaussians.size(), false);
             pairs.clear();
-            pairs.reserve(max_pairs);
+            pairs.reserve(std::min(max_pairs, current.gaussians.size() / 2));
 
             for (auto edge_idx : order) {
                 const auto [u, v] = edges[edge_idx];
@@ -357,6 +356,7 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
         }
 
         // merge pairs
+        generated.gaussians.reserve(current.gaussians.size() - pairs.size());
         for (auto& pair : pairs) {
             auto [u, v] = pair;
             auto g = merge_gaussians(current, { u, v }, scale_boost);
@@ -368,7 +368,7 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
         // keep unused gaussian
         for (auto i = 0; i < current.gaussians.size(); i++) {
             if (!used[i]) {
-                generated.gaussians.push_back(current.gaussians[i]);
+                generated.gaussians.push_back(std::move(current.gaussians[i]));
             }
         }
 

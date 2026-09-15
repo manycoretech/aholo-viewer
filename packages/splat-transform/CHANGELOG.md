@@ -1,5 +1,10 @@
 # Changelog
 
+## DEV
+
+- reduce native chunk splitting memory overhead by transferring Gaussian and SH storage instead of copying it
+- reduce native LOD generation allocations by moving unmerged Gaussians and tightening intermediate buffer reservations
+
 ## 1.7.5
 
 - upgrade yargs
