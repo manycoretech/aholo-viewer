@@ -12,7 +12,6 @@ Work inside `packages/renderer/` and renderer-related scripts.
 - Renderer public API exports are user-owned.
 - Do not change `packages/renderer/src/index.ts` exports unless explicitly asked.
 - Do not hand-edit `external/egs-core` or `packages/renderer/dist/`.
-- Do not delete `external/splat-transform`; it is a required workspace package.
 - Add concise JSDoc only for user-approved public API work.
 - If public API changes, regenerate docs through normal commands.
 

@@ -10,7 +10,7 @@ AI collaboration entrypoint. Keep context small, preserve user changes, and rout
 - Renderer: `packages/renderer/` source and generated package output.
 - Scripts: `scripts/` submodule prep, renderer build/clean, EGS types, API docs.
 - Docs: `README.md`, `docs/`, manual pages, manual assets, AI collaboration guidance.
-- External: `external/egs-core` submodule and `external/splat-transform` workspace package.
+- External: `external/egs-core` submodule workspace package.
 - Skills: `.codex/skills/` project-local collaboration rules.
 
 ## Skill Routing
@@ -27,7 +27,6 @@ AI collaboration entrypoint. Keep context small, preserve user changes, and rout
 - Do not overwrite user changes. Start with `git status --short`.
 - Keep edits inside the owning module unless the task explicitly spans modules.
 - Do not hand-edit `external/egs-core`, `website/.generated/api/`, or `packages/renderer/dist/`.
-- Do not delete `external/splat-transform`.
 - Do not change `packages/renderer/src/index.ts` exports unless asked.
 - Do not compare the renderer to third-party engines or frameworks unless asked.
 

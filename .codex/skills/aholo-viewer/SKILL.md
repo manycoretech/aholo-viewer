@@ -20,7 +20,6 @@ Read `AGENTS.md` first. Use this skill only when the task spans modules or needs
 - Keep website work in `website/`, renderer work in `packages/renderer/`, shared automation in `scripts/`.
 - Keep examples as paired metadata/runners and manual as filesystem Markdown loaded through website utilities.
 - Do not hand-edit `external/egs-core`, `website/.generated/api/`, or generated `dist/`.
-- Do not delete `external/splat-transform`.
 - Do not change renderer public exports unless explicitly asked.
 
 ## Validate

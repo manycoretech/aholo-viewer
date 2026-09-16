@@ -63,7 +63,6 @@ API Reference / API 参考
 - Renderer public API exports are user-owned.
 - Do not modify `packages/renderer/src/index.ts` exports unless explicitly asked.
 - Do not hand-edit `external/egs-core`, `website/.generated/api/`, or generated `dist` folders.
-- Do not delete `external/splat-transform`; it is a required workspace package.
 - Keep Monaco route-local.
 - Keep examples as paired JSON metadata and TypeScript source files.
 

@@ -68,7 +68,6 @@ The root package coordinates build, check, API generation, and packaging through
 - `website/src/content/`: manual pages, manual assets, and paired example metadata/source files.
 - `scripts/`: shared Node automation for submodule readiness, EGS declarations, renderer packaging, API HTML generation, content validation, and clean tasks.
 - `external/egs-core`: upstream submodule consumed by workspace packages and renderer packaging scripts.
-- `external/splat-transform`: required workspace package used by the manual and examples workflow.
 
 ## Dependency Direction
 
@@ -90,7 +89,7 @@ packages/renderer/src/index.ts
 
 `website/` may depend on `@manycore/aholo-viewer` through the workspace package. The renderer package should not depend on the website. Website `dev`, `build`, and `check` first run the renderer build, then regenerate API HTML and manifest data.
 
-`external/egs-core` is an upstream dependency submodule. `external/splat-transform` is a required workspace package. Scripts may read external sources and generate dependency outputs needed for local builds, but repository changes should not hand-edit upstream code unless a task explicitly targets that package.
+`external/egs-core` is an upstream dependency submodule. Scripts may read external sources and generate dependency outputs needed for local builds, but repository changes should not hand-edit upstream code unless a task explicitly targets that package.
 
 ## Root Command Graph
 
