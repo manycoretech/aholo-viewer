@@ -45,5 +45,6 @@ export default defineConfig({
         'typescript/no-this-alias': 'off',
         'typescript/no-duplicate-enum-values': 'off',
         'erasing-op': 'off',
+        'import/extensions': ['error', 'ignorePackages'],
     },
 });
