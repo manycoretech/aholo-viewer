@@ -5,7 +5,7 @@
   "packageManager": "pnpm@12.4.1",
   "type": "module",
   "engines": {
-    "node": ">=22.22.1"
+    "node": ">=22.22.2"
   },
   "scripts": {
     "prepare": "husky",
@@ -39,9 +39,9 @@
     "@manycore/aholo-splat-dev-server": "workspace:*",
     "@manycore/aholo-splat-transform": "workspace:*",
     "husky": "^9.1.7",
-    "lint-staged": "^17.5.0",
-    "oxfmt": "^0.67.0",
-    "oxlint": "^1.82.0",
+    "lint-staged": "^17.5.1",
+    "oxfmt": "^0.68.0",
+    "oxlint": "^1.83.0",
     "typedoc": "^0.28.20",
     "typescript": "catalog:"
   }

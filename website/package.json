@@ -14,12 +14,12 @@
     "@astrojs/markdown-satteri": "^0.4.1",
     "@manycore/aholo-viewer": "workspace:*",
     "@tweakpane/plugin-essentials": "^0.2.1",
-    "astro": "^7.3.2",
+    "astro": "^7.3.3",
     "lz-string": "^1.5.0",
     "monaco-editor": "^0.56.0",
     "tslib": "catalog:",
     "tweakpane": "^4.0.5",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
