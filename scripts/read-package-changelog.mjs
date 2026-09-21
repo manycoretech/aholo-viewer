@@ -12,7 +12,7 @@ if (!packageName) {
 }
 
 const packageInfo = JSON.parse(
-    child_process.execSync('pnpm list --filter=@manycore/* -r -depth -1 --json', { stdio: 'pipe' }).toString('utf-8'),
+    child_process.execSync('pnpm list --filter=@manycore/* -r --depth -1 --json', { stdio: 'pipe' }).toString('utf-8'),
 ).find(item => item.name === packageName);
 
 const packageRoot = resolveWorkspacePath(packageInfo.path, 'Package root');

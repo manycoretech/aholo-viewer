@@ -11,9 +11,11 @@ jobs:
     permissions:
       actions: read
       contents: write
-    environment:
-      name: publish
-      deployment: false
+      # Required for npm trusted publishing (OIDC). Without this the npm CLI
+      # silently skips the OIDC token exchange and falls back to token auth.
+      id-token: write
+    # No `environment` on purpose: the npm trusted publisher config leaves
+    # Environment empty, and the OIDC claims must match it exactly.
     if: github.ref == 'refs/heads/master'
     steps:
       - name: Checkout
@@ -24,6 +26,7 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
       - name: Check splat-transform publish status
         id: splat-transform
         run: |

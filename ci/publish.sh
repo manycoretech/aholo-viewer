@@ -6,5 +6,4 @@ corepack enable
 corepack install
 
 pnpm install
-npm config set registry https://registry.npmjs.org
 node scripts/publish-packages.mjs

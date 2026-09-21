@@ -4,7 +4,7 @@ import path from 'node:path';
 import { resolveCatalogs, applyCatalogs } from '@internal/utils/catalogs.js';
 
 const packages = JSON.parse(
-    child_process.execSync('pnpm list --filter=@manycore/* -r -depth -1 --json', { stdio: 'pipe' }).toString('utf-8'),
+    child_process.execSync('pnpm list --filter=@manycore/* -r --depth -1 --json', { stdio: 'pipe' }).toString('utf-8'),
 ).filter(item => !item.private);
 
 // update splat-transform sub packages version.
