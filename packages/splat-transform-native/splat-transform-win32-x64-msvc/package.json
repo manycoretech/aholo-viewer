@@ -1,6 +1,11 @@
 {
   "name": "@manycore/aholo-splat-transform-win32-x64-msvc",
   "version": "0.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/manycoretech/aholo-viewer.git",
+    "directory": "packages/splat-transform-native/splat-transform-win32-x64-msvc"
+  },
   "type": "commonjs",
   "files": [
     "splat-transform.node",

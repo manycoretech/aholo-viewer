@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.7.6
+## 1.7.7
 
 - reduce native chunk splitting memory overhead by transferring Gaussian and SH storage instead of copying it
 - reduce native LOD generation allocations by moving unmerged Gaussians and tightening intermediate buffer reservations
