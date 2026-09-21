@@ -14,8 +14,9 @@ jobs:
       # Required for npm trusted publishing (OIDC). Without this the npm CLI
       # silently skips the OIDC token exchange and falls back to token auth.
       id-token: write
-    # No `environment` on purpose: the npm trusted publisher config leaves
-    # Environment empty, and the OIDC claims must match it exactly.
+    environment:
+      name: publish
+      deployment: false
     if: github.ref == 'refs/heads/master'
     steps:
       - name: Checkout
