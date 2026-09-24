@@ -1,5 +1,9 @@
 # Changelog
 
+## DEV
+
+- upgrade yargs
+
 ## 1.7.7
 
 - reduce native chunk splitting memory overhead by transferring Gaussian and SH storage instead of copying it

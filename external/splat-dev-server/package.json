@@ -30,7 +30,7 @@
   ],
   "dependencies": {
     "express": "^5.2.1",
-    "yargs": "^18.1.0"
+    "yargs": "catalog:"
   },
   "binary": {
     "napi_versions": [
