@@ -1,5 +1,14 @@
 # ChangeLOG
 
+## 1.9.0
+
+1. Features
+    - add LCC2 loading through `SplatLoader.SplatFileType.LCC2`, with `parseSplatData()` supporting `extras.lodLevel` to select the LOD level; defaults to `0`.
+    - support 2D float and unsigned integer `SourceTexture` inputs in `SplatModifier`, including texture updates through `update()`.
+2. Fixes
+    - handle asynchronous splat sorting failures and cancel pending work when the renderer is destroyed or its context is lost.
+    - detect LCC metadata with any `.lcc` filename inside ZIP archives.
+
 ## 1.8.1
 
 1. Fixes

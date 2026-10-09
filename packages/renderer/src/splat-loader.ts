@@ -1,6 +1,7 @@
 export {
     KsplatFile,
     LccFile,
+    Lcc2File,
     PlyFile,
     SogFile,
     SplatFile,

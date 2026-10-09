@@ -30,7 +30,7 @@ const LEFT_RAIL_COLLAPSED_STORAGE_KEY = 'aholo:viewer:left-collapsed';
 const RIGHT_RAIL_COLLAPSED_STORAGE_KEY = 'aholo:viewer:right-collapsed';
 const FPS_DISPLAY_INTERVAL_MS = 250;
 const FPS_SMOOTHING_FACTOR = 0.08;
-const SUPPORTED_FILE_EXTENSIONS = ['.ply', '.spz', '.splat', '.ksplat', '.lcc', '.sog', '.esz', '.json'] as const;
+const SUPPORTED_FILE_EXTENSIONS = ['.ply', '.spz', '.splat', '.ksplat', '.zip', '.sog', '.esz', '.json'] as const;
 
 type SplatFileTypeValue = (typeof SplatFileType)[keyof typeof SplatFileType];
 type SplatPackTypeValue = (typeof SplatPackType)[keyof typeof SplatPackType];
@@ -571,23 +571,25 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
             return;
         }
 
-        const probe = await getDetectionProbe(source, json);
-        const type = detectSplatFileType(source.name, probe);
+        const archive = getSourceExtension(source) === '.zip' ? await readZipSource(source, signal) : undefined;
+        const probe = archive ?? (await getDetectionProbe(source, json));
+        throwIfAborted(signal);
+        const type = detectSplatFileType(source.name.toLowerCase(), probe);
 
         if (type === undefined) {
             throw new Error(`Unsupported file type: ${source.name}`);
         }
 
         record.format = getFileTypeLabel(type);
-        const data = await parseSourceData(source, type, signal);
+        const input = archive ?? (source.kind === 'url' ? source.url : source.file);
+        const data = await parseSourceData(input, type, signal);
         applyImportedSplatDefaults(data);
         const splat = await abortable(createSplat(data), signal);
         splat.autoFreeResourceOnGpuPacked = params.autoFreeResourceOnGpuPacked;
         scene.add(splat as Object3D);
     }
 
-    async function parseSourceData(source: Source, type: SplatFileTypeValue, signal: AbortSignal) {
-        const input = source.kind === 'url' ? source.url : source.file;
+    async function parseSourceData(input: File | string | Uint8Array, type: SplatFileTypeValue, signal: AbortSignal) {
         return abortable(
             parseSplatData(type, input, params.splatPackType, {
                 maxShDegree: params.maxSh,
@@ -1244,6 +1246,20 @@ async function fetchText(url: string, signal: AbortSignal) {
     return response.text();
 }
 
+async function readZipSource(source: Source, signal: AbortSignal) {
+    if (source.kind === 'file') {
+        return new Uint8Array(await abortable(source.file.arrayBuffer(), signal));
+    }
+
+    const response = await fetch(source.url, { signal });
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    }
+
+    return new Uint8Array(await response.arrayBuffer());
+}
+
 async function getDetectionProbe(source: Source, json: unknown) {
     if (json !== undefined) {
         return new TextEncoder().encode(JSON.stringify(json));
@@ -1472,6 +1488,8 @@ function getFileTypeLabel(type: SplatFileTypeValue) {
             return 'KSPLAT';
         case SplatFileType.LCC:
             return 'LCC';
+        case SplatFileType.LCC2:
+            return 'LCC2';
         case SplatFileType.SOG:
             return 'SOG';
         case SplatFileType.ESZ:
