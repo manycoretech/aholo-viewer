@@ -1,4 +1,4 @@
-import type { Scene3D, Viewer } from '@manycore/aholo-viewer';
+import type { Camera3D, Scene3D, Viewer } from '@manycore/aholo-viewer';
 import type { Pane } from 'tweakpane';
 import type { CameraControl } from './camera-control.js';
 
@@ -8,6 +8,8 @@ export interface RuntimeRenderer {
     frame(callback: (state: { time: number; delta: number }) => boolean): void;
     render(): void;
     resize(): void;
+    /** Let a plugin own rendering and sizing. Supply the preview camera if it replaced the default viewport. */
+    setExternalRendering(active: boolean, previewCamera?: Camera3D): void;
 }
 
 export interface RuntimeLoadingController {

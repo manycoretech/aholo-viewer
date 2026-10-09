@@ -57,6 +57,8 @@ export interface RuntimeRenderer {
     frame(callback: (state: { time: number; delta: number }) => boolean): void;
     render(): void;
     resize(): void;
+    /** Let a plugin own rendering and sizing. Supply the preview camera if it replaced the default viewport. */
+    setExternalRendering(active: boolean, previewCamera?: Camera3D): void;
 }
 
 export interface RuntimeLoadingController {
@@ -703,6 +705,9 @@ class RenderSessionRenderer implements RuntimeRenderer {
     #lastFrameTime = 0;
     #renderRequested = true;
     #disposed = false;
+    #paused = true;
+    #externalRendering = false;
+    #previewCamera: Camera3D | undefined;
     #stats: RenderStats = {
         drawCalls: 0,
         objects: 0,
@@ -782,7 +787,9 @@ class RenderSessionRenderer implements RuntimeRenderer {
             return;
         }
 
-        syncCameraAspect(this.#viewer.getCamera(), this.#viewer);
+        if (!this.#externalRendering) {
+            syncCameraAspect(this.#previewCamera ?? this.#viewer.getCamera(), this.#viewer);
+        }
         this.#viewer.getScene().notifySceneChange();
         this.requestRender();
     }
@@ -792,18 +799,23 @@ class RenderSessionRenderer implements RuntimeRenderer {
     };
 
     resize(): void {
-        if (this.#disposed) {
+        if (this.#disposed || this.#externalRendering) {
             return;
         }
 
         this.#viewer.resize();
 
-        syncCameraAspect(this.#viewer.getCamera(), this.#viewer);
+        syncCameraAspect(this.#previewCamera ?? this.#viewer.getCamera(), this.#viewer);
         this.requestRender();
     }
 
     start() {
-        if (this.#disposed || this.#rafRequestId !== undefined) {
+        if (this.#disposed) {
+            return;
+        }
+
+        this.#paused = false;
+        if (this.#externalRendering || this.#rafRequestId !== undefined) {
             return;
         }
 
@@ -813,16 +825,42 @@ class RenderSessionRenderer implements RuntimeRenderer {
     }
 
     pause() {
-        if (this.#disposed || this.#rafRequestId === undefined) {
+        if (this.#disposed) {
             return;
         }
 
-        window.cancelAnimationFrame(this.#rafRequestId);
-        this.#rafRequestId = undefined;
-        this.#lastFrameTime = 0;
+        this.#paused = true;
+        this.#stopAnimationFrame();
         // Also stops the engine-internal FPS/tick loop so a hidden surface
-        // schedules no animation frames at all.
-        this.#viewer.pause();
+        // schedules no animation frames, unless an XR plugin owns rendering.
+        if (!this.#externalRendering) {
+            this.#viewer.pause();
+        }
+    }
+
+    setExternalRendering(active: boolean, previewCamera?: Camera3D) {
+        if (this.#disposed || this.#externalRendering === active) {
+            return;
+        }
+
+        this.#externalRendering = active;
+        this.#previewCamera = previewCamera;
+        if (active) {
+            this.#stopAnimationFrame();
+            this.#viewer.resume();
+        } else if (this.#paused) {
+            this.#viewer.pause();
+        } else {
+            this.start();
+        }
+    }
+
+    #stopAnimationFrame() {
+        if (this.#rafRequestId !== undefined) {
+            window.cancelAnimationFrame(this.#rafRequestId);
+            this.#rafRequestId = undefined;
+        }
+        this.#lastFrameTime = 0;
     }
 
     dispose() {
@@ -837,10 +875,7 @@ class RenderSessionRenderer implements RuntimeRenderer {
             this.#resizeTimer = undefined;
         }
 
-        if (this.#rafRequestId !== undefined) {
-            window.cancelAnimationFrame(this.#rafRequestId);
-            this.#rafRequestId = undefined;
-        }
+        this.#stopAnimationFrame();
 
         this.#viewer.requestRenderHandler = undefined;
         this.#control.dispose();
@@ -848,7 +883,7 @@ class RenderSessionRenderer implements RuntimeRenderer {
     }
 
     #tick = (time: number) => {
-        if (this.#disposed) {
+        if (this.#disposed || this.#paused || this.#externalRendering) {
             return;
         }
         this.#beginFrame?.();
@@ -858,6 +893,10 @@ class RenderSessionRenderer implements RuntimeRenderer {
         let shouldRender = this.#renderRequested;
         for (const callback of this.#frameCallbacks) {
             shouldRender = callback({ time, delta }) || shouldRender;
+        }
+        if (this.#disposed || this.#paused || this.#externalRendering) {
+            this.#endFrame?.();
+            return;
         }
         if (shouldRender) {
             this.#renderRequested = false;

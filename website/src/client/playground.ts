@@ -37,6 +37,7 @@ interface PlaygroundPreset {
     code: string;
     accent: string;
     renderer: PlaygroundRendererOptions;
+    showInteractionGuide: boolean;
 }
 
 interface PlaygroundConfig {
@@ -116,11 +117,13 @@ export async function mountPlayground(root: HTMLElement, config: PlaygroundConfi
     const inspector = query<HTMLElement>(root, '[data-inspector]');
     const configPanel = root.querySelector<HTMLElement>('[data-config-panel]');
     const previewStatus = root.querySelector<HTMLElement>('[data-preview-status]');
+    const interactionGuide = root.querySelector<HTMLElement>('[data-interaction-guide]');
 
     const initialParams = new URLSearchParams(window.location.search);
     const requestedPreset = initialParams.get(PRESET_QUERY_PARAM);
     const initialCode = readCodeFromUrl(initialParams);
     let currentPreset = config.presets.find(preset => preset.slug === requestedPreset) ?? config.presets[0];
+    updateInteractionGuide(currentPreset);
     let isApplyingEditorValue = false;
     let urlSyncTimer: number | undefined;
     let runId = 0;
@@ -155,6 +158,7 @@ export async function mountPlayground(root: HTMLElement, config: PlaygroundConfi
 
     function applyPreset(preset: PlaygroundPreset, options: { code?: string; syncUrl?: boolean } = {}) {
         currentPreset = preset;
+        updateInteractionGuide(preset);
         updatePresetMenu(preset);
         applyEditorValue(() => editor.setPreset(preset, options.code));
 
@@ -168,6 +172,13 @@ export async function mountPlayground(root: HTMLElement, config: PlaygroundConfi
         }
 
         run();
+    }
+
+    function updateInteractionGuide(preset: PlaygroundPreset) {
+        if (interactionGuide) {
+            interactionGuide.hidden = !preset.showInteractionGuide;
+            delete interactionGuide.dataset.visible;
+        }
     }
 
     function applyEditorValue(callback: () => void) {

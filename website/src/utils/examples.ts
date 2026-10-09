@@ -45,6 +45,7 @@ export function getPlaygroundPresets(locale: Locale) {
             code: example.code,
             accent: example.accent,
             renderer: example.renderer,
+            showInteractionGuide: example.showInteractionGuide,
         }));
 }
 
