@@ -1,6 +1,6 @@
 # Changelog
 
-## DEV
+## 1.8.0
 
 - read LOD0 and environment splats from LCC2 ZIP archives, including nested directories and shared-file ranges
 - read unpacked LCC and LCC2 through their .lcc and .lcc2 metadata file paths
