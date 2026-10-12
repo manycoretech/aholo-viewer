@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { unzipSync } from 'fflate';
 import type { ISingleSplat, SplatData } from '../SplatData.js';
 import { createSingleSplat, extractFromRootDir } from '../utils/index.js';
@@ -70,12 +72,26 @@ export class LccFile implements IFile {
     private meta: Metadata;
     private refs: Record<string, Uint8Array> = {};
 
+    constructor(private readonly filename?: string) {}
+
     private load(buffer: Uint8Array) {
-        const view = new DataView(buffer.buffer);
-        if (view.getUint32(0, true) !== ZIP_MAGIC) {
-            throw new Error('LCC file is not a valid zip archive.');
+        const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+        if (buffer.byteLength >= 4 && view.getUint32(0, true) === ZIP_MAGIC) {
+            this.refs = extractFromRootDir(unzipSync(buffer));
+        } else {
+            if (!this.filename) {
+                throw new Error('Unpacked LCC input requires the .lcc metadata file path.');
+            }
+            const baseDir = path.dirname(path.resolve(this.filename));
+            const files = new Map(fs.readdirSync(baseDir).map(name => [name.toLowerCase(), name]));
+            this.refs = { 'meta.lcc': buffer };
+            for (const name of ['index.bin', 'data.bin', 'shcoef.bin']) {
+                const filename = files.get(name);
+                if (filename !== undefined) {
+                    this.refs[name] = fs.readFileSync(path.join(baseDir, filename));
+                }
+            }
         }
-        this.refs = extractFromRootDir(unzipSync(buffer));
 
         if (!['meta.lcc', 'index.bin', 'data.bin'].every(name => !!this.refs[name])) {
             throw new Error('LCC file is missing required files.');
@@ -110,7 +126,8 @@ export class LccFile implements IFile {
 
         const infos: BlockInfo[] = [];
         {
-            const index = new DataView(refs['index.bin'].buffer);
+            const buffer = refs['index.bin'];
+            const index = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
             const infoCounts = Math.floor(index.byteLength / (4 + 16 * meta.totalLevel));
             let offset = 0;
             for (let i = 0; i < infoCounts; i++) {
@@ -140,7 +157,7 @@ export class LccFile implements IFile {
         }, {});
         const {
             scale: { min: scaleMin, max: scaleMax },
-            shcoef: { min: shMin, max: shMax },
+            shcoef,
         } = attributes;
 
         const single: ISingleSplat = createSingleSplat(45);
@@ -149,8 +166,12 @@ export class LccFile implements IFile {
         for (let i = 0; i < infos.length; i++) {
             const info = infos[i];
             const { points, offset, size } = info.lods[0];
-            const dataview = new DataView(refs['data.bin'].buffer, offset, size);
-            const shN = refs['shcoef.bin'] ? new DataView(refs['shcoef.bin'].buffer, offset * 2, size * 2) : undefined;
+            const buffer = refs['data.bin'];
+            const dataview = new DataView(buffer.buffer, buffer.byteOffset + offset, size);
+            const shBuffer = refs['shcoef.bin'];
+            const shN = shBuffer
+                ? new DataView(shBuffer.buffer, shBuffer.byteOffset + offset * 2, size * 2)
+                : undefined;
             for (let j = 0; j < points; j++) {
                 const off = j * 32;
 
@@ -176,6 +197,7 @@ export class LccFile implements IFile {
                 setFn(index, single);
 
                 if (shN) {
+                    const { min: shMin, max: shMax } = shcoef;
                     const shOff = off * 2;
                     for (let k = 0; k < 15; k++) {
                         const v = DecodePacked_11_10_11(shN.getUint32(shOff + k * 4, true));

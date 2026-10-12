@@ -5,4 +5,5 @@ export { SogFile } from './sog.js';
 export { SplatFile } from './splat.js';
 export { SpzFile } from './spz.js';
 export { LccFile } from './lcc.js';
+export { Lcc2File } from './lcc2.js';
 export { EszFile } from './esz.js';

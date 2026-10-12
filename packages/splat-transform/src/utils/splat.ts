@@ -1,6 +1,16 @@
 import fs from 'node:fs';
 import { unzipSync } from 'fflate';
-import { type IFile, PlyFile, SpzFile, KsplatFile, SplatFile, SogFile, LccFile, EszFile } from '../file/index.js';
+import {
+    type IFile,
+    PlyFile,
+    SpzFile,
+    KsplatFile,
+    SplatFile,
+    SogFile,
+    LccFile,
+    Lcc2File,
+    EszFile,
+} from '../file/index.js';
 import { ColIdx, type ISingleSplat, SplatData } from '../SplatData.js';
 import { SH_MAPS } from '../constant.js';
 import { writableToWeb } from './stream.js';
@@ -19,6 +29,7 @@ export enum SplatFileType {
     KSPLAT,
     SOG,
     LCC,
+    LCC2,
     ESZ,
 }
 
@@ -43,19 +54,27 @@ export function createSingleSplat(shCounts: number = 0): ISingleSplat {
 }
 
 export function detectSplatFileType(filename: string, buffer: Uint8Array = new Uint8Array()) {
-    let ext = filename.split('.').pop();
+    let ext = filename.split('.').pop()?.toLowerCase();
     if (ext === 'zip') {
+        let hasLcc2 = false;
+        let hasLcc = false;
+        let hasSog = false;
         unzipSync(buffer, {
             filter: file => {
-                const { name } = file;
-                if (name.endsWith('meta.json')) {
-                    ext = 'sog';
-                } else if (name.endsWith('meta.lcc')) {
-                    ext = 'lcc';
-                }
+                const name = file.name.replace(/\\/g, '/').split('/').pop()!.toLowerCase();
+                hasLcc2 ||= name.endsWith('.lcc2') && !name.startsWith('._');
+                hasLcc ||= name === 'meta.lcc';
+                hasSog ||= name === 'meta.json';
                 return false;
             },
         });
+        if (hasLcc2) {
+            ext = 'lcc2';
+        } else if (hasLcc) {
+            ext = 'lcc';
+        } else if (hasSog) {
+            ext = 'sog';
+        }
     } else if (ext === 'json') {
         // fast check sog json
         const json = JSON.parse(new TextDecoder().decode(buffer));
@@ -93,6 +112,10 @@ export function detectSplatFileType(filename: string, buffer: Uint8Array = new U
         }
         case 'lcc': {
             type = SplatFileType.LCC;
+            break;
+        }
+        case 'lcc2': {
+            type = SplatFileType.LCC2;
             break;
         }
         case 'esz': {
@@ -144,7 +167,11 @@ export function createSplatFile(
             break;
         }
         case SplatFileType.LCC: {
-            file = new LccFile();
+            file = new LccFile(path);
+            break;
+        }
+        case SplatFileType.LCC2: {
+            file = new Lcc2File(path);
             break;
         }
         case SplatFileType.ESZ: {

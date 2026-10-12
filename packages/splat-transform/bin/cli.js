@@ -10,7 +10,9 @@ const ExtraText = `
 Transform Gaussian splats file
 ===================================
 SUPPORTED INPUTS
-    .ply   .compressed.ply   .sog   meta.json   .ksplat   .splat   .spz   .lcc    .esz
+    .ply   .compressed.ply   .sog   meta.json   .ksplat   .splat   .spz   .lcc   .lcc2   .esz
+    .zip   LCC, LCC2, or SOG archive; LCC2 reads LOD0 and environment splats
+    Unpacked LCC/LCC2: pass the .lcc/.lcc2 metadata file; resources are resolved relative to it
 
 SUPPORTED OUTPUTS
     .ply   .spz   .uspz   .splat   .sog   .esz

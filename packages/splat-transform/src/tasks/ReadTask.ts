@@ -18,10 +18,18 @@ export class ReadTask extends BaseTask<Config> {
         let totalBytes: number = 0;
         for (let i = 0; i < inputs.length; i++) {
             const path = inputs[i];
-            const { size } = fs.statSync(path);
+            const stat = fs.statSync(path);
+            if (!stat.isFile()) {
+                throw new Error(`Input must be a file: ${path}`);
+            }
+            const { size } = stat;
             totalBytes += size;
-            const stream = Readable.toWeb(fs.createReadStream(path)) as ReadableStream<Uint8Array>;
-            const promise = createSplatFile(path).read(stream, size, splat);
+            const buffer = /\.zip$/i.test(path) ? fs.readFileSync(path) : undefined;
+            const file = createSplatFile(path, buffer);
+            const stream = Readable.toWeb(
+                buffer ? Readable.from([buffer]) : fs.createReadStream(path),
+            ) as ReadableStream<Uint8Array>;
+            const promise = file.read(stream, size, splat);
             promises.push(promise);
         }
         await Promise.all(promises);
