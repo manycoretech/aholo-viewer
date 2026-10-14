@@ -14,6 +14,7 @@ import {
 import { ColIdx, type ISingleSplat, SplatData } from '../SplatData.js';
 import { SH_MAPS } from '../constant.js';
 import { writableToWeb } from './stream.js';
+import { isArchiveMetadata } from './zip.js';
 
 export interface ISplatData {
     counts: number;
@@ -61,10 +62,11 @@ export function detectSplatFileType(filename: string, buffer: Uint8Array = new U
         let hasSog = false;
         unzipSync(buffer, {
             filter: file => {
-                const name = file.name.replace(/\\/g, '/').split('/').pop()!.toLowerCase();
-                hasLcc2 ||= name.endsWith('.lcc2') && !name.startsWith('._');
-                hasLcc ||= name === 'meta.lcc';
-                hasSog ||= name === 'meta.json';
+                if (!file.name.replace(/\\/g, '/').endsWith('/')) {
+                    hasLcc2 ||= isArchiveMetadata(file.name, 'LCC2');
+                    hasLcc ||= isArchiveMetadata(file.name, 'LCC');
+                    hasSog ||= isArchiveMetadata(file.name, 'SOG');
+                }
                 return false;
             },
         });

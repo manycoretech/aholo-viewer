@@ -1,5 +1,15 @@
 # ChangeLOG
 
+## DEV
+
+1. Features
+    - support loading and merging multiple splat files from ZIP archives through `SplatLoader.parseSplatData()`; `SplatPackType.Sog` remains limited to a single SOG asset.
+    - add `extras.includeOtherFormats` to include other independent splat formats from ZIP archives; defaults to `false`, loading only the requested format.
+2. Changes
+    - reorganize splat-loader utilities and centralize ZIP extraction and resource path resolution for SOG, LCC, and LCC2 assets.
+3. Breaking Changes
+    - change low-level `SplatLoader.SogFile`, `SplatLoader.LccFile`, and `SplatLoader.Lcc2File` readers to consume metadata streams, with a file context for archive resources; use `SplatLoader.parseSplatData()` to load ZIP archives.
+
 ## 1.9.0
 
 1. Features

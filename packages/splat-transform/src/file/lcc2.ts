@@ -1,9 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { unzipSync } from 'fflate';
 import { SplatData } from '../SplatData.js';
 import { createSplatFile, deferred, SplatFileType } from '../utils/index.js';
+import {
+    isZipArchive,
+    normalizeArchivePath,
+    readZipEntries,
+    readZipMetadata,
+    resolveArchivePath,
+} from '../utils/zip.js';
 import type { IFile } from './IFile.js';
 
 interface SplatRef {
@@ -33,12 +39,6 @@ interface Metadata {
 interface SplatRange {
     start: number;
     end: number;
-}
-
-const ZIP_MAGIC = 0x04034b50;
-
-function normalizePath(value: string) {
-    return path.posix.normalize(value.replace(/\\/g, '/')).replace(/^\/+/, '');
 }
 
 function collectRanges(refs: SplatRef[], counts: number, filename: string): SplatRange[] {
@@ -76,8 +76,7 @@ export class Lcc2File implements IFile {
     constructor(private readonly filename?: string) {}
 
     private load(buffer: Uint8Array) {
-        const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-        if (buffer.byteLength >= 4 && view.getUint32(0, true) === ZIP_MAGIC) {
+        if (isZipArchive(buffer)) {
             return this.loadArchive(buffer);
         }
         if (!this.filename) {
@@ -98,38 +97,19 @@ export class Lcc2File implements IFile {
 
     private loadArchive(buffer: Uint8Array) {
         // Keep archive paths intact: resource paths are relative to the metadata, not the ZIP root.
-        const paths = new Map<string, string>();
-        const metadata = unzipSync(buffer, {
-            filter: entry => {
-                const normalized = normalizePath(entry.name);
-                if (normalized.endsWith('/')) {
-                    return false;
-                }
-                if (paths.has(normalized)) {
-                    throw new Error(`Duplicate LCC2 archive path: ${normalized}`);
-                }
-                paths.set(normalized, entry.name);
-                return normalized.toLowerCase().endsWith('.lcc2') && !path.posix.basename(normalized).startsWith('._');
-            },
-        });
-        const metaPaths = Object.keys(metadata);
-        if (metaPaths.length !== 1) {
-            throw new Error(`Expected one LCC2 metadata file in the zip archive, found ${metaPaths.length}.`);
-        }
-        const metaPath = metaPaths[0];
-        const meta: Metadata = JSON.parse(new TextDecoder().decode(metadata[metaPath]));
-        const baseDir = path.posix.dirname(normalizePath(metaPath));
+        const { paths, metaPath, metadata } = readZipMetadata(buffer, 'LCC2');
+        const meta: Metadata = JSON.parse(new TextDecoder().decode(metadata));
         const { splatType, selected } = this.collectFiles(meta, name => {
             const candidates = [
-                path.posix.join(baseDir, name),
+                resolveArchivePath(metaPath, name),
                 name,
-                path.posix.join(baseDir, path.posix.basename(name)),
+                resolveArchivePath(metaPath, path.posix.basename(name)),
             ];
             return candidates.map(candidate => paths.get(candidate)).find(candidate => candidate !== undefined);
         });
 
         // Only inflate LOD0 resources and the environment; skip coarser LODs and mesh data.
-        const entries = unzipSync(buffer, { filter: entry => selected.has(entry.name) });
+        const entries = readZipEntries(buffer, selected.keys());
         return {
             splatType,
             files: [...selected].map(([filename, refs]) => ({ filename, refs, buffer: entries[filename] })),
@@ -159,7 +139,7 @@ export class Lcc2File implements IFile {
             if (!Number.isSafeInteger(ref.name) || ref.name < 0 || typeof files[ref.name] !== 'string') {
                 throw new Error(`Invalid LCC2 splat file index: ${ref.name}`);
             }
-            let name = normalizePath(files[ref.name]);
+            let name = normalizeArchivePath(files[ref.name]);
             if (!meta.root.splatFiles && !name.toLowerCase().endsWith(`.${splatType}`)) {
                 name += `.${splatType}`;
             }

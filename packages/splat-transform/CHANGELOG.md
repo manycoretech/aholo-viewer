@@ -1,5 +1,11 @@
 # Changelog
 
+## DEV
+
+- resolve SOG textures and LCC companion files relative to their metadata paths inside ZIP archives, including nested directories without explicit directory entries
+- recognize any `.lcc` metadata filename inside a ZIP archive
+- share ZIP path handling across SOG, LCC, and LCC2 while preserving selective resource extraction and LCC2 shared-file ranges
+
 ## 1.8.0
 
 - read LOD0 and environment splats from LCC2 ZIP archives, including nested directories and shared-file ranges

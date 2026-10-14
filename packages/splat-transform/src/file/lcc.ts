@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { unzipSync } from 'fflate';
 import type { ISingleSplat, SplatData } from '../SplatData.js';
-import { createSingleSplat, extractFromRootDir } from '../utils/index.js';
+import { createSingleSplat } from '../utils/index.js';
+import { isZipArchive, readZipEntries, readZipMetadata, resolveArchivePath } from '../utils/zip.js';
 import type { IFile } from './IFile.js';
 
 interface MetaAttribute {
@@ -29,8 +29,6 @@ interface BlockInfo {
     y: number;
     lods: LodInfo[];
 }
-
-const ZIP_MAGIC = 0x04034b50;
 
 const SQRT_2 = 1.414213562373095;
 const SQRT_2_INV = 0.7071067811865475;
@@ -75,9 +73,20 @@ export class LccFile implements IFile {
     constructor(private readonly filename?: string) {}
 
     private load(buffer: Uint8Array) {
-        const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-        if (buffer.byteLength >= 4 && view.getUint32(0, true) === ZIP_MAGIC) {
-            this.refs = extractFromRootDir(unzipSync(buffer));
+        if (isZipArchive(buffer)) {
+            const { paths, metaPath, metadata } = readZipMetadata(buffer, 'LCC');
+            const selected = new Map<string, string>();
+            for (const name of ['index.bin', 'data.bin', 'shcoef.bin']) {
+                const entry = paths.get(resolveArchivePath(metaPath, name));
+                if (entry !== undefined) {
+                    selected.set(name, entry);
+                }
+            }
+            const entries = readZipEntries(buffer, selected.values());
+            this.refs = { 'meta.lcc': metadata };
+            for (const [name, entry] of selected) {
+                this.refs[name] = entries[entry];
+            }
         } else {
             if (!this.filename) {
                 throw new Error('Unpacked LCC input requires the .lcc metadata file path.');

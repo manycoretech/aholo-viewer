@@ -1,18 +1,16 @@
-import { unzipSync, zipSync, type Zippable } from 'fflate';
+import { zipSync, type Zippable } from 'fflate';
 import { Buffer } from 'node:buffer';
 import { decodeWebP, encodeWebP, WebPLosslessProfile } from '../native/index.js';
 import { type SplatData, ColIdx } from '../SplatData.js';
 import { SH_C0, SH_MAPS, NUM_F_REST_TO_SH_DEGREE } from '../constant.js';
+import { getOrCreateDevice, kMeans, logger, quantize1d, isUrl, clamp, createSingleSplat } from '../utils/index.js';
 import {
-    getOrCreateDevice,
-    kMeans,
-    logger,
-    quantize1d,
-    isUrl,
-    extractFromRootDir,
-    clamp,
-    createSingleSplat,
-} from '../utils/index.js';
+    isZipArchive,
+    normalizeArchivePath,
+    readZipEntries,
+    readZipMetadata,
+    resolveArchivePath,
+} from '../utils/zip.js';
 import type { IFile } from './IFile.js';
 
 export interface SogMetadataV1 {
@@ -76,7 +74,6 @@ export interface SogMetadataV2 {
 
 export type SogMetadata = SogMetadataV1 | SogMetadataV2;
 
-const ZIP_MAGIC = 0x04034b50;
 const PERM_TABLE = [
     // original quat idx ---> actual storage idx
     [0, 1, 2, 3],
@@ -129,6 +126,8 @@ export class SogFile implements IFile {
      */
     refs: Record<string, Uint8Array> = {};
 
+    private metaPath: string = '';
+    private texturePaths: string[];
     private cached: Array<{ width: number; height: number; data: Uint8Array }>;
 
     constructor(readonly iterations: number = 10) {}
@@ -146,17 +145,10 @@ export class SogFile implements IFile {
             offset += value!.length;
         }
 
-        let metaBuffer: Uint8Array = buffer;
-        const view = new DataView(buffer.buffer);
-        if (view.getUint32(0, true) === ZIP_MAGIC) {
-            this.refs = extractFromRootDir(unzipSync(buffer));
-            metaBuffer = this.refs['meta.json'];
-            if (!metaBuffer) {
-                throw new Error('SOG meta.json not found in the zip archive.');
-            }
-        }
-
-        this.meta = JSON.parse(new TextDecoder().decode(metaBuffer));
+        const archive = isZipArchive(buffer) ? readZipMetadata(buffer, 'SOG') : undefined;
+        this.metaPath = archive?.metaPath ?? '';
+        this.refs = {};
+        this.meta = JSON.parse(new TextDecoder().decode(archive?.metadata ?? buffer));
         if (this.meta.version === undefined) {
             const { means, quats, shN } = this.meta as SogMetadataV1;
             if (quats.encoding !== 'quaternion_packed') {
@@ -173,6 +165,34 @@ export class SogFile implements IFile {
             this.counts = count;
             this.shDegree = shN?.bands ?? 0;
             this.version = version;
+        }
+
+        const { means, scales, quats, sh0, shN } = this.meta;
+        this.texturePaths = [
+            means.files[0],
+            means.files[1],
+            scales.files[0],
+            quats.files[0],
+            sh0.files[0],
+            shN?.files[0],
+            shN?.files[1],
+        ].filter((filename): filename is string => !!filename);
+        if (archive) {
+            const selected = new Set<string>();
+            for (const filename of this.texturePaths) {
+                if (isUrl(filename)) {
+                    continue;
+                }
+                const entry = archive.paths.get(resolveArchivePath(archive.metaPath, filename));
+                if (entry === undefined) {
+                    throw new Error(`Cannot load texture: ${filename}`);
+                }
+                selected.add(entry);
+            }
+            const entries = readZipEntries(buffer, selected);
+            this.refs = Object.fromEntries(
+                Object.entries(entries).map(([filename, bytes]) => [normalizeArchivePath(filename), bytes]),
+            );
         }
     }
 
@@ -353,7 +373,7 @@ export class SogFile implements IFile {
     }
 
     private async loadTexture(path: string) {
-        let buffer: Uint8Array | undefined = this.refs[path];
+        let buffer: Uint8Array | undefined = this.refs[resolveArchivePath(this.metaPath, path)];
         if (!buffer) {
             if (isUrl(path)) {
                 buffer = await fetch(path)
@@ -377,20 +397,7 @@ export class SogFile implements IFile {
         await this.load(stream, contentLength);
         const BlockOffset = await data.initBlock(this.counts, this.shDegree);
 
-        const { means, scales, quats, sh0, shN } = this.meta;
-        this.cached = await Promise.all(
-            [
-                means.files[0],
-                means.files[1],
-                scales.files[0],
-                quats.files[0],
-                sh0.files[0],
-                shN?.files[0],
-                shN?.files[1],
-            ]
-                .filter(path => !!path)
-                .map(path => this.loadTexture(path!)),
-        );
+        this.cached = await Promise.all(this.texturePaths.map(path => this.loadTexture(path)));
 
         if (this.version === 1) {
             this.parse_v1(data, BlockOffset);
