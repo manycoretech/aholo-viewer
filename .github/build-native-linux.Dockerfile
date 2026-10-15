@@ -8,7 +8,6 @@
 #     --build-arg CMAKE_VERSION=4.4.2 \
 #     --build-arg NINJA_VERSION=1.13.2 \
 #     --build-arg NODE_VERSION=24 \
-#     --build-arg VCPKG_REF="$(jq -r '."default-registry".baseline' packages/splat-transform-native/source/vcpkg-configuration.json)" \
 #     -t aholo-native-linux:22.04 \
 #     -f .github/build-native-linux.Dockerfile .github
 
@@ -75,14 +74,11 @@ RUN fnm install "${NODE_VERSION}"
 ENV PATH="/root/.local/share/fnm/aliases/default/bin:${PATH}"
 
 # vcpkg tool + toolchain bootstrapped on the pinned 22.04 base, so vcpkg-built
-# dependencies also keep the Ubuntu 22.04 glibc requirement. Fetch the exact
-# manifest baseline, including its port trees, without cloning older history.
-ARG VCPKG_REF
-RUN test -n "${VCPKG_REF}" \
-    && git init /opt/vcpkg \
-    && git -C /opt/vcpkg remote add origin https://github.com/microsoft/vcpkg \
-    && git -C /opt/vcpkg fetch --depth 1 --no-tags origin "${VCPKG_REF}" \
-    && git -C /opt/vcpkg checkout --detach "${VCPKG_REF}" \
+# dependencies also keep the Ubuntu 22.04 glibc requirement. Clone the default
+# branch with full history so manifest baselines and older port trees resolve.
+# CI changes VCPKG_CACHE_KEY with the registry configuration to refresh this layer.
+ARG VCPKG_CACHE_KEY
+RUN git clone https://github.com/microsoft/vcpkg /opt/vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 ENV VCPKG_ROOT=/opt/vcpkg

@@ -18,9 +18,11 @@ cmake --workflow --preset arm64-osx
 
 Choose the preset for the current platform. Each workflow configures, builds, installs, and runs CPU tests. Installation writes the executable and third-party notices into the corresponding sibling platform package. npm build scripts invoke CMake directly.
 
-CI runs `cmake -P cmake/prepare_vcpkg.cmake` before configuring. It initializes a missing checkout, fetches the configured baseline with `--depth 1` when needed, checks out that exact commit, and bootstraps the matching vcpkg tool. It refuses to switch a checkout with tracked modifications. Run the same command locally to align `VCPKG_ROOT` with `vcpkg-configuration.json`. Linux presets explicitly use `/usr/bin/ninja`; macOS uses `/opt/homebrew/bin/ninja`, `/opt/homebrew/bin/nasm`, and the system C/C++ compilers.
+CI clones the vcpkg default branch with full history and runs its bootstrap script. Windows and macOS use a separate checkout at `${RUNNER_TEMP}/aholo-vcpkg`; the Linux build image uses `/opt/vcpkg`. Local builds should also use a full clone and set `VCPKG_ROOT` to that bootstrapped checkout.
 
-The Linux image takes `VCPKG_REF` from the same baseline configuration and fetches that commit with depth 1. The baseline also participates in the image cache key. The checkout and baseline must remain aligned: a shallow checkout of a different commit, or overrides selecting older port revisions, may require objects outside that snapshot.
+The baseline in `vcpkg-configuration.json` selects dependency versions independently of the vcpkg checkout's HEAD. CI does not check out that commit. The Linux image includes the registry configuration in its cache key and passes its hash as `VCPKG_CACHE_KEY` to refresh the clone layer when the configuration changes. Cached images otherwise retain the vcpkg revision from their last build; use the `force-build-image` workflow input to refresh the entire image.
+
+Linux presets explicitly use `/usr/bin/ninja`; macOS uses `/opt/homebrew/bin/ninja`, `/opt/homebrew/bin/nasm`, and the system C/C++ compilers.
 
 After updating the baseline or changing the vcpkg checkout, configure with `cmake --fresh --preset x64-windows-static` (or the matching platform preset) before building. This clears cached dependency paths, including library names that can change between port versions.
 
