@@ -4,6 +4,7 @@ on:
       - 'master'
     paths:
       - 'packages/splat-transform-native/source/**'
+      - 'packages/splat-transform/package.json'
       - '.github/workflows/build-native.yaml'
       - '.github/build-native-linux.Dockerfile'
   pull_request:
@@ -11,6 +12,7 @@ on:
       - 'master'
     paths:
       - 'packages/splat-transform-native/source/**'
+      - 'packages/splat-transform/package.json'
       - '.github/workflows/build-native.yaml'
       - '.github/build-native-linux.Dockerfile'
   workflow_dispatch:
@@ -24,7 +26,6 @@ on:
 name: build native
 
 env:
-  NODE_VERSION: 24
   CMAKE_VERSION: 4.4.2
   NINJA_VERSION: 1.13.2
 
@@ -56,7 +57,7 @@ jobs:
         shell: bash
         run: |
           repo_lc="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
-          cache_hash="$({ printf '%s\n%s\n%s\n' "${CMAKE_VERSION}" "${NINJA_VERSION}" "${NODE_VERSION}"; cat .github/build-native-linux.Dockerfile; } | sha256sum | cut -c1-16)"
+          cache_hash="$({ printf '%s\n%s\n' "${CMAKE_VERSION}" "${NINJA_VERSION}"; cat .github/build-native-linux.Dockerfile; } | sha256sum | cut -c1-16)"
           base="ghcr.io/${repo_lc}/aholo-native-linux"
           echo "hash=${cache_hash}" >> "${GITHUB_OUTPUT}"
           echo "platform-ref=${base}:${cache_hash}-${{ matrix.arch }}" >> "${GITHUB_OUTPUT}"
@@ -84,7 +85,6 @@ jobs:
           build-args: |
             CMAKE_VERSION=${{ env.CMAKE_VERSION }}
             NINJA_VERSION=${{ env.NINJA_VERSION }}
-            NODE_VERSION=${{ env.NODE_VERSION }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/aholo-native-linux:latest
           cache-to: type=inline
           provenance: false
@@ -140,25 +140,30 @@ jobs:
       matrix:
         include:
           - target: win32-x64-msvc
-            native-script: build:native:win32-x64
+            preset: x64-windows-static
+            executable: splat-transform.exe
             os: windows-2025-vs2026
             shell: pwsh
           - target: win32-arm64-msvc
-            native-script: build:native:win32-arm64
+            preset: arm64-windows-static
+            executable: splat-transform.exe
             os: windows-11-vs2026-arm
             shell: pwsh
           - target: linux-x64-gnu
-            native-script: build:native:linux-x64-gnu
+            preset: x64-linux
+            executable: splat-transform
             os: ubuntu-26.04
             shell: bash
             arch: amd64
           - target: linux-arm64-gnu
-            native-script: build:native:linux-arm64-gnu
+            preset: arm64-linux
+            executable: splat-transform
             os: ubuntu-26.04-arm
             shell: bash
             arch: arm64
           - target: darwin-arm64
-            native-script: build:native:darwin-arm64
+            preset: arm64-osx
+            executable: splat-transform
             os: macos-26
             shell: bash
     defaults:
@@ -169,11 +174,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: recursive
-
-      - name: Setup node
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
 
       - name: Login to GitHub Container Registry
         if: startsWith(matrix.os, 'ubuntu')
@@ -201,7 +201,6 @@ jobs:
           build-args: |
             CMAKE_VERSION=${{ env.CMAKE_VERSION }}
             NINJA_VERSION=${{ env.NINJA_VERSION }}
-            NODE_VERSION=${{ env.NODE_VERSION }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/aholo-native-linux:latest
           provenance: false
 
@@ -209,7 +208,7 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu')
         run: |
           docker run --rm aholo-native-linux:22.04 bash -lc \
-            'cmake --version; cc --version; c++ --version; ninja --version; node --version; fnm --version; vcpkg version'
+            'cmake --version; cc --version; c++ --version; ninja --version; vcpkg version'
 
       - name: Setup env (macOS)
         if: startsWith(matrix.os, 'macos')
@@ -248,36 +247,36 @@ jobs:
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/work" \
-            -w /work \
-            -e AHOLO_SKIP_SUBMODULE_UPDATE=1 \
+            -w /work/packages/splat-transform-native/source \
             aholo-native-linux:22.04 \
-            bash -lc 'corepack enable && corepack install && pnpm install && pnpm --dir packages/splat-transform-native/source run ${{ matrix.native-script }}'
+            cmake --workflow --preset ${{ matrix.preset }}
 
       - name: Build splat-transform native
         if: ${{ !startsWith(matrix.os, 'ubuntu') }}
         run: |
-          corepack enable
-          corepack install
-          pnpm install
-          pnpm --dir packages/splat-transform-native/source run ${{ matrix.native-script }}
+          cd packages/splat-transform-native/source
+          cmake --workflow --preset ${{ matrix.preset }}
 
-      - name: Validate native package (Windows)
+      - name: Validate executable (Windows)
         if: startsWith(matrix.os, 'windows')
         run: |
-          if (!(Test-Path ./packages/splat-transform-native/splat-transform-${{ matrix.target }}/splat-transform.node)) {
-            throw "Missing splat-transform.node"
-          }
-          node -e "require('./packages/splat-transform-native/splat-transform-${{ matrix.target }}/splat-transform.node'); console.log('native require ok')"
+          $binary = './packages/splat-transform-native/splat-transform-${{ matrix.target }}/splat-transform.exe'
+          if (!(Test-Path -LiteralPath $binary)) { throw 'Missing splat-transform.exe' }
+          '{"version":1,"tasks":[]}' | & $binary -
+          if ($LASTEXITCODE -ne 0) { throw 'Pipeline smoke test failed' }
 
-      - name: Validate native package (Unix)
+      - name: Validate executable (Unix)
         if: ${{ !startsWith(matrix.os, 'windows') }}
         run: |
-          test -f ./packages/splat-transform-native/splat-transform-${{ matrix.target }}/splat-transform.node
-          node -e "require('./packages/splat-transform-native/splat-transform-${{ matrix.target }}/splat-transform.node'); console.log('native require ok')"
+          binary='./packages/splat-transform-native/splat-transform-${{ matrix.target }}/splat-transform'
+          test -x "$binary"
+          printf '%s' '{"version":1,"tasks":[]}' | "$binary" -
 
       - name: Upload native package
         uses: actions/upload-artifact@v7
         with:
           name: splat-transform-${{ matrix.target }}
-          path: packages/splat-transform-native/splat-transform-${{ matrix.target }}/splat-transform.node
+          path: |
+            packages/splat-transform-native/splat-transform-${{ matrix.target }}/${{ matrix.executable }}
+            packages/splat-transform-native/splat-transform-${{ matrix.target }}/THIRD_PARTY_LICENSES.txt
           if-no-files-found: error

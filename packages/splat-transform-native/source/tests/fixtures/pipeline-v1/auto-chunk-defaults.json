@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "read",
+      "type": "Read",
+      "config": {
+        "inputs": ["inputs/first.ply", "inputs/second.ply"],
+        "output": "source"
+      }
+    },
+    {
+      "id": "autochunklod",
+      "type": "AutoChunkLod",
+      "config": {
+        "input": "source",
+        "output": "lod",
+        "type": "esz"
+      },
+      "release": ["source"]
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "lod",
+        "output": "outputs/default-low",
+        "highPrecision": false,
+        "parallelCounts": 2
+      }
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "lod",
+        "output": "outputs/default-high",
+        "highPrecision": true,
+        "parallelCounts": 2
+      }
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "lod",
+        "output": "outputs/default-high-repeat",
+        "highPrecision": true,
+        "parallelCounts": 2
+      },
+      "release": ["lod"]
+    }
+  ]
+}

@@ -1,12 +1,15 @@
+#include <Eigen/Dense>
+#include <algorithm>
 #include <array>
-#include <container_helpers.h>
-#include <eigen3/Eigen/Dense>
+#include <iterator>
+#include <numeric>
 #include <queue>
 #include <ranges>
 #include <splat/splat_block.h>
 #include <utility>
 #include <vector>
 
+namespace splat_transform::splat {
 namespace {
 struct RefSplat {
     splat::Splat& source;
@@ -15,10 +18,8 @@ struct RefSplat {
     bool need_split;
 
     RefSplat(splat::Splat& splat) : source(splat), box(splat.bounding_box), need_split(true) {
-        this->gaussians.reserve(splat.gaussians.size());
-        for (auto i = 0; i < splat.gaussians.size(); i++) {
-            this->gaussians.push_back(i);
-        }
+        gaussians.resize(splat.gaussians.size());
+        std::iota(gaussians.begin(), gaussians.end(), size_t(0));
     }
     RefSplat(RefSplat& splat) : source(splat.source), need_split(true) {}
     RefSplat(RefSplat&& splat) = default;
@@ -26,14 +27,14 @@ struct RefSplat {
     void compute_bounding_box() {
         this->box = Eigen::AlignedBox3f();
         for (auto index : this->gaussians) {
-            this->box.extend(this->source.gaussians[index].bounding_box);
+            this->box.extend(this->source.gaussians[index].bounding_box());
         }
     }
 
     void compute_need_split(const Eigen::AlignedBox3f& parent_box, size_t max_block_size) {
         this->need_split = this->gaussians.size() > max_block_size &&
-                           ((this->box.min() - parent_box.min()).norm() > 0.001 ||
-                               (this->box.max() - parent_box.max()).norm() > 0.001);
+                           ((this->box.min() - parent_box.min()).norm() > 0.001f ||
+                               (this->box.max() - parent_box.max()).norm() > 0.001f);
     }
 
     splat::Splat to_owned() {
@@ -46,10 +47,10 @@ struct RefSplat {
         {
             auto _ = std::move(this->gaussians);
         }
-        auto result = splat::Splat {
-            .gaussians = std::move(gaussians),
-            .bounding_box = this->box,
-        };
+        splat::Splat result;
+        result.gaussians = std::move(gaussians);
+        result.bounding_box = this->box;
+        result.sh_degree = source.sh_degree;
         return result;
     }
 };
@@ -77,7 +78,7 @@ std::vector<Eigen::AlignedBox3f> split_box(const Eigen::AlignedBox3f& box, splat
 
     if (normal == splat::block::SplitNormal::None) {
         result.reserve(8);
-        helpers::container::append_range(result, BOX_CORNERS | std::views::transform(create_box));
+        std::ranges::transform(BOX_CORNERS, std::back_inserter(result), create_box);
     } else {
         auto dim = static_cast<size_t>(normal) - 1;
         auto flag = 1 << dim;
@@ -87,9 +88,10 @@ std::vector<Eigen::AlignedBox3f> split_box(const Eigen::AlignedBox3f& box, splat
         // construct splitted from min on dim corner, and max on dim corner.
         // for input dim SplitNormal.X.
         // the filtered corner was [BottomRightFloor, TopRightFloor, BottomRightCeil, TopRightCeil].
-        helpers::container::append_range(result, BOX_CORNERS | std::views::filter([flag](Eigen::AlignedBox3f::CornerType corner_type) -> bool {
+        std::ranges::transform(BOX_CORNERS | std::views::filter([flag](Eigen::AlignedBox3f::CornerType corner_type) {
             return (corner_type & flag) != 0;
-        }) | std::views::transform(create_box));
+        }),
+            std::back_inserter(result), create_box);
     }
     return result;
 }
@@ -150,8 +152,8 @@ std::vector<RefSplat> split_block(RefSplat& splat, size_t max_block_size, splat:
     }
 
     for (auto index : splat.gaussians) {
-        auto& box = splat.source.gaussians[index].bounding_box;
-        auto max_interaction = 0.0;
+        const auto box = splat.source.gaussians[index].bounding_box();
+        auto max_interaction = 0.0f;
         auto max_interaction_index = 0;
         for (auto i = 0; i < boxes.size(); i++) {
             auto intersection = boxes[i].intersection(box);
@@ -175,7 +177,7 @@ std::vector<RefSplat> split_block(RefSplat& splat, size_t max_block_size, splat:
     for (auto [i, n] : find_mergeable_pairs(result, max_block_size)) {
         result[i].gaussians.reserve(result[i].gaussians.size() + result[n].gaussians.size());
         // merge neighbor
-        helpers::container::append_range(result[i].gaussians, result[n].gaussians);
+        std::ranges::copy(result[n].gaussians, std::back_inserter(result[i].gaussians));
         result[i].box.extend(result[n].box);
         // cleanup neighbor result
         result[n].box.setEmpty();
@@ -185,9 +187,11 @@ std::vector<RefSplat> split_block(RefSplat& splat, size_t max_block_size, splat:
     return result;
 }
 } // namespace
+} // namespace splat_transform::splat
 
-namespace splat::block::detail {
-std::vector<Splat> split(Splat&& splat, size_t max_block_size, SplitNormal normal) {
+namespace splat_transform::splat::block {
+std::vector<Splat> split(Splat&& splat, float precision, SplitNormal normal) {
+    const auto max_block_size = static_cast<size_t>(static_cast<float>(splat.gaussians.size()) * precision);
     std::vector<Splat> results;
     if (splat.gaussians.size() <= max_block_size) {
         results.emplace_back(std::move(splat));
@@ -214,4 +218,4 @@ std::vector<Splat> split(Splat&& splat, size_t max_block_size, SplitNormal norma
 
     return results;
 }
-} // namespace splat::block::detail
+} // namespace splat_transform::splat::block

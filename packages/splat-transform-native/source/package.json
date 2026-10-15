@@ -3,21 +3,11 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "cmake-js": "^8.0.0",
-    "node-addon-api": "^8.9.2",
-    "yargs": "catalog:"
-  },
   "scripts": {
-    "build:native:win32-arm64": "node ./build.js build --preset arm64-windows-static --target win32-arm64-msvc",
-    "build:native:win32-x64": "node ./build.js build --preset x64-windows-static --target win32-x64-msvc",
-    "build:native:linux-arm64-gnu": "node ./build.js build --preset arm64-linux --target linux-arm64-gnu",
-    "build:native:linux-x64-gnu": "node ./build.js build --preset x64-linux --target linux-x64-gnu",
-    "build:native:darwin-arm64": "node ./build.js build --preset arm64-osx --target darwin-arm64"
-  },
-  "binary": {
-    "napi_versions": [
-      8
-    ]
+    "build:native:win32-arm64": "cmake --workflow --preset arm64-windows-static",
+    "build:native:win32-x64": "cmake --workflow --preset x64-windows-static",
+    "build:native:linux-arm64-gnu": "cmake --workflow --preset arm64-linux",
+    "build:native:linux-x64-gnu": "cmake --workflow --preset x64-linux",
+    "build:native:darwin-arm64": "cmake --workflow --preset arm64-osx"
   }
 }

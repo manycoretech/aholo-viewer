@@ -3,8 +3,7 @@ import fs from 'node:fs';
 import yargs from 'yargs/yargs';
 import { hideBin } from 'yargs/helpers';
 import packageJson from '../package.json' with { type: 'json' };
-import { run } from '../dist/index.js';
-import { enumerateAdapters } from '../dist/utils/index.js';
+import { run, enumerateAdapters, PipelineError } from '../dist/index.js';
 
 const ExtraText = `
 Transform Gaussian splats file
@@ -224,4 +223,9 @@ const cli = yargs(hideBin(process.argv))
         },
     });
 
-await cli.parseAsync();
+try {
+    await cli.parseAsync();
+} catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = error instanceof PipelineError ? error.exitCode : 1;
+}

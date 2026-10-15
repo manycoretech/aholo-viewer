@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "read",
+      "type": "Read",
+      "config": {
+        "inputs": ["inputs/first.ply", "inputs/second.ply"],
+        "output": "source"
+      }
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "source",
+        "output": "outputs/full.ply"
+      }
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "source",
+        "output": "outputs/full.spz",
+        "version": 3,
+        "enableMortonSort": false
+      }
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "source",
+        "output": "outputs/full-v4.spz",
+        "version": 4
+      }
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "source",
+        "output": "outputs/full.uspz",
+        "enableMortonSort": false
+      }
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "source",
+        "output": "outputs/full.splat"
+      }
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "source",
+        "output": "outputs/low.esz",
+        "highPrecision": false,
+        "compressLevel": 3,
+        "enableMortonSort": false
+      }
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "source",
+        "output": "outputs/high.esz",
+        "highPrecision": true,
+        "compressLevel": 3,
+        "enableMortonSort": false
+      }
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "source",
+        "output": "outputs/repeated-high.esz",
+        "highPrecision": true,
+        "compressLevel": 3,
+        "enableMortonSort": false
+      },
+      "release": ["source"]
+    },
+    {
+      "id": "read",
+      "type": "Read",
+      "config": {
+        "inputs": ["inputs/first.ply"],
+        "output": "sh0",
+        "maxShDegree": 0
+      }
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "sh0",
+        "output": "outputs/full.sog",
+        "enableMortonSort": false
+      },
+      "release": ["sh0"]
+    }
+  ]
+}

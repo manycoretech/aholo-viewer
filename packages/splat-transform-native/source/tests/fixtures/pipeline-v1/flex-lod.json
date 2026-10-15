@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "read",
+      "type": "Read",
+      "config": {
+        "inputs": ["inputs/first.ply", "inputs/second.ply"],
+        "output": "source"
+      }
+    },
+    {
+      "id": "flexlod",
+      "type": "FlexLod",
+      "config": {
+        "input": "source",
+        "output": "flex",
+        "scorePath": "inputs/scores.bin",
+        "originalIndices": "outputs/original-indices.bin",
+        "ratio": 0.3
+      },
+      "release": ["source"]
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "flex",
+        "output": "outputs/flex.ply",
+        "enableMortonSort": false
+      },
+      "release": ["flex"]
+    }
+  ]
+}

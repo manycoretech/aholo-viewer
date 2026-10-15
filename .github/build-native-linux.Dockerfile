@@ -1,13 +1,12 @@
-# Linux build environment pinned to Ubuntu 22.04 (glibc 2.35 / libstdc++ 12).
+# Linux build environment pinned to Ubuntu 22.04 (glibc 2.35).
 # The GitHub runner itself now runs Ubuntu 26.04, but building inside this
 # image keeps splat-transform native binaries runnable on the documented
-# glibc >= 2.34 baseline instead of adopting the newer runner glibc.
+# Ubuntu 22.04 baseline instead of adopting the newer runner glibc.
 #
 # Toolchain versions are build args and can be overridden from outside:
 #   docker build \
 #     --build-arg CMAKE_VERSION=4.4.2 \
 #     --build-arg NINJA_VERSION=1.13.2 \
-#     --build-arg NODE_VERSION=24 \
 #     -t aholo-native-linux:22.04 \
 #     -f .github/build-native-linux.Dockerfile .github
 
@@ -16,14 +15,13 @@ FROM ubuntu:22.04
 ARG TARGETARCH
 ARG CMAKE_VERSION=4.4.2
 ARG NINJA_VERSION=1.13.2
-ARG NODE_VERSION=24
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Build prerequisites. g++-12 is jammy's newest GCC and matches the old
-# ubuntu-22.04 runner, so clang-21 keeps the same GLIBCXX_3.4.30 ceiling.
+# Clang uses GCC 12's standard library; the executable links that runtime
+# statically. glibc and the user-installed Vulkan loader remain external.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential ca-certificates curl g++-12 git gnupg lsb-release \
+        autoconf automake build-essential ca-certificates curl g++-12 git gnupg libtool lsb-release \
         nasm perl pkg-config python3 python-is-python3 software-properties-common \
         unzip wget xz-utils zip \
     && rm -rf /var/lib/apt/lists/*
@@ -64,17 +62,6 @@ RUN case "${TARGETARCH}" in \
     && unzip -o /tmp/ninja.zip -d /usr/bin \
     && chmod +x /usr/bin/ninja \
     && rm /tmp/ninja.zip
-
-# Node.js is resolved through fnm from the NODE_VERSION build arg. The
-# workflow passes env.NODE_VERSION (for example "24"), so the image and the
-# host runners share one version source without pinning a patch release here.
-# pnpm is intentionally not baked into the image: the build step enables
-# corepack and installs the workspace-pinned pnpm on demand.
-RUN curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
-ENV FNM_DIR=/root/.local/share/fnm \
-    PATH="/root/.local/share/fnm:${PATH}"
-RUN fnm install "${NODE_VERSION}"
-ENV PATH="/root/.local/share/fnm/aliases/default/bin:${PATH}"
 
 # vcpkg tool + toolchain bootstrapped on the pinned 22.04 base, so vcpkg-built
 # dependencies also keep the Ubuntu 22.04 glibc requirement.

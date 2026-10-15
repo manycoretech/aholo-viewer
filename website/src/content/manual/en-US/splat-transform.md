@@ -10,15 +10,18 @@ order: 5
 
 ## Environment Requirements
 
-- Node.js >= 22.22.1
-- Windows: Windows 22H2+ x86_64 with a D3D12 or Vulkan-compatible GPU. A discrete GPU is recommended when GPU features are enabled.
-- Linux: x86_64, ARM64, glibc >= 2.34, libstdc++ >= 3.4.30, and a Vulkan-compatible GPU. A discrete GPU is recommended when GPU features are enabled.
-- macOS: apple silicon ARM64 only.
+- The npm CLI and JavaScript API require Node.js >= 22.22.1. The standalone C++ executable does not require Node.js.
+- Windows: Windows 22H2+, x86_64 or ARM64.
+- Linux: x86_64 or ARM64, Ubuntu 22.04 / glibc >= 2.35. The C++ runtime is linked statically.
+- macOS: macOS 13+, Apple silicon ARM64.
+- GPU features require a user-installed Vulkan 1.1+ loader and compatible driver. macOS also requires a working MoltenVK installation. Packages do not include a Vulkan runtime.
 
 ### GPU-Required Features
 
-- SOG generation.
-- Voxel generation when `backend` is set to `gpu`.
+- SOG generation with SH coefficients. SH0 SOG encoding runs on CPU.
+- Voxel generation requires Vulkan GPU support. CPU generation and automatic fallback have been removed.
+
+CPU format conversion and LOD processing do not require Vulkan. Run `splat-transform list:gpu` to list current Vulkan devices. The former Dawn backend could include D3D12 devices, so check saved GPU indices again.
 
 ## Format Notes
 
@@ -30,6 +33,7 @@ order: 5
 - `splat`
 - `spz`
 - `lcc`
+- `lcc2`
 - `esz`
 - `compressed.ply`, the supersplat compressed ply format
 - `meta.json`, unpacked sog metadata
@@ -75,6 +79,10 @@ splat-transform lod:auto-chunk --type <type:ply,spz,splat,sog,esz> --max-chunk-c
 ```bash
 splat-transform pipeline.json
 ```
+
+The standalone executable also accepts `pipeline.json`, or `-` to read JSON from stdin. The Node CLI converts commands such as `create` and `lod:auto` into the same pipeline. Input and output paths are relative to the process working directory; SOG/LCC/LCC2 resources are relative to their metadata file.
+
+Version 2.0 removes in-memory processing APIs such as `SplatData`, custom task injection, and internal module imports. The JavaScript API retains `run(config, { cwd, signal })` and `enumerateAdapters()`. Processing runs in a child process.
 
 #### Pipeline Descriptor (pipeline.json)
 
@@ -159,8 +167,8 @@ splat-transform pipeline.json
     <td>Enables Morton sorting.</td>
   </tr>
   <tr>
-    <td rowspan="3">Modify</td>
-    <td rowspan="3">Modifies a <code>SplatData</code> object.</td>
+    <td rowspan="5">Modify</td>
+    <td rowspan="5">Modifies an in-memory splat resource in place.</td>
     <td>input</td>
     <td>string</td>
     <td>Y</td>
@@ -177,6 +185,18 @@ splat-transform pipeline.json
     <td>string[]</td>
     <td>N([])</td>
     <td>modify JSON file paths. See <a href="#modify-format">modify Format</a>.</td>
+  </tr>
+  <tr>
+    <td>rgba</td>
+    <td>[number, number, number, number]</td>
+    <td>N(unchanged)</td>
+    <td>Internal RGBA values; must be finite and fit in float, without clamping or color-space conversion.</td>
+  </tr>
+  <tr>
+    <td>maxShDegree</td>
+    <td>0 | 1 | 2 | 3</td>
+    <td>N(no truncation)</td>
+    <td>Truncates to min(current degree, requested degree); never creates higher SH bands.</td>
   </tr>
   <tr>
     <td rowspan="4">AutoLod</td>
@@ -295,12 +315,11 @@ Array<{
     <td>
       string
       <ul>
-        <li>cpu</li>
         <li>gpu</li>
       </ul>
     </td>
     <td>N(gpu)</td>
-    <td>Generation backend. Defaults to gpu; cpu is available but significantly slower. Results can differ slightly between backends.</td>
+    <td>Vulkan GPU only. This field can be omitted. CPU generation and cpuWorkerCount have been removed; GPU errors are returned directly.</td>
   </tr>
   <tr>
     <td>box</td>
@@ -362,6 +381,22 @@ When enabled, voxels are simplified by the reachable range of the navigation bod
     <td>N(null)</td>
   </tr>
 </table>
+
+#### Data Selection and Shared LOD
+
+The following tasks use in-memory resource keys for input/output. Each produces an independent single-block splat resource with complete attributes and SH, offsets [0], counts [result count], and updated bounds.
+
+| Task            | config fields                                        | Behavior                                                                                                                                                  |
+| --------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Select          | input, output; exactly one of indices or indicesPath | Copies indices in first-occurrence order and removes duplicates, such as [8,2,8,5] → [8,2,5], without Morton sorting                                      |
+| ReplaceAppend   | input, patch, output, sourceIndices                  | Replaces unique source indices with the first K patch points and appends the remainder; result N+M−K, requiring K≤M and matching SH degrees/layouts       |
+| ExtractLodLevel | input, output, required zero-based level             | Copies the level's file/offset/count intervals from the current run's LOD bundle in tree order, preserving repeated references and independent SH storage |
+
+Select accepts a JSON array or an object with indices in .json files. Other files contain little-endian uint32 values; .zst files are decompressed first. JSON indices are validated before conversion, rejecting negative, fractional, boolean, and out-of-range values. Binary lengths must be multiples of four. Empty selection is valid; writing empty data depends on the output format. ReplaceAppend requires sourceIndices, which may be empty but cannot contain duplicates. Retained source, patch, and aliases are unchanged.
+
+Modify validates rgba/maxShDegree first, applies existing patch transforms and deletion, then sets RGBA on the remaining points and truncates SH. A different output key still aliases the same object. For interaction data, call ExtractLodLevel(level:3) before Modify(rgba:[0,0,0,1], maxShDegree:0) to isolate the shared source.
+
+Write the same LOD bundle twice in one pipeline using highPrecision:false followed by highPrecision:true. Each Write reads the resource without consuming it and may parallelize internally. Release only after the final use. The bundle's preserve_order flags still prevent Morton sorting from invalidating intervals. ExtractLodLevel does not restore bundles from disk lod-meta.json files.
 
 #### Examples
 

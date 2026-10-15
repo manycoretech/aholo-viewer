@@ -8,8 +8,8 @@
   },
   "type": "commonjs",
   "files": [
-    "splat-transform.node",
-    "dawn.node"
+    "splat-transform",
+    "THIRD_PARTY_LICENSES.txt"
   ],
   "os": [
     "linux"
@@ -19,5 +19,6 @@
   ],
   "libc": [
     "glibc"
-  ]
+  ],
+  "description": "Standalone C++ splat-transform executable for linux-arm64-gnu"
 }

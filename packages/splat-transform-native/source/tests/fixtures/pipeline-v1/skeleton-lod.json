@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "read",
+      "type": "Read",
+      "config": {
+        "inputs": ["inputs/first.ply", "inputs/second.ply"],
+        "output": "source"
+      }
+    },
+    {
+      "id": "skeletonlod",
+      "type": "SkeletonLod",
+      "config": {
+        "input": "source",
+        "output": "skeleton"
+      },
+      "release": ["source"]
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "skeleton",
+        "output": "outputs/skeleton.ply",
+        "enableMortonSort": false
+      },
+      "release": ["skeleton"]
+    }
+  ]
+}

@@ -1,119 +1,106 @@
+#include <Eigen/Dense>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <cstring>
-#include <eigen3/Eigen/Dense>
 #include <numbers>
+#include <numeric>
 #include <splat/splat.h>
 #include <stdexcept>
-#include <tuple>
 #include <utility>
 
-namespace splat {
-SH::SH() noexcept : size_(0), ptr(nullptr) {
-}
+namespace splat_transform::splat {
+ShCoefficients::ShCoefficients() noexcept = default;
 
-SH::SH(size_t size) : size_(size), ptr(size > 0 ? std::make_unique<float[]>(size) : nullptr) {
-}
-
-SH::SH(const SH& other) : size_(other.size_), ptr(other.size_ > 0 ? std::make_unique<float[]>(other.size_) : nullptr) {
-    if (this->ptr != nullptr) {
-        std::copy(other.ptr.get(), other.ptr.get() + this->size_, this->ptr.get());
+ShCoefficients::ShCoefficients(size_t size) : size_(size) {
+    if (size > 3) {
+        storage_.emplace<Heap>(std::make_unique<float[]>(size));
     }
 }
 
-SH::SH(SH&& other) noexcept : size_(std::exchange(other.size_, 0)),
-                              ptr(std::exchange(other.ptr, nullptr)) {
+ShCoefficients::ShCoefficients(const ShCoefficients& other) : ShCoefficients(other.size_) {
+    std::copy_n(other.data(), size_, data());
 }
 
-SH& SH::operator=(const SH& other) {
+ShCoefficients::ShCoefficients(ShCoefficients&& other) noexcept : size_(std::exchange(other.size_, 0)), storage_(std::move(other.storage_)) {
+    other.storage_.emplace<Inline>();
+}
+
+ShCoefficients& ShCoefficients::operator=(const ShCoefficients& other) {
     if (this != &other) {
-        this->reset();
-        if (other.size_ > 0) {
-            this->ptr = std::make_unique<float[]>(other.size_);
-            std::copy(other.ptr.get(), other.ptr.get() + other.size_, this->ptr.get());
-        }
-        this->size_ = other.size_;
+        ShCoefficients copy(other);
+        swap(copy);
     }
     return *this;
 }
 
-SH& SH::operator=(SH&& other) noexcept {
+ShCoefficients& ShCoefficients::operator=(ShCoefficients&& other) noexcept {
     if (this != &other) {
-        this->size_ = std::exchange(other.size_, 0);
-        this->ptr = std::exchange(other.ptr, nullptr);
+        size_ = std::exchange(other.size_, 0);
+        storage_ = std::move(other.storage_);
+        other.storage_.emplace<Inline>();
     }
     return *this;
 }
 
-void SH::swap(SH& other) noexcept {
-    std::swap(this->ptr, other.ptr);
-    std::swap(this->size_, other.size_);
+void ShCoefficients::swap(ShCoefficients& other) noexcept {
+    std::swap(size_, other.size_);
+    storage_.swap(other.storage_);
 }
 
-SH& SH::set_zero() noexcept {
-    if (this->ptr) {
-        std::memset(this->ptr.get(), 0, sizeof(float) * this->size_);
+void ShCoefficients::resize(size_t size) {
+    if (size == size_) {
+        return;
     }
+    ShCoefficients replacement(size);
+    std::copy_n(data(), std::min(size_, size), replacement.data());
+    swap(replacement);
+}
 
+ShCoefficients& ShCoefficients::set_zero() noexcept {
+    std::fill_n(data(), size_, 0.0f);
     return *this;
 }
 
-SH& SH::add_multiplied(const SH& other, float scalar) noexcept {
-    assert(other.size_ == this->size_);
-
-    for (auto i = 0; i < this->size_; i++) {
-        this->ptr[i] += other.ptr[i] * scalar;
+ShCoefficients& ShCoefficients::add_multiplied(const ShCoefficients& other, float scalar) noexcept {
+    assert(other.size_ == size_);
+    auto* values = data();
+    const auto* input = other.data();
+    for (size_t i = 0; i < size_; ++i) {
+        values[i] += input[i] * scalar;
     }
-
     return *this;
 }
 
-const float& SH::operator[](size_t index) const {
-    return this->ptr[index];
+ShCoefficients::~ShCoefficients() noexcept = default;
+
+void Gaussian::normalize_rotation() {
+    rotation.normalize();
+    if (rotation.w() < 0) {
+        rotation.coeffs() *= -1;
+    }
 }
 
-float& SH::operator[](size_t index) {
-    return this->ptr[index];
-}
-
-void SH::reset() noexcept {
-    this->ptr.reset();
-    this->size_ = 0;
-}
-
-float* SH::data() noexcept {
-    return this->ptr.get();
-}
-
-size_t SH::size() const noexcept {
-    return this->size_;
-}
-
-SH::~SH() noexcept {
-}
-
-void Gaussian::compute_bounding_box(float k) {
+Eigen::AlignedBox3f Gaussian::bounding_box(float k) const {
     auto sigma = this->scale.cwiseAbs();
-    this->bounding_box = Eigen::AlignedBox3f(this->mean - k * sigma, this->mean + k * sigma);
+    return Eigen::AlignedBox3f(this->mean - k * sigma, this->mean + k * sigma);
 }
 
-void Gaussian::compute_covariance() {
+Eigen::Matrix3f Gaussian::covariance() const {
     Eigen::Matrix3f s = Eigen::Matrix3f::Identity();
 
     s(0, 0) = this->scale.x();
     s(1, 1) = this->scale.y();
     s(2, 2) = this->scale.z();
 
-    auto r = Eigen::Matrix3f(Eigen::Quaternionf(this->rotation));
+    auto r = this->rotation.toRotationMatrix();
 
     Eigen::Matrix3f t = r * s;
 
-    this->covariance = t * t.transpose();
+    return t * t.transpose();
 }
 
-void Gaussian::decompose_covariance() {
-    auto matrix = this->covariance;
+void Gaussian::set_covariance(const Eigen::Matrix3f& covariance) {
+    auto matrix = covariance;
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigen_solver(matrix);
     auto eigen_values = eigen_solver.eigenvalues();
     auto eigen_vectors = eigen_solver.eigenvectors();
@@ -122,7 +109,6 @@ void Gaussian::decompose_covariance() {
         throw std::runtime_error("Found Nans in covariance decomposing!");
     }
 
-    int loops = 0;
     while (eigen_values[0] == 0 || eigen_values[1] == 0 || eigen_values[2] == 0) {
         matrix(0, 0) += std::max(matrix(0, 0) * 0.0001f, std::numeric_limits<float>::epsilon());
         matrix(1, 1) += std::max(matrix(1, 1) * 0.0001f, std::numeric_limits<float>::epsilon());
@@ -131,17 +117,15 @@ void Gaussian::decompose_covariance() {
         Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigen_solver2(matrix);
         eigen_values = eigen_solver2.eigenvalues();
         eigen_vectors = eigen_solver2.eigenvectors();
-
-        loops++;
     }
 
     auto v1 = eigen_vectors.col(0);
     auto v2 = eigen_vectors.col(1);
     auto v3 = eigen_vectors.col(2);
 
-    auto test = v1.cross(v2);
+    auto orientation = v1.cross(v2);
 
-    if (test.dot(v3) < 0) {
+    if (orientation.dot(v3) < 0) {
         eigen_vectors.col(2) *= -1;
     }
 
@@ -150,8 +134,7 @@ void Gaussian::decompose_covariance() {
     float c = std::sqrt(std::abs(eigen_values.z()));
 
     this->scale = { a, b, c };
-    auto q = Eigen::Quaternionf(eigen_vectors);
-    this->rotation = { q.x(), q.y(), q.z(), q.w() };
+    this->rotation = Eigen::Quaternionf(eigen_vectors);
     this->rotation.normalize();
 }
 
@@ -181,27 +164,235 @@ void Gaussian::make_valid() {
     }
 }
 
+Splat::Splat(size_t count, unsigned degree) : sh_degree(degree) {
+    if (degree > 3 || count > std::numeric_limits<uint32_t>::max()) {
+        throw std::runtime_error("Unsupported splat size or SH degree");
+    }
+    gaussians.resize(count);
+    for (auto& gaussian : gaussians) {
+        gaussian.sh = ShCoefficients(sh_count() + 3);
+    }
+}
+
+void Splat::limit_sh_degree(unsigned maximum) {
+    const auto degree = std::min(sh_degree, std::min(maximum, 3u));
+    if (degree == sh_degree) {
+        return;
+    }
+    for (auto& gaussian : gaussians) {
+        gaussian.sh.resize(SH_COUNTS[degree] + 3);
+    }
+    sh_degree = degree;
+}
+
+Splat Splat::select(std::span<const uint32_t> indices) const& {
+    Splat output;
+    output.sh_degree = sh_degree;
+    output.gaussians.reserve(indices.size());
+    for (auto index : indices) {
+        output.gaussians.push_back(gaussians.at(index));
+    }
+    return output;
+}
+
+Splat Splat::select(std::span<const uint32_t> indices) && {
+    if (std::adjacent_find(indices.begin(), indices.end(), std::greater_equal<uint32_t>()) != indices.end()) {
+        return std::as_const(*this).select(indices);
+    }
+    if (!indices.empty() && indices.back() >= size()) {
+        throw std::out_of_range("Splat selection index out of range");
+    }
+    for (size_t i = 0; i < indices.size(); ++i) {
+        if (i != indices[i]) {
+            gaussians[i] = std::move(gaussians[indices[i]]);
+        }
+    }
+    gaussians.resize(indices.size());
+    block_offsets.clear();
+    block_counts.clear();
+    bounding_box = Eigen::AlignedBox3f();
+    return std::move(*this);
+}
+
+void Splat::prepare_lod() {
+    for (auto& gaussian : gaussians) {
+        gaussian.rotation.normalize();
+        gaussian.make_valid();
+    }
+    compute_bounding_box();
+}
+
+Splat combine(std::vector<Splat>&& source, bool minimum_sh) {
+    unsigned degree = minimum_sh ? 3 : 0;
+    size_t count = 0;
+    for (const auto& part : source) {
+        if (part.size() > std::numeric_limits<uint32_t>::max() - count) {
+            throw std::runtime_error("Combined splat count exceeds the supported range");
+        }
+        count += part.size();
+        degree = minimum_sh ? std::min(degree, part.sh_degree) : std::max(degree, part.sh_degree);
+    }
+    Splat output;
+    output.sh_degree = source.empty() ? 0 : degree;
+    output.gaussians.reserve(count);
+    for (auto& part : source) {
+        output.block_offsets.push_back(output.size());
+        output.block_counts.push_back(part.size());
+        for (auto& gaussian : part.gaussians) {
+            gaussian.sh.resize(output.sh_count() + 3);
+            output.gaussians.push_back(std::move(gaussian));
+        }
+        std::vector<Gaussian>().swap(part.gaussians);
+    }
+    return output;
+}
+
 void Splat::compute_bounding_box() {
     this->bounding_box = Eigen::AlignedBox3f();
     for (auto& gaussian : this->gaussians) {
-        this->bounding_box.extend(gaussian.bounding_box);
+        this->bounding_box.extend(gaussian.bounding_box());
     }
 }
 
 void Splat::compute_compact_bounding_box() {
     this->bounding_box = Eigen::AlignedBox3f();
-    auto ref = std::vector<std::tuple<size_t, float>>();
+    std::vector<std::pair<size_t, float>> ref;
     ref.reserve(this->gaussians.size());
-    for (auto i = 0; i < this->gaussians.size(); i++) {
+    for (size_t i = 0; i < this->gaussians.size(); ++i) {
         ref.emplace_back(i, this->gaussians[i].area());
     }
-    std::sort(ref.begin(), ref.end(), [](auto& a, auto& b) -> bool { return std::get<1>(a) < std::get<1>(b); });
-    auto needed = static_cast<size_t>(static_cast<double>(this->gaussians.size()) * 0.95);
+    std::ranges::sort(ref, {}, &std::pair<size_t, float>::second);
+    auto needed = static_cast<size_t>(static_cast<float>(this->gaussians.size()) * 0.95f);
     if (needed == 0) {
         needed = this->gaussians.size();
     }
-    for (auto i = 0; i < needed; i++) {
-        this->bounding_box.extend(this->gaussians[std::get<0>(ref[i])].bounding_box);
+    for (size_t i = 0; i < needed; ++i) {
+        this->bounding_box.extend(this->gaussians[ref[i].first].bounding_box());
     }
 }
-} // namespace splat
+Bounds bounds(const Splat& data) {
+    Bounds result;
+    if (!data.size()) {
+        return result;
+    }
+    for (size_t axis = 0; axis < 3; ++axis) {
+        result.min[axis] = std::numeric_limits<float>::infinity();
+        result.max[axis] = -result.min[axis];
+        for (const auto& gaussian : data.gaussians) {
+            result.min[axis] = std::min(result.min[axis], float(gaussian.mean[axis]));
+            result.max[axis] = std::max(result.max[axis], float(gaussian.mean[axis]));
+        }
+    }
+    return result;
+}
+Bounds dense_bounds(const Splat& data, float ratio) {
+    auto result = bounds(data);
+    if (!data.size() || ratio >= 1) {
+        return result;
+    }
+    constexpr int BIN_COUNT = 65535;
+    std::array<std::vector<uint32_t>, 3> bins;
+    std::array<float, 3> scale;
+    std::array<int, 3> start { 0, 0, 0 }, end { BIN_COUNT - 1, BIN_COUNT - 1, BIN_COUNT - 1 };
+    for (size_t axis = 0; axis < 3; ++axis) {
+        bins[axis].resize(BIN_COUNT, 0);
+        scale[axis] = BIN_COUNT / std::max(result.max[axis] - result.min[axis], 1e-9f);
+        for (const auto& gaussian : data.gaussians) {
+            const float value = gaussian.mean[axis];
+            const auto index = static_cast<int>((value - result.min[axis]) * scale[axis]);
+            // The original typed array does not count a point in the upper endpoint bin.
+            if (index >= 0 && index < BIN_COUNT) {
+                ++bins[axis][index];
+            }
+        }
+    }
+    int64_t remaining = static_cast<int64_t>(data.size());
+    const auto limit = static_cast<int64_t>(std::ceil(data.size() * (1 - ratio)));
+    while (remaining > limit) {
+        uint32_t minimum = std::numeric_limits<uint32_t>::max();
+        int selected = -1;
+        for (int side = 0; side < 6; ++side) {
+            int axis = side / 2;
+            if (start[axis] > end[axis]) {
+                continue;
+            }
+            uint32_t count = bins[axis][side % 2 ? end[axis] : start[axis]];
+            if (count < minimum) {
+                minimum = count;
+                selected = side;
+            }
+        }
+        if (selected < 0) {
+            break;
+        }
+        if (selected % 2) {
+            --end[selected / 2];
+        } else {
+            ++start[selected / 2];
+        }
+        remaining -= minimum;
+    }
+    for (size_t axis = 0; axis < 3; ++axis) {
+        result.max[axis] = end[axis] / scale[axis] + result.min[axis];
+        result.min[axis] += start[axis] / scale[axis];
+    }
+    return result;
+}
+namespace {
+uint32_t interleave(uint32_t x) {
+    x &= 0x3ff;
+    x = (x ^ (x << 16)) & 0xff0000ff;
+    x = (x ^ (x << 8)) & 0x0300f00f;
+    x = (x ^ (x << 4)) & 0x030c30c3;
+    return (x ^ (x << 2)) & 0x09249249;
+}
+} // namespace
+std::vector<uint32_t> morton_order(const Splat& data) {
+    std::vector<uint32_t> indices(data.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    const auto sort = [&](auto&& self, std::span<uint32_t> slice) -> void {
+        if (slice.size() < 2) {
+            return;
+        }
+        std::array<float, 3> min, max, scale;
+        for (size_t axis = 0; axis < 3; ++axis) {
+            min[axis] = std::numeric_limits<float>::infinity();
+            max[axis] = -min[axis];
+            for (uint32_t i : slice) {
+                min[axis] = std::min(min[axis], float(data.gaussians[i].attribute(axis)));
+                max[axis] = std::max(max[axis], float(data.gaussians[i].attribute(axis)));
+            }
+            if (!std::isfinite(max[axis] - min[axis])) {
+                return;
+            }
+            scale[axis] = max[axis] == min[axis] ? 0 : 1024 / (max[axis] - min[axis]);
+        }
+        if (scale[0] == 0 && scale[1] == 0 && scale[2] == 0) {
+            return;
+        }
+        std::vector<std::pair<uint32_t, uint32_t>> codes;
+        codes.reserve(slice.size());
+        for (uint32_t i : slice) {
+            uint32_t code = 0;
+            for (size_t axis = 0; axis < 3; ++axis) {
+                code |= interleave(static_cast<uint32_t>(std::clamp((data.gaussians[i].attribute(axis) - min[axis]) * scale[axis], 0.0f, 1023.0f))) << axis;
+            }
+            codes.emplace_back(code, i);
+        }
+        std::ranges::stable_sort(codes, {}, &std::pair<uint32_t, uint32_t>::first);
+        std::ranges::transform(codes, slice.begin(), &std::pair<uint32_t, uint32_t>::second);
+        for (size_t start = 0; start < codes.size();) {
+            size_t end = start + 1;
+            while (end < codes.size() && codes[end].first == codes[start].first) {
+                ++end;
+            }
+            if (end - start > 256 && end - start < codes.size()) {
+                self(self, slice.subspan(start, end - start));
+            }
+            start = end;
+        }
+    };
+    sort(sort, indices);
+    return indices;
+}
+} // namespace splat_transform::splat

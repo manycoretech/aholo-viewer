@@ -10,15 +10,18 @@ order: 5
 
 ## 环境需求
 
-- Node.js >= 22.22.1
-- Windows: Windows 22H2+，x86_64，D3D12 或 Vulkan 兼容显卡。需要 GPU 功能时，建议使用独立显卡。
-- Linux: x86_64, ARM64，glibc >= 2.34，libstdc++ >= 3.4.30，Vulkan 兼容显卡。需要 GPU 功能时，建议使用独立显卡。
-- macOS: 仅苹果芯片，ARM64。
+- npm CLI 和 JavaScript 接口需要 Node.js >= 22.22.1；独立 C++ 可执行文件无需 Node.js。
+- Windows: Windows 22H2+，x86_64 或 ARM64。
+- Linux: x86_64 或 ARM64，Ubuntu 22.04 / glibc >= 2.35；C++ 运行库静态链接。
+- macOS: macOS 13+，苹果芯片 ARM64。
+- GPU 功能需要用户安装 Vulkan 1.1+ loader 和兼容驱动；macOS 还需要可用的 MoltenVK。安装包不携带 Vulkan 运行时。
 
 ### 需要GPU的功能
 
-- SOG 生成。
-- Voxel 生成，且 `backend` 设置为 `gpu`。
+- 含 SH 系数的 SOG 生成；SH0 SOG 可在 CPU 上编码。
+- Voxel 生成，仅支持 Vulkan GPU，不再提供 CPU 生成或自动回退。
+
+不使用 GPU 的格式转换和 LOD 处理无需 Vulkan。使用 `splat-transform list:gpu` 查询当前 Vulkan 设备；旧版 Dawn 枚举可能包含 D3D12 设备，原有 GPU 下标需要重新确认。
 
 ## 格式说明
 
@@ -30,6 +33,7 @@ order: 5
 - `splat`
 - `spz`
 - `lcc`
+- `lcc2`
 - `esz`
 - `compressed.ply`，即 supersplat 压缩 ply
 - `meta.json`，即 sog 未打包 meta 数据
@@ -75,6 +79,10 @@ splat-transform lod:auto-chunk --type <type:ply,spz,splat,sog,esz> --max-chunk-c
 ```bash
 splat-transform pipeline.json
 ```
+
+独立可执行文件也接受 `pipeline.json`，或通过 `-` 从标准输入读取 JSON。Node CLI 负责把 `create`、`lod:auto` 等命令转换为相同的 pipeline。pipeline 中的输入输出路径相对于进程工作目录，SOG/LCC/LCC2 的资源路径相对于元数据文件。
+
+2.0 版本移除了 `SplatData`、自定义任务注入和内部模块导入等内存处理接口。JavaScript 接口保留 `run(config, { cwd, signal })` 和 `enumerateAdapters()`，实际处理在子进程中完成。
 
 #### pipeline 描述文件(`pipeline.json`)
 
@@ -159,8 +167,8 @@ splat-transform pipeline.json
         <td>开启莫顿排序</td>
     </tr>
     <tr>
-        <td rowspan="3">Modify</td>
-        <td rowspan="3">修改SplatData对象</td>
+        <td rowspan="5">Modify</td>
+        <td rowspan="5">原地修改内存 splat 资源</td>
         <td>input</td>
         <td>string</td>
         <td>Y</td>
@@ -177,6 +185,18 @@ splat-transform pipeline.json
         <td>string[]</td>
         <td>N([])</td>
         <td>modify json 文件路径<br />格式参考<a href="#modify格式说明">modify格式说明</a></td>
+    </tr>
+    <tr>
+        <td>rgba</td>
+        <td>[number, number, number, number]</td>
+        <td>N(不修改)</td>
+        <td>内部 RGBA 值；必须有限且可存入 float，不钳制、不转换色彩空间</td>
+    </tr>
+    <tr>
+        <td>maxShDegree</td>
+        <td>0 | 1 | 2 | 3</td>
+        <td>N(不截断)</td>
+        <td>截断到 min(当前阶数, 指定阶数)，不生成高阶 SH</td>
     </tr>
     <tr>
         <td rowspan="4">AutoLod</td>
@@ -295,12 +315,11 @@ Array<{
         <td>
             string
             <ul>
-                <li>cpu</li>
                 <li>gpu</li>
             </ul>
         </td>
         <td>N(gpu)</td>
-        <td>生成方式，默认使用gpu，可选cpu。cpu的耗时会明显高于gpu。两者的结果会有细微差异。</td>
+        <td>仅支持 Vulkan GPU。可省略此字段；CPU 生成和 cpuWorkerCount 已移除，GPU 错误直接返回。</td>
     </tr>
     <tr>
         <td>box</td>
@@ -361,6 +380,22 @@ Array<{
         <td>N(null)</td>
     </tr>
 </table>
+
+#### 数据选择与共享 LOD
+
+以下任务的 input/output 是内存资源键，输出均为独立的单块 splat 资源，复制完整属性和全部 SH。结果的 offsets 为 [0]，counts 为 [结果点数]，并维护包围信息。
+
+| Task            | config 字段                                      | 行为                                                                                                 |
+| --------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Select          | input、output；indices 与 indicesPath 恰好二选一 | 按首次出现顺序稳定去重并复制，如 [8,2,8,5] → [8,2,5]，不做 Morton 排序                               |
+| ReplaceAppend   | input、patch、output、sourceIndices              | patch 前 K 点依序替换唯一的源索引，其余追加；结果 N+M−K，要求 K≤M 且源/patch 的 SH 阶数及布局一致    |
+| ExtractLodLevel | input、output、level（必填，0-based）            | 从本次 run 的 LOD bundle 按 tree 顺序复制指定层的 file/offset/count 区间，保留重复引用和独立 SH 存储 |
+
+Select 的 .json 索引文件支持数组或含 indices 的对象；其他文件按小端 uint32 读取，.zst 先解压再读取。JSON 索引转换前验证整数和范围，不接受负数、小数、布尔值或越界值；二进制长度必须为 4 的倍数。空索引有效，空数据能否写出仍取决于目标格式。ReplaceAppend 的 sourceIndices 必填，可为空，但不能重复；保留的源、patch 及别名不会被修改。
+
+Modify 先验证新增 rgba/maxShDegree，再执行原 patch 变换和删除，然后设置剩余点的 RGBA、截断 SH。不同 output 键仍是同一对象的别名。交互数据应先 ExtractLodLevel(level:3)，再 Modify(rgba:[0,0,0,1], maxShDegree:0)，不能直接修改共享源。
+
+同一 LOD bundle 可以在一次 pipeline 中先 Write(highPrecision:false)，再 Write(highPrecision:true)；每次写出只读资源，内部仍可并行，只在最后使用后 release。bundle 的 preserve_order 标记仍禁止破坏区间的 Morton 重排。ExtractLodLevel 不支持从磁盘 lod-meta.json 恢复 bundle。
 
 #### 使用样例
 

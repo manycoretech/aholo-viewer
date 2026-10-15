@@ -7,23 +7,22 @@
   },
   "configurePresets": [
     {
-      "$comment": [
-        "default build config for any env",
-        "needs: vcpkg",
-        "vcpkg install root should be in environments as VCPKG_ROOT"
-      ],
-      "name": "default",
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build",
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
-        "CMAKE_PREFIX_PATH": "${sourceDir}/cmake"
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": true
       }
     },
     {
       "name": "x64-windows-static",
-      "$comment": ["build config for x64 windows"],
-      "inherits": "default",
+      "inherits": "base",
       "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-windows-static"
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/../splat-transform-win32-x64-msvc",
+        "VCPKG_HOST_TRIPLET": "x64-windows"
       },
       "condition": {
         "type": "equals",
@@ -33,10 +32,11 @@
     },
     {
       "name": "arm64-windows-static",
-      "$comment": ["build config for arm64 windows"],
-      "inherits": "default",
+      "inherits": "base",
       "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "arm64-windows-static"
+        "VCPKG_TARGET_TRIPLET": "arm64-windows-static",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/../splat-transform-win32-arm64-msvc",
+        "VCPKG_HOST_TRIPLET": "arm64-windows"
       },
       "condition": {
         "type": "equals",
@@ -46,13 +46,14 @@
     },
     {
       "name": "x64-linux",
-      "$comment": ["build config for x64 linux"],
-      "inherits": "default",
+      "inherits": "base",
+      "generator": "Ninja",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-linux",
-        "CMAKE_MAKE_PROGRAM": "/usr/bin/ninja",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/../splat-transform-linux-x64-gnu",
         "CMAKE_C_COMPILER": "/usr/bin/cc",
-        "CMAKE_CXX_COMPILER": "/usr/bin/c++"
+        "CMAKE_CXX_COMPILER": "/usr/bin/c++",
+        "VCPKG_HOST_TRIPLET": "x64-linux"
       },
       "condition": {
         "type": "equals",
@@ -62,14 +63,14 @@
     },
     {
       "name": "arm64-linux",
-      "$comment": ["build config for arm64 linux"],
-      "inherits": "default",
+      "inherits": "base",
+      "generator": "Ninja",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-linux",
-        "CMAKE_ASM_NASM_COMPILER": "/usr/bin/nasm",
-        "CMAKE_MAKE_PROGRAM": "/usr/bin/ninja",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/../splat-transform-linux-arm64-gnu",
         "CMAKE_C_COMPILER": "/usr/bin/cc",
-        "CMAKE_CXX_COMPILER": "/usr/bin/c++"
+        "CMAKE_CXX_COMPILER": "/usr/bin/c++",
+        "VCPKG_HOST_TRIPLET": "arm64-linux"
       },
       "condition": {
         "type": "equals",
@@ -79,14 +80,14 @@
     },
     {
       "name": "arm64-osx",
-      "$comment": ["build config for arm64 osx"],
-      "inherits": "default",
+      "inherits": "base",
+      "generator": "Ninja",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-osx",
-        "CMAKE_MAKE_PROGRAM": "/opt/homebrew/bin/ninja",
-        "CMAKE_ASM_NASM_COMPILER": "/opt/homebrew/bin/nasm",
-        "CMAKE_C_COMPILER": "/usr/bin/cc",
-        "CMAKE_CXX_COMPILER": "/usr/bin/c++"
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/../splat-transform-darwin-arm64",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0",
+        "VCPKG_HOST_TRIPLET": "arm64-osx"
       },
       "condition": {
         "type": "equals",
@@ -97,59 +98,163 @@
   ],
   "buildPresets": [
     {
-      "name": "default",
-      "configurePreset": "default",
-      "jobs": 8
+      "name": "x64-windows-static",
+      "configurePreset": "x64-windows-static",
+      "configuration": "Release",
+      "targets": ["install"]
     },
     {
+      "name": "arm64-windows-static",
+      "configurePreset": "arm64-windows-static",
+      "configuration": "Release",
+      "targets": ["install"]
+    },
+    {
+      "name": "x64-linux",
+      "configurePreset": "x64-linux",
+      "configuration": "Release",
+      "targets": ["install"]
+    },
+    {
+      "name": "arm64-linux",
+      "configurePreset": "arm64-linux",
+      "configuration": "Release",
+      "targets": ["install"]
+    },
+    {
+      "name": "arm64-osx",
+      "configurePreset": "arm64-osx",
+      "configuration": "Release",
+      "targets": ["install"]
+    }
+  ],
+  "testPresets": [
+    {
       "name": "x64-windows-static",
-      "inherits": "default",
       "configurePreset": "x64-windows-static",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
       }
     },
     {
       "name": "arm64-windows-static",
-      "inherits": "default",
       "configurePreset": "arm64-windows-static",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
       }
     },
     {
       "name": "x64-linux",
-      "inherits": "default",
       "configurePreset": "x64-linux",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
       }
     },
     {
       "name": "arm64-linux",
-      "inherits": "default",
       "configurePreset": "arm64-linux",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
       }
     },
     {
       "name": "arm64-osx",
-      "inherits": "default",
       "configurePreset": "arm64-osx",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Darwin"
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
       }
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "x64-windows-static",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "x64-windows-static"
+        },
+        {
+          "type": "build",
+          "name": "x64-windows-static"
+        },
+        {
+          "type": "test",
+          "name": "x64-windows-static"
+        }
+      ]
+    },
+    {
+      "name": "arm64-windows-static",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "arm64-windows-static"
+        },
+        {
+          "type": "build",
+          "name": "arm64-windows-static"
+        },
+        {
+          "type": "test",
+          "name": "arm64-windows-static"
+        }
+      ]
+    },
+    {
+      "name": "x64-linux",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "x64-linux"
+        },
+        {
+          "type": "build",
+          "name": "x64-linux"
+        },
+        {
+          "type": "test",
+          "name": "x64-linux"
+        }
+      ]
+    },
+    {
+      "name": "arm64-linux",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "arm64-linux"
+        },
+        {
+          "type": "build",
+          "name": "arm64-linux"
+        },
+        {
+          "type": "test",
+          "name": "arm64-linux"
+        }
+      ]
+    },
+    {
+      "name": "arm64-osx",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "arm64-osx"
+        },
+        {
+          "type": "build",
+          "name": "arm64-osx"
+        },
+        {
+          "type": "test",
+          "name": "arm64-osx"
+        }
+      ]
     }
   ]
 }

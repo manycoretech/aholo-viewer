@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "read",
+      "type": "Read",
+      "config": {
+        "inputs": ["inputs/first.ply", "inputs/second.ply"],
+        "output": "source"
+      }
+    },
+    {
+      "id": "splitsplattask",
+      "type": "SplitSplatTask",
+      "config": {
+        "input": "source",
+        "output": "split",
+        "type": "ply",
+        "maxChunkCounts": 8
+      },
+      "release": ["source"]
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "split",
+        "output": "outputs/split",
+        "parallelCounts": 2,
+        "enableMortonSort": false
+      },
+      "release": ["split"]
+    }
+  ]
+}

@@ -8,16 +8,14 @@
   },
   "type": "commonjs",
   "files": [
-    "splat-transform.node",
-    "dawn.node",
-    "d3dcompiler_47.dll",
-    "dxcompiler.dll",
-    "dxil.dll"
+    "splat-transform.exe",
+    "THIRD_PARTY_LICENSES.txt"
   ],
   "os": [
     "win32"
   ],
   "cpu": [
     "x64"
-  ]
+  ],
+  "description": "Standalone C++ splat-transform executable for win32-x64-msvc"
 }

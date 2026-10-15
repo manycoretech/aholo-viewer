@@ -17,6 +17,16 @@ const packages = JSON.parse(
     const splatTransformMainPackageJson = JSON.parse(
         fs.readFileSync(path.resolve(splatTransformMainPackage.path, 'package.json'), 'utf-8'),
     );
+    // Validate every artifact before mutating versions or publishing any package.
+    for (const p of splatTransformSubPackages) {
+        const executable = path.join(p.path, p.name.includes('-win32-') ? 'splat-transform.exe' : 'splat-transform');
+        if (!fs.statSync(executable).isFile() || fs.statSync(executable).size === 0) {
+            throw new Error(`Missing native executable: ${executable}`);
+        }
+        fs.accessSync(path.join(p.path, 'THIRD_PARTY_LICENSES.txt'));
+        // GitHub artifact downloads do not preserve Unix executable permissions.
+        if (!p.name.includes('-win32-')) fs.chmodSync(executable, 0o755);
+    }
     for (const p of splatTransformSubPackages) {
         const packageJson = JSON.parse(fs.readFileSync(path.resolve(p.path, 'package.json'), 'utf-8'));
         p.version = splatTransformMainPackageJson.version;

@@ -39,6 +39,16 @@ The root package coordinates build, check, API generation, and packaging through
       tsconfig.json
       src/
       dist/
+    splat-transform/
+      bin/
+      src/
+    splat-transform-native/
+      source/
+        include/
+        src/
+        shaders/
+        CMakePresets.json
+      splat-transform-<platform>/
 
   scripts/
     build-package.mjs
@@ -56,13 +66,15 @@ The root package coordinates build, check, API generation, and packaging through
 
   external/
     egs-core/
-    splat-transform/
 ```
 
 ## Structural Roles
 
 - Root package: workspace entry point for dependency preparation, renderer build, API generation, website checks, and release packaging.
 - `packages/renderer/`: public renderer package source. `src/index.ts` is the public API barrel; package-local files hold math, events, animation, loader, and utility namespaces.
+- `packages/splat-transform/`: CLI-to-pipeline translation and a minimal Node subprocess wrapper for the standalone processing executable.
+- `packages/splat-transform-native/source/`: C++20 pipeline engine, format codecs, LOD processing, and Vulkan compute. CMake and vcpkg produce static dependencies and platform executables without Node build tooling. Sibling platform packages contain the executable and dependency notices; their release versions come from the main splat-transform package.
+- Native processing uses `splat/` as its data foundation. Format implementations derive from `io::IFile`; pipeline task implementations derive from `pipeline::BaseTask`. `TaskContext` manages shared and movable Splat ownership. `spatial/` contains clustering and SH transforms.
 - `website/`: Astro application for home, manual, API reference, examples, and Playground. Route modules live under `pages/`; shared UI lives under `layouts/` and `components/`; route-independent data helpers live under `utils/`.
 - `website/src/playground/`: route-local Playground runtime, Monaco integration, renderer adapter, camera control, and example-facing types.
 - `website/src/content/`: manual pages, manual assets, and paired example metadata/source files.
@@ -90,6 +102,8 @@ packages/renderer/src/index.ts
 `website/` may depend on `@manycore/aholo-viewer` through the workspace package. The renderer package should not depend on the website. Website `dev`, `build`, and `check` first run the renderer build, then regenerate API HTML and manifest data.
 
 `external/egs-core` is an upstream dependency submodule. Scripts may read external sources and generate dependency outputs needed for local builds, but repository changes should not hand-edit upstream code unless a task explicitly targets that package.
+
+The processing CLI sends version 1 pipeline JSON to the native executable over stdin. Task resources remain in the native process. Vulkan-Hpp RAII and VMA manage GPU objects and allocations; the loader and driver are supplied by the user. Linux native builds run in Ubuntu 22.04 with Clang 21 and a static C++ runtime. Default native tests do not require Vulkan; GPU contracts are enabled separately on a machine with a working driver.
 
 ## Root Command Graph
 

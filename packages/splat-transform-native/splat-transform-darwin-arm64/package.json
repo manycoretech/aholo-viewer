@@ -8,13 +8,14 @@
   },
   "type": "commonjs",
   "files": [
-    "splat-transform.node",
-    "dawn.node"
+    "splat-transform",
+    "THIRD_PARTY_LICENSES.txt"
   ],
   "os": [
     "darwin"
   ],
   "cpu": [
     "arm64"
-  ]
+  ],
+  "description": "Standalone C++ splat-transform executable for darwin-arm64"
 }

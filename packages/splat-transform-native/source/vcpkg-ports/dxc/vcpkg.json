@@ -1,0 +1,21 @@
+{
+  "name": "dxc",
+  "version-string": "1.8.2505.1",
+  "description": "Build-time HLSL to SPIR-V compiler, pinned across native build hosts",
+  "homepage": "https://github.com/microsoft/DirectXShaderCompiler",
+  "license": null,
+  "supports": "(windows | linux | osx) & (x64 | arm64) & !uwp & !xbox",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true,
+      "platform": "!windows"
+    }
+  ],
+  "features": {
+    "from-source": {
+      "description": "Build the pinned compiler from source on Unix instead of using a prebuilt executable",
+      "supports": "!windows"
+    }
+  }
+}

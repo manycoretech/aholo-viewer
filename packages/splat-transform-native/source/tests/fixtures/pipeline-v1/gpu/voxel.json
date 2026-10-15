@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "tasks": [
+    { "id": "read", "type": "Read", "config": { "inputs": ["inputs/first.ply"], "output": "source" } },
+    {
+      "id": "raw",
+      "type": "Voxel",
+      "config": { "input": "source", "output": "outputs/voxel-raw", "filterCluster": false }
+    },
+    {
+      "id": "compact",
+      "type": "Voxel",
+      "config": {
+        "input": "source",
+        "output": "outputs/voxel-compact",
+        "backend": "gpu",
+        "voxelResolution": 0.25,
+        "opacityCutoff": 0.1,
+        "filterCluster": false,
+        "nodeEncoding": "compact",
+        "compression": "zstd",
+        "collisionMesh": true
+      },
+      "release": ["source"]
+    }
+  ]
+}

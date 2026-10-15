@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "read",
+      "type": "Read",
+      "config": {
+        "inputs": ["inputs/first.ply", "inputs/second.ply"],
+        "output": "source"
+      }
+    },
+    {
+      "id": "autolod",
+      "type": "AutoLod",
+      "config": {
+        "input": "source",
+        "output": "auto-default"
+      }
+    },
+    {
+      "id": "autolod",
+      "type": "AutoLod",
+      "config": {
+        "input": "source",
+        "output": "auto-explicit",
+        "ratio": 0.3
+      },
+      "release": ["source"]
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "auto-default",
+        "output": "outputs/auto-default.ply",
+        "enableMortonSort": false
+      },
+      "release": ["auto-default"]
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "auto-explicit",
+        "output": "outputs/auto-explicit.ply",
+        "enableMortonSort": false
+      },
+      "release": ["auto-explicit"]
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "read",
+      "type": "Read",
+      "config": {
+        "inputs": ["inputs/first.ply", "inputs/second.ply"],
+        "output": "source"
+      }
+    },
+    {
+      "id": "modify",
+      "type": "Modify",
+      "config": {
+        "input": "source",
+        "output": "alias"
+      }
+    },
+    {
+      "id": "modify",
+      "type": "Modify",
+      "config": {
+        "input": "source",
+        "output": "modified",
+        "modifyPaths": ["inputs/first.json", "inputs/second.json"]
+      }
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "alias",
+        "output": "outputs/modify-alias.ply",
+        "enableMortonSort": false
+      },
+      "release": ["alias"]
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "source",
+        "output": "outputs/modify-source.ply",
+        "enableMortonSort": false
+      },
+      "release": ["source"]
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "modified",
+        "output": "outputs/modify-result.ply",
+        "enableMortonSort": false
+      },
+      "release": ["modified"]
+    }
+  ]
+}

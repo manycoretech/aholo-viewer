@@ -29,28 +29,20 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./*.js": {
-      "import": "./dist/*.js",
-      "types": "./dist/*.d.ts"
-    },
-    "./*": {
-      "import": "./dist/*.js",
-      "types": "./dist/*.d.ts"
     }
   },
   "files": [
+    "bin/",
     "dist/",
+    "README.md",
     "CHANGELOG.md",
     "THIRD_PARTY_LICENSES.txt"
   ],
   "scripts": {
-    "build": "node ./scripts/build.js build",
-    "test": "pnpm run build && node --test tests/*.test.mjs"
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "fflate": "^0.8.3",
-    "tslib": "catalog:",
     "yargs": "catalog:"
   },
   "optionalDependencies": {
@@ -62,7 +54,6 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
-    "@webgpu/types": "^0.1.74",
     "typescript": "catalog:"
   }
 }

@@ -2,6 +2,26 @@
 
 ## DEV
 
+- migrate processing to a standalone C++20 executable built with CMake and vcpkg
+- route native formats through IFile implementations and pipeline operations through BaseTask implementations
+- unify processing on native Splat/Gaussian storage, move disposable task inputs, and remove column-based conversion copies
+- keep SH0 inline, decode only retained SH bands, and rotate interleaved SH coefficients directly
+- use float for migrated arithmetic and Eigen quaternions for rotations; retain double precision in the LOD covariance and edge-cost calculations
+- replace Dawn/WebGPU with Vulkan-Hpp RAII compute; users provide the Vulkan loader and drivers, including MoltenVK on macOS
+- retain CLI commands and version 1 pipelines; keep run(config) as a child-process wrapper
+- remove custom JavaScript tasks, in-memory splat APIs, deep imports, Node native bindings, and cmake-js
+- build Linux executables with Clang 21 on Ubuntu 22.04; link the C++ runtime and third-party libraries statically
+- seed thread-local random engines on first use and reuse them for SOG clustering
+- reuse SOG GPU resources across clustering iterations, overlap CPU texture encoding, and size batches from the available memory budget and device limits
+- share one lazy CPU task pool across LOD, clustering, bundle output, SOG texture encoding, and gzip; support nested work and safe task cleanup on failure
+- parallelize SOG archive member generation and reuse one zstd-native pool across compression contexts
+- preserve the legacy nonnegative-w quaternion convention and zero-quaternion handling before format quantization
+- read FlexLod score files from their actual byte range, fixing pooled Buffer offsets for short files
+- remove CPU voxel generation and its automatic fallback; retain Vulkan GPU generation
+- accelerate large gzip and zstd payloads with bounded parallel compression
+- support unpacked SOG metadata and local textures through the native file reader
+- retain all sections when reading multi-section KSPLAT files
+
 - resolve SOG textures and LCC companion files relative to their metadata paths inside ZIP archives, including nested directories without explicit directory entries
 - recognize any `.lcc` metadata filename inside a ZIP archive
 - share ZIP path handling across SOG, LCC, and LCC2 while preserving selective resource extraction and LCC2 shared-file ranges

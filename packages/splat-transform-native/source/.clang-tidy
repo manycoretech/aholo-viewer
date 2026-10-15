@@ -1,0 +1,19 @@
+Checks: '-*,readability-identifier-naming,readability-braces-around-statements'
+HeaderFilterRegex: 'packages/splat-transform-native/source/(include|src|tests)/'
+CheckOptions:
+    readability-braces-around-statements.ShortStatementLines: 0
+    readability-identifier-naming.NamespaceCase: lower_case
+    readability-identifier-naming.ClassCase: CamelCase
+    readability-identifier-naming.ClassMemberCase: lower_case
+    readability-identifier-naming.ClassMemberSuffix: _
+    readability-identifier-naming.StructCase: CamelCase
+    readability-identifier-naming.EnumCase: CamelCase
+    readability-identifier-naming.EnumConstantCase: CamelCase
+    readability-identifier-naming.FunctionCase: lower_case
+    readability-identifier-naming.MethodCase: lower_case
+    readability-identifier-naming.VariableCase: lower_case
+    readability-identifier-naming.ParameterCase: lower_case
+    readability-identifier-naming.PrivateMemberCase: lower_case
+    readability-identifier-naming.PrivateMemberSuffix: _
+    readability-identifier-naming.GlobalConstantCase: UPPER_CASE
+    readability-identifier-naming.ConstexprVariableCase: UPPER_CASE

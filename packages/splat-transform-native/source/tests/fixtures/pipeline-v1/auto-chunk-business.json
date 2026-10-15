@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "read",
+      "type": "Read",
+      "config": {
+        "inputs": ["inputs/first.ply", "inputs/second.ply"],
+        "output": "source"
+      }
+    },
+    {
+      "id": "autochunklod",
+      "type": "AutoChunkLod",
+      "config": {
+        "input": "source",
+        "output": "lod",
+        "type": "spz",
+        "maxChunkCounts": 8,
+        "levels": [
+          {
+            "precision": 1,
+            "scaleBoost": 1
+          },
+          {
+            "precision": 0.5,
+            "scaleBoost": 1
+          },
+          {
+            "precision": 0.25,
+            "scaleBoost": 1
+          },
+          {
+            "precision": 0.05,
+            "scaleBoost": 1.01
+          },
+          {
+            "precision": 0.01,
+            "scaleBoost": 1.02
+          }
+        ]
+      },
+      "release": ["source"]
+    },
+    {
+      "id": "write",
+      "type": "Write",
+      "config": {
+        "input": "lod",
+        "output": "outputs/chunk-business",
+        "parallelCounts": 2,
+        "version": 3,
+        "enableMortonSort": false
+      },
+      "release": ["lod"]
+    }
+  ]
+}

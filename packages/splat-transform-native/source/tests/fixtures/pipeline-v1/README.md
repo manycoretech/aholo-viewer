@@ -1,0 +1,7 @@
+# Frozen version 1 pipelines
+
+These files capture the established built-in task configurations before the data-task extension. They contain no new task names or new Modify fields. Keep their bytes unchanged when comparing the saved pre-extension executable with the current executable; execute each JSON directly, without an adapter or path rewriting. Format results are compared after decoding, not by compressed bytes.
+
+`splat_transform_frozen_pipeline_tests --prepare <working-directory>` creates deterministic input files. Run the CLI with that working directory and the absolute path of each JSON. All input and output paths intentionally resolve from the process working directory, not from this fixture directory. Use a separate working directory per executable. The normal CTest entry prepares its own temporary directory and runs all eight files unchanged.
+
+Coverage includes ordered multi-file Read, Modify defaults/transforms/deletion/shared aliases, release after the last use, format options, AutoLod's default 0.3 target, default and business AutoChunkLod levels, repeated read-only bundle Write, FlexLod indices, SkeletonLod, and SplitSplatTask. The optional `gpu/voxel.json` fixture additionally covers the existing GPU Voxel task, raw/compact output, zstd, and collision mesh; run it directly with a prepared working directory and a compatible Vulkan device. It is excluded from the portable CTest entry. Removed CPU Voxel configurations are outside this compatibility set.
