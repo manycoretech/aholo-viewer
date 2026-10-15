@@ -18,6 +18,14 @@ cmake --workflow --preset arm64-osx
 
 Choose the preset for the current platform. Each workflow configures, builds, installs, and runs CPU tests. Installation writes the executable and third-party notices into the corresponding sibling platform package. npm build scripts invoke CMake directly.
 
+CI runs `cmake -P cmake/prepare_vcpkg.cmake` before configuring. It initializes a missing checkout, fetches the configured baseline with `--depth 1` when needed, checks out that exact commit, and bootstraps the matching vcpkg tool. It refuses to switch a checkout with tracked modifications. Run the same command locally to align `VCPKG_ROOT` with `vcpkg-configuration.json`. Linux presets explicitly use `/usr/bin/ninja`; macOS uses `/opt/homebrew/bin/ninja`, `/opt/homebrew/bin/nasm`, and the system C/C++ compilers.
+
+The Linux image takes `VCPKG_REF` from the same baseline configuration and fetches that commit with depth 1. The baseline also participates in the image cache key. The checkout and baseline must remain aligned: a shallow checkout of a different commit, or overrides selecting older port revisions, may require objects outside that snapshot.
+
+After updating the baseline or changing the vcpkg checkout, configure with `cmake --fresh --preset x64-windows-static` (or the matching platform preset) before building. This clears cached dependency paths, including library names that can change between port versions.
+
+The Linux CI image also retains Node.js 24 through fnm for the separate regression test suite. `NODE_VERSION` remains a build argument and participates in the image cache key. The native CMake build itself does not require Node.js.
+
 Presets use build/ by default. Workflow mode takes the binary directory from its configure preset and does not accept a -B override. When Windows and WSLC share a source checkout, use a separate Linux directory through the configure command, then build and test that directory:
 
 ```sh
@@ -31,6 +39,8 @@ Run these commands inside the Ubuntu 22.04 build container. The preset still sup
 The main packages/splat-transform/package.json is the version source. CMake uses its numeric part for the project version and reconfigures when the manifest changes. The npm CLI and publishing script use the full version, including prerelease suffixes. Platform package manifests keep version 0.0.0 in source control; scripts/publish-packages.mjs assigns the main package version to them and the matching optional dependencies before publishing. Changing the main package manifest also triggers the native build workflow.
 
 Vcpkg supplies static image/compression/archive/HTTP libraries, Eigen, nanoflann, nlohmann-json, Vulkan headers, VMA, and the DXC host compiler. HLSL compute shaders compile to embedded SPIR-V during the build. The local dxc overlay port pins DXC v1.8.2505.1 and its source dependencies. Windows x64/ARM64 and Linux x64 use Microsoft's release binaries; Linux ARM64 and macOS compile the same release from source. The optional dxc[from-source] feature also selects the source build on Linux x64. Only the build host needs DXC; runtime shader compilation and a Vulkan SDK are not required.
+
+The DXC source overlay disables its legacy `StringRef` standard-trait specializations when using libc++, which already computes the correct traits and rejects those specializations with Apple Clang 21. Other standard libraries retain the existing workaround.
 
 Shaders target Vulkan 1.1 / SPIR-V 1.3 with explicit descriptor bindings, push constants, and std430-compatible storage layouts. The build uses -fvk-use-gl-layout and does not require scalar-block-layout or subgroup extensions. HLSL clustering variants cover SH1/SH2/SH3 and all supported shared-memory tile sizes; runtime selection continues to respect each device's shared-memory limit. Linear kernels receive the dispatch width through push constants to preserve indexing across two-dimensional dispatches.
 

@@ -32,7 +32,7 @@ else()
     vcpkg_from_github(OUT_SOURCE_PATH SOURCE_PATH
         REPO microsoft/DirectXShaderCompiler REF "${DXC_TAG}"
         SHA512 e8e6e8cd341f105b5622e833831630e5bc63b9d0154796d47e7a742881601843633cd3e27f4b29c71ccc17be04caf546319d94dfc9bf85de102846fa832901b2
-        PATCHES tool-install.patch)
+        PATCHES tool-install.patch libcxx-stringref.patch)
     # These are the submodule revisions recorded by the pinned DXC release.
     vcpkg_from_github(OUT_SOURCE_PATH SPIRV_HEADERS
         REPO KhronosGroup/SPIRV-Headers REF aa6cef192b8e693916eb713e7a9ccadf06062ceb

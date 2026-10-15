@@ -58,6 +58,8 @@ Inputs: PLY, compressed PLY, SPLAT, KSPLAT, SPZ/USPZ, SOG and unpacked SOG metad
 
 All three new tasks produce independent single-block splat resources. Write remains read-only: write low- and high-precision ESZ from the same bundle using two Write tasks in one pipeline, with `highPrecision: false` and `true`. Release the bundle only after its final consumer. Bundle `preserve_order` flags still override Morton sorting. For interaction data, extract the requested level before applying black RGBA and SH0 to the copy.
 
+LOD output metadata includes optional `voxels: string[]` when the same pipeline successfully writes voxels from the same input or its derived models. Each entry points to `voxel-meta.json` relative to that LOD metadata directory. Associations survive simplification, LOD extraction, and resource release; repeated writes compute their own relative paths without changing the in-memory bundle. Voxel tasks may run before or after LOD writes. Unrelated inputs remain separate, duplicate output paths are removed, and the field is omitted when no associated voxel output exists.
+
 ## JavaScript API
 
 ```js

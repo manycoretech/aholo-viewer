@@ -78,7 +78,15 @@ void write_resource(const Resource& resource, const Json& config) {
 }
 } // namespace
 void WriteTask::exec(const Json& config, TaskContext& context) const {
-    write_resource(context.input(config), config);
+    const auto& resource = context.input(config);
+    write_resource(resource, config);
+    if (const auto* files = std::get_if<std::vector<SingleFile>>(&resource)) {
+        for (const auto& file : *files) {
+            if (file.name == "lod-meta.json" && std::holds_alternative<std::string>(file.content)) {
+                context.record_lod_metadata(config, io::utf8_path(config.at("output").get<std::string>()) / io::utf8_path(file.name));
+            }
+        }
+    }
 }
 bool WriteTask::requires_gpu(const Json& config, const TaskContext& context) const {
     const auto& resource = context.input(config);

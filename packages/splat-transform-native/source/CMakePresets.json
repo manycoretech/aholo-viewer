@@ -51,6 +51,7 @@
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-linux",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/../splat-transform-linux-x64-gnu",
+        "CMAKE_MAKE_PROGRAM": "/usr/bin/ninja",
         "CMAKE_C_COMPILER": "/usr/bin/cc",
         "CMAKE_CXX_COMPILER": "/usr/bin/c++",
         "VCPKG_HOST_TRIPLET": "x64-linux"
@@ -68,6 +69,8 @@
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-linux",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/../splat-transform-linux-arm64-gnu",
+        "CMAKE_MAKE_PROGRAM": "/usr/bin/ninja",
+        "CMAKE_ASM_NASM_COMPILER": "/usr/bin/nasm",
         "CMAKE_C_COMPILER": "/usr/bin/cc",
         "CMAKE_CXX_COMPILER": "/usr/bin/c++",
         "VCPKG_HOST_TRIPLET": "arm64-linux"
@@ -85,6 +88,10 @@
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-osx",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/../splat-transform-darwin-arm64",
+        "CMAKE_MAKE_PROGRAM": "/opt/homebrew/bin/ninja",
+        "CMAKE_ASM_NASM_COMPILER": "/opt/homebrew/bin/nasm",
+        "CMAKE_C_COMPILER": "/usr/bin/cc",
+        "CMAKE_CXX_COMPILER": "/usr/bin/c++",
         "CMAKE_OSX_ARCHITECTURES": "arm64",
         "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0",
         "VCPKG_HOST_TRIPLET": "arm64-osx"

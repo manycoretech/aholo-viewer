@@ -51,6 +51,7 @@ interface LodMeta {
     shDegree: number;
     levels: number;
     files: string[];
+    voxels?: string[];
     forwardBox: IBox;
     permanentFiles: number[];
     tree: Array<{
@@ -68,6 +69,7 @@ interface LodMeta {
 - `shDegree`: 球协阶数
 - `forwardBox`: `level 0`所有高斯中约`80%`高斯球体所在的空间的包围盒。
 - `files`: 文件列表
+- `voxels`: 可选的体素描述文件列表，路径相对于当前 `lod-meta.json` 所在目录，例如 `["../voxel/voxel-meta.json"]`。同一 pipeline 对相同输入或其简化、提取后的模型成功生成体素时自动写入；支持多个体素输出，重复路径只保留一份。`Voxel` 可以位于 LOD 的 `Write` 前或后，没有关联体素输出时省略此字段。
 - `permanentFiles`: 需要内存/显存持久化的文件索引
 - `tree`: `lod`的分块树
     - `tree[i].bound`: 分块的包围盒，此包围盒同样采用近似的分布计算，排除离群点

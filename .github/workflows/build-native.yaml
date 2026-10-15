@@ -26,6 +26,7 @@ on:
 name: build native
 
 env:
+  NODE_VERSION: 24
   CMAKE_VERSION: 4.4.2
   NINJA_VERSION: 1.13.2
 
@@ -57,9 +58,11 @@ jobs:
         shell: bash
         run: |
           repo_lc="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
-          cache_hash="$({ printf '%s\n%s\n' "${CMAKE_VERSION}" "${NINJA_VERSION}"; cat .github/build-native-linux.Dockerfile; } | sha256sum | cut -c1-16)"
+          vcpkg_ref="$(jq -r '."default-registry".baseline' packages/splat-transform-native/source/vcpkg-configuration.json)"
+          cache_hash="$({ printf '%s\n%s\n%s\n%s\n' "${CMAKE_VERSION}" "${NINJA_VERSION}" "${NODE_VERSION}" "${vcpkg_ref}"; cat .github/build-native-linux.Dockerfile; } | sha256sum | cut -c1-16)"
           base="ghcr.io/${repo_lc}/aholo-native-linux"
           echo "hash=${cache_hash}" >> "${GITHUB_OUTPUT}"
+          echo "vcpkg-ref=${vcpkg_ref}" >> "${GITHUB_OUTPUT}"
           echo "platform-ref=${base}:${cache_hash}-${{ matrix.arch }}" >> "${GITHUB_OUTPUT}"
 
       - name: Login to GitHub Container Registry
@@ -85,6 +88,8 @@ jobs:
           build-args: |
             CMAKE_VERSION=${{ env.CMAKE_VERSION }}
             NINJA_VERSION=${{ env.NINJA_VERSION }}
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            VCPKG_REF=${{ steps.image.outputs.vcpkg-ref }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/aholo-native-linux:latest
           cache-to: type=inline
           provenance: false
@@ -188,6 +193,12 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu')
         uses: docker/setup-buildx-action@v4
 
+      - name: Read vcpkg baseline
+        if: startsWith(matrix.os, 'ubuntu')
+        id: vcpkg
+        run: |
+          echo "ref=$(jq -r '."default-registry".baseline' packages/splat-transform-native/source/vcpkg-configuration.json)" >> "${GITHUB_OUTPUT}"
+
       - name: Build and load native Linux image
         if: startsWith(matrix.os, 'ubuntu')
         uses: docker/build-push-action@v7
@@ -201,14 +212,16 @@ jobs:
           build-args: |
             CMAKE_VERSION=${{ env.CMAKE_VERSION }}
             NINJA_VERSION=${{ env.NINJA_VERSION }}
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            VCPKG_REF=${{ steps.vcpkg.outputs.ref }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/aholo-native-linux:latest
           provenance: false
 
       - name: Validate Linux build image
         if: startsWith(matrix.os, 'ubuntu')
         run: |
-          docker run --rm aholo-native-linux:22.04 bash -lc \
-            'cmake --version; cc --version; c++ --version; ninja --version; vcpkg version'
+          docker run --rm aholo-native-linux:22.04 bash -ec \
+            'cmake --version; cc --version; c++ --version; ninja --version; node --version; fnm --version; vcpkg version'
 
       - name: Setup env (macOS)
         if: startsWith(matrix.os, 'macos')
@@ -217,6 +230,7 @@ jobs:
           cmake --version
           clang --version
           ninja --version
+          nasm --version
 
       - name: Setup vcpkg (Windows)
         if: startsWith(matrix.os, 'windows')
@@ -225,8 +239,6 @@ jobs:
             $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
           } else {
             $vcpkgRoot = Join-Path $env:RUNNER_TEMP "vcpkg"
-            git clone https://github.com/microsoft/vcpkg $vcpkgRoot
-            & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
           }
           "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
 
@@ -237,8 +249,6 @@ jobs:
             vcpkg_root="${VCPKG_INSTALLATION_ROOT}"
           else
             vcpkg_root="${RUNNER_TEMP}/vcpkg"
-            git clone https://github.com/microsoft/vcpkg "${vcpkg_root}"
-            "${vcpkg_root}/bootstrap-vcpkg.sh" -disableMetrics
           fi
           echo "VCPKG_ROOT=${vcpkg_root}" >> "${GITHUB_ENV}"
 
@@ -249,13 +259,36 @@ jobs:
             -v "${{ github.workspace }}:/work" \
             -w /work/packages/splat-transform-native/source \
             aholo-native-linux:22.04 \
-            cmake --workflow --preset ${{ matrix.preset }}
+            bash -lc 'cmake -P cmake/prepare_vcpkg.cmake && cmake --workflow --preset ${{ matrix.preset }}'
+
+      - name: Prepare vcpkg baseline
+        if: ${{ !startsWith(matrix.os, 'ubuntu') }}
+        run: cmake -P packages/splat-transform-native/source/cmake/prepare_vcpkg.cmake
 
       - name: Build splat-transform native
         if: ${{ !startsWith(matrix.os, 'ubuntu') }}
         run: |
           cd packages/splat-transform-native/source
           cmake --workflow --preset ${{ matrix.preset }}
+
+      - name: Print native build failure logs
+        if: failure()
+        shell: pwsh
+        run: |
+          $manifestLog = 'packages/splat-transform-native/source/build/vcpkg-manifest-install.log'
+          if (Test-Path -LiteralPath $manifestLog) {
+            Get-Content -LiteralPath $manifestLog -Tail 150
+          }
+          if ($env:VCPKG_ROOT) {
+            $dxcLogs = Join-Path $env:VCPKG_ROOT 'buildtrees/dxc'
+            if (Test-Path -LiteralPath $dxcLogs) {
+              Get-ChildItem -LiteralPath $dxcLogs -Filter '*.log' | ForEach-Object {
+                Write-Output "::group::$($_.Name)"
+                Get-Content -LiteralPath $_.FullName -Tail 200
+                Write-Output '::endgroup::'
+              }
+            }
+          }
 
       - name: Validate executable (Windows)
         if: startsWith(matrix.os, 'windows')

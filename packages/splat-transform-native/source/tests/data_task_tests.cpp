@@ -455,6 +455,52 @@ void preserve_order_contract(const std::filesystem::path& directory) {
         equal_data(*source, original);
     }
 }
+void lod_voxel_contracts(const std::filesystem::path& directory) {
+    const auto source_path = directory / "voxel-source.esz";
+    io::write_splat(source_path, *cloud(64, 0));
+    io::write_splat(directory / "other-source.esz", *cloud(32, 0, 10));
+    pipeline::TaskContext context;
+    task("Read", { { "inputs", { io::path_utf8(source_path) } }, { "output", "source" } }, context);
+    task("AutoChunkLod", { { "input", "source" }, { "output", "lod" }, { "type", "esz" }, { "levels", Json::array({ { { "precision", 1 }, { "scaleBoost", 1 } } }) } }, context);
+    const auto first = directory / "first/lod";
+    task("Write", { { "input", "lod" }, { "output", io::path_utf8(first) } }, context);
+    require(!io::read_json(first / "lod-meta.json").contains("voxels"), "LOD without voxel output must omit voxels");
+    task("AutoLod", { { "input", "source" }, { "output", "simple" }, { "ratio", 0.5 } }, context, { "source" });
+    task("Select", { { "input", "simple" }, { "output", "simple" }, { "indices", { 0, 2, 4, 6 } } }, context);
+    // Exercise the successful voxel writer's handoff without requiring a GPU
+    // in the CPU test suite. GPU integration also runs the actual Voxel task.
+    const auto voxel = [&](const char* input, const std::filesystem::path& output) {
+        std::filesystem::create_directories(output);
+        save_json(output / "voxel-meta.json", { { "version", "1.2" } });
+        context.record_voxel({ { "input", input }, { "output", io::path_utf8(output) } });
+    };
+    voxel("simple", directory / "voxels/full");
+    voxel("simple", directory / "voxels/./full");
+    require(io::read_json(first / "lod-meta.json").at("voxels") == Json::array({ "../../voxels/full/voxel-meta.json" }),
+        "Simplified input, late voxel output, or duplicate output association failed");
+    const auto second = directory / "copies/deep/lod";
+    task("Write", { { "input", "lod" }, { "output", io::path_utf8(second) } }, context);
+    require(io::read_json(second / "lod-meta.json").at("voxels") == Json::array({ "../../../voxels/full/voxel-meta.json" }),
+        "Repeated Write reused a relative path from another output directory");
+    const auto& files = std::get<std::vector<pipeline::SingleFile>>(context.input({ { "input", "lod" } }));
+    require(!Json::parse(std::get<std::string>(files[0].content)).contains("voxels"), "Write mutated the in-memory LOD metadata");
+    task("ExtractLodLevel", { { "input", "lod" }, { "output", "level" }, { "level", 0 } }, context, { "lod" });
+    voxel("level", first / "collision");
+    require(io::read_json(first / "lod-meta.json").at("voxels") == Json::array({ "collision/voxel-meta.json", "../../voxels/full/voxel-meta.json" }),
+        "Extracted LOD level lost its source after releasing the bundle");
+    task("Read", { { "inputs", { io::path_utf8(directory / "./voxel-source.esz") } }, { "output", "read-again" } }, context);
+    voxel("read-again", directory / "voxels/read-again");
+    require(io::read_json(first / "lod-meta.json").at("voxels").size() == 3, "Reading the same normalized input lost voxel associations");
+    task("Read", { { "inputs", { io::path_utf8(directory / "other-source.esz") } }, { "output", "simple" } }, context);
+    voxel("simple", directory / "voxels/other");
+    require(io::read_json(first / "lod-meta.json").at("voxels").size() == 3, "Reusing a resource name associated unrelated inputs");
+    voxel("simple", directory / "voxels/full");
+    require(io::read_json(first / "lod-meta.json").at("voxels").size() == 2, "Overwritten voxel output kept its previous source");
+    voxel("simple", first / "collision");
+    voxel("simple", directory / "voxels/read-again");
+    require(!io::read_json(first / "lod-meta.json").contains("voxels") && !io::read_json(second / "lod-meta.json").contains("voxels"),
+        "LOD metadata retained references after all associated outputs were overwritten");
+}
 } // namespace
 
 int main() {
@@ -474,6 +520,7 @@ int main() {
         extract_contracts();
         shared_lod_contracts(directory);
         preserve_order_contract(directory);
+        lod_voxel_contracts(directory);
         std::cout << "Pipeline data tasks preserve attributes, ownership, indices, and LOD intervals\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

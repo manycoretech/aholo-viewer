@@ -7,6 +7,8 @@
 #   docker build \
 #     --build-arg CMAKE_VERSION=4.4.2 \
 #     --build-arg NINJA_VERSION=1.13.2 \
+#     --build-arg NODE_VERSION=24 \
+#     --build-arg VCPKG_REF="$(jq -r '."default-registry".baseline' packages/splat-transform-native/source/vcpkg-configuration.json)" \
 #     -t aholo-native-linux:22.04 \
 #     -f .github/build-native-linux.Dockerfile .github
 
@@ -15,6 +17,7 @@ FROM ubuntu:22.04
 ARG TARGETARCH
 ARG CMAKE_VERSION=4.4.2
 ARG NINJA_VERSION=1.13.2
+ARG NODE_VERSION=24
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -63,9 +66,23 @@ RUN case "${TARGETARCH}" in \
     && chmod +x /usr/bin/ninja \
     && rm /tmp/ninja.zip
 
+# The regression test suite also uses this image and needs Node.js. Resolve
+# NODE_VERSION through fnm; consumers install their pinned pnpm on demand.
+RUN curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
+ENV FNM_DIR=/root/.local/share/fnm \
+    PATH="/root/.local/share/fnm:${PATH}"
+RUN fnm install "${NODE_VERSION}"
+ENV PATH="/root/.local/share/fnm/aliases/default/bin:${PATH}"
+
 # vcpkg tool + toolchain bootstrapped on the pinned 22.04 base, so vcpkg-built
-# dependencies also keep the Ubuntu 22.04 glibc requirement.
-RUN git clone --depth 1 https://github.com/microsoft/vcpkg /opt/vcpkg \
+# dependencies also keep the Ubuntu 22.04 glibc requirement. Fetch the exact
+# manifest baseline, including its port trees, without cloning older history.
+ARG VCPKG_REF
+RUN test -n "${VCPKG_REF}" \
+    && git init /opt/vcpkg \
+    && git -C /opt/vcpkg remote add origin https://github.com/microsoft/vcpkg \
+    && git -C /opt/vcpkg fetch --depth 1 --no-tags origin "${VCPKG_REF}" \
+    && git -C /opt/vcpkg checkout --detach "${VCPKG_REF}" \
     && /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 ENV VCPKG_ROOT=/opt/vcpkg

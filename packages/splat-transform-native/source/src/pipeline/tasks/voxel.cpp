@@ -9,6 +9,7 @@ void VoxelTask::exec(const Json& config, TaskContext& context) const {
     auto& logger = utility::logger();
     logger.info("writing voxel -> dir=\"", output, "\" count=", data.size(), " SH=", data.sh_degree);
     voxel::write(data, io::utf8_path(output), config);
+    context.record_voxel(config);
     logger.info("voxelizing done");
 }
 } // namespace splat_transform::pipeline

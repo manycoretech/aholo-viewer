@@ -51,6 +51,7 @@ interface LodMeta {
     shDegree: number;
     levels: number;
     files: string[];
+    voxels?: string[];
     forwardBox: IBox;
     permanentFiles: number[];
     tree: Array<{
@@ -68,6 +69,7 @@ interface LodMeta {
 - `shDegree`: spherical harmonics degree.
 - `forwardBox`: bounding box of the space containing roughly `80%` of all Gaussian spheres at `level 0`.
 - `files`: file list.
+- `voxels`: optional voxel metadata paths relative to the directory containing this `lod-meta.json`, for example `["../voxel/voxel-meta.json"]`. The pipeline adds successful voxel outputs associated with the same input or a simplified or extracted model derived from it. Multiple outputs are supported and duplicate paths are removed. `Voxel` may run before or after the LOD `Write`; the field is omitted when no associated voxel output exists.
 - `permanentFiles`: file indices that must stay resident in memory or GPU memory.
 - `tree`: chunk tree for `lod`.
     - `tree[i].bound`: chunk bounding box. This box is also computed from an approximate distribution and excludes outliers.
