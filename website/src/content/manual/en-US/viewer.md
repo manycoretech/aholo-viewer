@@ -20,6 +20,14 @@ order: 7
     > The camera provides 3 switchable coordinate systems: OpenCV (-Y up, point-cloud coordinates), OpenGL (+Y up, common model coordinates), and Aholo (+Z up, the default coordinate system for Aholo platform data).
 - The right panel controls `3DGS` features and pipeline configuration. See [`3dgs-preset-config`](./3dgs-preset-config.md).
 
+### Camera Rotation
+
+Enable **Camera rotation** in the left camera panel to show the central sphere control. The red, green, and blue arcs rotate the camera about its own X, Y, and Z axes. Dragging an arc changes orientation while keeping the camera position fixed. The oblique sphere projection stays fixed; dashed lines mark the equator and two meridians 90° apart.
+
+Click an arc or focus it with Tab, then use the arrow keys to rotate by 2°. Hold Shift for 10° steps. Drag outside the arcs to look freely. W/S, A/D, and Q/E move forward/backward, left/right, and up/down in the current camera frame. Right-button or middle-button dragging pans in that frame. The wheel moves along the current view direction.
+
+While camera rotation is enabled, Alt + left-button dragging also rotates in place. When disabled, Alt + left-button dragging orbits the camera position around the world origin. This setting applies only to Viewer; Playground keeps its default camera controls.
+
 ## Local Quick Validation Platform
 
 ### Install Dependencies

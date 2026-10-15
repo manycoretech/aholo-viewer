@@ -24,10 +24,13 @@ const labels =
         camera: '相机',
         coordSystem: '坐标系',
         far: '远裁剪面',
-        useOrbit: '环绕',
+        cameraRotation: '相机旋转',
         copyCamera: '复制状态',
         pasteCamera: '粘贴状态',
         resetCamera: '重置视角',
+        orbitAxisX: '绕相机 X 轴旋转',
+        orbitAxisY: '绕相机 Y 轴旋转',
+        orbitAxisZ: '绕相机 Z 轴旋转',
         settings: '渲染参数',
         preset: '预设',
         presetCustom: '自定义',
@@ -65,10 +68,13 @@ const labels =
         camera: 'Camera',
         coordSystem: 'Coordinate System',
         far: 'Far Plane',
-        useOrbit: 'Orbit',
+        cameraRotation: 'Camera rotation',
         copyCamera: 'Copy State',
         pasteCamera: 'Paste State',
         resetCamera: 'Reset View',
+        orbitAxisX: 'Rotate around camera X',
+        orbitAxisY: 'Rotate around camera Y',
+        orbitAxisZ: 'Rotate around camera Z',
         settings: 'Render Settings',
         preset: 'Preset',
         presetCustom: 'Custom',
@@ -197,8 +203,8 @@ const supportedFormats = '.ply,.spz,.splat,.ksplat,.zip,.sog,.esz,.json';
       <header class="viewer-section-header viewer-camera-header">
         <h2>{labels.camera}</h2>
         <label class="viewer-check-field viewer-camera-toggle">
-          <span class="viewer-check-label">{labels.useOrbit}</span>
-          <input id="viewer-use-orbit" type="checkbox" data-camera-use-orbit />
+          <span class="viewer-check-label">{labels.cameraRotation}</span>
+          <input id="viewer-camera-rotation" type="checkbox" data-camera-rotation />
           <span class="viewer-toggle-switch" aria-hidden="true"></span>
         </label>
       </header>

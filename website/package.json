@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:camera-rotation": "node --test tests/camera-rotation.test.mjs",
     ".dev": "astro dev --host",
     ".build": "astro build",
     ".preview": "astro preview --host 127.0.0.1",
