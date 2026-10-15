@@ -33,7 +33,7 @@ splat-transform pipeline.json
 
 GPU indices now identify Vulkan devices. Run list:gpu again when migrating a saved configuration: indices from the former Dawn backend can include D3D12 adapters and are not interchangeable.
 
-Both the npm CLI and the native executable accept a pipeline file or a single dash for JSON on stdin. Paths inside a pipeline remain relative to the process working directory. Referenced SOG/LCC/LCC2 assets resolve relative to their metadata files.
+Both the npm CLI and the native executable accept a pipeline file or a single dash for JSON on stdin. The npm CLI forwards the file path or stdin directly to the native process, which reads and validates the JSON. Paths inside a pipeline remain relative to the process working directory. Referenced SOG/LCC/LCC2 assets resolve relative to their metadata files.
 
 ```json
 {

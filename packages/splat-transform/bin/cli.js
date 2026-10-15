@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-import fs from 'node:fs';
 import yargs from 'yargs/yargs';
 import { hideBin } from 'yargs/helpers';
 import packageJson from '../package.json' with { type: 'json' };
 import { run, enumerateAdapters, PipelineError } from '../dist/index.js';
+import { execute } from '../dist/process.js';
 
 const ExtraText = `
 Transform Gaussian splats file
@@ -16,14 +16,6 @@ SUPPORTED INPUTS
 SUPPORTED OUTPUTS
     .ply   .spz   .uspz   .splat   .sog   .esz
 `;
-
-function readJsonConfig(config) {
-    if (config === '-') {
-        config = 0;
-    }
-    const content = fs.readFileSync(config, { encoding: 'utf-8' });
-    return JSON.parse(content);
-}
 
 const cli = yargs(hideBin(process.argv))
     .scriptName('splat-transform')
@@ -44,7 +36,8 @@ const cli = yargs(hideBin(process.argv))
             argv.positional('config', { describe: 'pipeline config file', type: 'string' });
         },
         async handler(argv) {
-            await run(readJsonConfig(argv.config || '-'));
+            const config = argv.config || '-';
+            await execute([config], { stdin: config === '-' ? 'inherit' : 'ignore' });
         },
     })
     .command('create <input> <output>', false, {

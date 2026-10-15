@@ -20,8 +20,9 @@ ARG NODE_VERSION=24
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Clang uses GCC 12's standard library; the executable links that runtime
-# statically. glibc and the user-installed Vulkan loader remain external.
+# Clang uses compiler-rt builtins with GCC 12's standard library and unwinder;
+# the executable links those runtimes statically. glibc and the user-installed
+# Vulkan loader remain external.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         autoconf automake build-essential ca-certificates curl g++-12 git gnupg libtool lsb-release \
         nasm perl pkg-config python3 python-is-python3 software-properties-common \
@@ -32,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh \
     && chmod +x /tmp/llvm.sh \
     && /tmp/llvm.sh 21 \
+    && apt-get install -y --no-install-recommends libclang-rt-21-dev \
     && rm /tmp/llvm.sh \
     && update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 20 \
     && update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-21 20 \

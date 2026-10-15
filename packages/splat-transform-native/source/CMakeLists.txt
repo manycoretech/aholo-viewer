@@ -151,6 +151,11 @@ target_link_libraries(splat_transform_core
     PRIVATE nanoflann::nanoflann WebP::webp avif ZLIB::ZLIB zstd::libzstd
         libzip::zip Vulkan::Headers GPUOpen::VulkanMemoryAllocator ${CMAKE_DL_LIBS} CURL::libcurl
 )
+# Clang's AArch64 SME code needs builtins absent from GCC 12's runtime.
+# Keep the GCC unwinder used by libstdc++, including when linked statically.
+target_link_options(splat_transform_core INTERFACE
+    "$<$<AND:$<PLATFORM_ID:Linux>,$<CXX_COMPILER_ID:Clang>>:--rtlib=compiler-rt;--unwindlib=libgcc>"
+)
 set_target_properties(splat_transform_core PROPERTIES
     COMPILE_DEFINITIONS "VK_NO_PROTOTYPES;VMA_STATIC_VULKAN_FUNCTIONS=0;VMA_DYNAMIC_VULKAN_FUNCTIONS=1;$<$<PLATFORM_ID:Windows>:NOMINMAX;WIN32_LEAN_AND_MEAN;UNICODE;_UNICODE>"
     INTERFACE_COMPILE_FEATURES cxx_std_20

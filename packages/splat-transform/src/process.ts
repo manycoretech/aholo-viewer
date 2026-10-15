@@ -46,6 +46,7 @@ export interface RunOptions {
 
 interface ExecuteOptions extends RunOptions {
     input?: string;
+    stdin?: 'ignore' | 'inherit';
     capture?: boolean;
 }
 
@@ -55,7 +56,11 @@ export function execute(args: string[], options: ExecuteOptions = {}): Promise<s
         const child = spawn(executable, args, {
             cwd: options.cwd,
             signal: options.signal,
-            stdio: [options.input === undefined ? 'ignore' : 'pipe', options.capture ? 'pipe' : 'inherit', 'inherit'],
+            stdio: [
+                options.input === undefined ? (options.stdin ?? 'ignore') : 'pipe',
+                options.capture ? 'pipe' : 'inherit',
+                'inherit',
+            ],
             windowsHide: true,
         });
         let stdout = '';

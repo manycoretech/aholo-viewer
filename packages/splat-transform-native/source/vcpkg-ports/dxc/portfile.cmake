@@ -5,6 +5,12 @@ set(DXC_TAG v1.8.2505.1)
 set(DXC_RELEASE 2025_07_14)
 set(TOOL_ROOT "${CURRENT_PACKAGES_DIR}/tools/${PORT}")
 
+if(VCPKG_TARGET_IS_OSX)
+    # tool-install.patch resolves dxcompiler from tools/dxc/lib. The generic
+    # Mach-O fixup replaces that RPATH with the package's top-level lib directory.
+    set(VCPKG_FIXUP_MACHO_RPATH OFF)
+endif()
+
 if(VCPKG_TARGET_IS_WINDOWS)
     vcpkg_download_distfile(ARCHIVE
         URLS "https://github.com/microsoft/DirectXShaderCompiler/releases/download/${DXC_TAG}/dxc_${DXC_RELEASE}.zip"
