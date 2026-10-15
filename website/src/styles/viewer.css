@@ -346,7 +346,9 @@
 .viewer-left-close:focus-visible,
 .viewer-right-close:focus-visible,
 .viewer-left-toggle:focus-visible,
-.viewer-right-toggle:focus-visible {
+.viewer-right-toggle:focus-visible,
+.viewer-pose-copy:focus-visible,
+.viewer-pose-toast-close:focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: 2px;
 }
@@ -758,6 +760,115 @@
     backdrop-filter: blur(14px);
 }
 
+.viewer-pose-copy {
+    position: absolute;
+    top: var(--viewer-panel-gap);
+    left: calc(var(--viewer-panel-gap) + 44px);
+    z-index: 6;
+    display: inline-grid;
+    place-items: center;
+    min-width: 78px;
+    height: 36px;
+    padding: 0 13px;
+    border: 1px solid var(--scene-panel-border);
+    border-radius: var(--radius-sm);
+    background: var(--scene-panel-bg-soft);
+    color: var(--scene-text);
+    box-shadow: var(--shadow-scene);
+    cursor: pointer;
+    backdrop-filter: blur(14px);
+    transition:
+        background 160ms ease,
+        border-color 160ms ease,
+        color 160ms ease,
+        opacity 160ms ease,
+        left 180ms ease;
+}
+
+.viewer-pose-copy:hover {
+    border-color: color-mix(in srgb, var(--primary) 48%, var(--scene-panel-border));
+    background: var(--scene-panel-bg-strong);
+    color: var(--color-white);
+}
+
+.viewer-shell[data-left-collapsed='false'] .viewer-pose-copy,
+:root[data-viewer-left-collapsed='false'] .viewer-shell[data-left-collapsed='auto'] .viewer-pose-copy {
+    left: calc(var(--viewer-left-width) + (var(--viewer-panel-gap) * 2));
+}
+
+:root[data-workspace-fullscreen='true']
+    .viewer-shell:is([data-left-collapsed='auto'], [data-left-collapsed='false'])
+    .viewer-pose-copy {
+    left: calc(var(--viewer-panel-gap) + 44px);
+}
+
+.viewer-pose-toast {
+    position: absolute;
+    top: 52px;
+    left: 50%;
+    z-index: 8;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    min-height: 38px;
+    max-width: min(480px, calc(100% - 32px));
+    padding: 7px 8px 7px 13px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-scene);
+    color: var(--color-white);
+    font-size: 0.82rem;
+    font-weight: 760;
+    line-height: 1.3;
+    transform: translateX(-50%);
+    backdrop-filter: blur(12px);
+}
+
+.viewer-pose-toast[data-visible='true'] {
+    display: flex;
+    animation: viewer-pose-toast-fade var(--viewer-pose-toast-duration) linear forwards;
+}
+
+.viewer-pose-toast[data-state='success'] {
+    border-color: color-mix(in srgb, #22c55e 72%, white);
+    background: color-mix(in srgb, #15803d 90%, transparent);
+}
+
+.viewer-pose-toast[data-state='error'] {
+    border-color: color-mix(in srgb, #ef4444 78%, white);
+    background: color-mix(in srgb, #b91c1c 92%, transparent);
+}
+
+.viewer-pose-toast-close {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.viewer-pose-toast-close:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+@keyframes viewer-pose-toast-fade {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
+}
+
 .viewer-config-panel {
     --tool-panel-label-width: 90px;
     border: 0;
@@ -899,6 +1010,10 @@
     .viewer-status {
         top: 48px;
     }
+
+    .viewer-pose-toast {
+        top: 48px;
+    }
 }
 
 @media (max-width: 720px) {
@@ -960,5 +1075,20 @@
     .viewer-shell:is([data-left-collapsed='auto'], [data-left-collapsed='true']) .viewer-status {
         left: var(--viewer-panel-gap);
         transform: none;
+    }
+
+    .viewer-pose-toast {
+        right: var(--viewer-panel-gap);
+        left: var(--viewer-panel-gap);
+        max-width: none;
+        transform: none;
+    }
+
+    .viewer-shell[data-left-collapsed='false'] .viewer-pose-copy,
+    :root[data-viewer-left-collapsed='false'] .viewer-shell[data-left-collapsed='auto'] .viewer-pose-copy {
+        left: var(--viewer-panel-gap);
+        opacity: 0;
+        pointer-events: none;
+        visibility: hidden;
     }
 }
