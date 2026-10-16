@@ -17,8 +17,30 @@ order: 7
 - The left panel imports supported data formats and configures the camera.
     > It supports local files, URLs, and clipboard data (URLs). Local data only supports a complete single asset and does not support `chunk-lod` data.
     >
-    > The camera provides 3 switchable coordinate systems: OpenCV (-Y up, point-cloud coordinates), OpenGL (+Y up, common model coordinates), and Aholo (+Z up, the default coordinate system for Aholo platform data).
+    > The camera provides 3 world-up presets: OpenCV (-Y up), OpenGL (+Y up), and Aholo (+Z up). Switching presets resets the camera view; it does not transform imported model coordinates.
 - The right panel controls `3DGS` features and pipeline configuration. See [`3dgs-preset-config`](./3dgs-preset-config.md).
+
+### Copy Camera Pose
+
+After loading a file, click **Copy pose** at the top left of the canvas to copy the current camera-to-world pose as JSON. A green notification confirms success; a red notification indicates that no file is loaded. The notification fades over 3 seconds and can be dismissed with its close button. Repeated clicks refresh the same notification. If the browser denies clipboard access, the viewer displays an error.
+
+```json
+{
+    "type": "camera-pose",
+    "convention": "camera-to-world",
+    "coordinateSystem": "opencv",
+    "worldUpPreset": "opencv",
+    "cameraAxes": { "right": "+X", "up": "+Y", "forward": "-Z" },
+    "position": { "x": 0, "y": 0, "z": 0 },
+    "quaternion": { "x": 0, "y": 0, "z": 0, "w": 1 }
+}
+```
+
+`position` and `quaternion` copy the current rendering camera's values unchanged. The quaternion uses `x, y, z, w` order and rotates camera-local coordinates into the scene's world coordinates. The camera-local axes are always right `+X`, up `+Y`, and forward `-Z`.
+
+`worldUpPreset` records the selected `opencv`, `opengl`, or `aholo` world-up preset. `coordinateSystem` remains as a legacy alias with the same value; it does not specify camera axes. Selecting `opencv` does not export the native OpenCV camera basis (right `+X`, down `+Y`, forward `+Z`). Export does not transform camera or model coordinates and does not include camera intrinsics.
+
+The sidebar's **Copy State** and **Paste State** actions still use the complete browsing state, including Euler angles, up direction, field of view, and clipping planes. They do not use this pose format.
 
 ## Local Quick Validation Platform
 
