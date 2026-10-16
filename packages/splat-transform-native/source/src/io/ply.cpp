@@ -1,9 +1,13 @@
+#include "stream_reader.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <io/file.h>
 #include <io/ply.h>
+#include <limits>
 #include <map>
 #include <sstream>
+#include <utility/thread_pool.h>
 
 namespace splat_transform::io {
 namespace {
@@ -16,59 +20,138 @@ struct Element {
     size_t count;
     std::vector<Property> properties;
 };
-template<typename T>
-T read_scalar(ByteReader& reader, const std::string& type, bool little) {
+constexpr size_t PLY_BUFFER_SIZE = 64 * 1024 * 1024;
+struct Header {
+    bool little = true;
+    bool compressed = false;
+    std::vector<Element> elements;
+};
+template<typename T, typename Reader>
+T read_scalar(Reader& reader, const std::string& type, bool little) {
     if (type == "float") {
-        return static_cast<T>(reader.read<float>(little));
+        return static_cast<T>(reader.template read<float>(little));
     }
     if (type == "double") {
-        return static_cast<T>(reader.read<double>(little));
+        return static_cast<T>(reader.template read<double>(little));
     }
     if (type == "uchar") {
-        return static_cast<T>(reader.read<uint8_t>());
+        return static_cast<T>(reader.template read<uint8_t>());
     }
     if (type == "char") {
-        return static_cast<T>(reader.read<int8_t>());
+        return static_cast<T>(reader.template read<int8_t>());
     }
     if (type == "ushort") {
-        return static_cast<T>(reader.read<uint16_t>(little));
+        return static_cast<T>(reader.template read<uint16_t>(little));
     }
     if (type == "short") {
-        return static_cast<T>(reader.read<int16_t>(little));
+        return static_cast<T>(reader.template read<int16_t>(little));
     }
     if (type == "uint") {
-        return static_cast<T>(reader.read<uint32_t>(little));
+        return static_cast<T>(reader.template read<uint32_t>(little));
     }
     if (type == "int") {
-        return static_cast<T>(reader.read<int32_t>(little));
+        return static_cast<T>(reader.template read<int32_t>(little));
     }
     throw std::runtime_error("Unsupported PLY property type: " + type);
 }
 const std::array<std::string, 14> FIELDS {
     "x", "y", "z", "scale_0", "scale_1", "scale_2", "rot_1", "rot_2", "rot_3", "rot_0", "f_dc_0", "f_dc_1", "f_dc_2", "opacity"
 };
-} // namespace
-splat::Splat PlyFile::read(const FileInput& source) const {
-    const auto bytes = source.bytes;
-    std::string_view text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-    auto header_end = text.find("end_header\n");
-    size_t terminator = 11;
-    if (header_end == std::string_view::npos) {
-        header_end = text.find("end_header\r\n");
-        terminator = 12;
+// Resolve the common native-endian float layout once, then decode directly
+// into canonical Gaussians without per-value type/name/attribute dispatch.
+template<typename Reader>
+void read_float_vertices(const Element& element, std::span<const int> bindings, Reader& reader, splat::Splat& result, size_t batch_bytes) {
+    const size_t stride = element.properties.size() * sizeof(float);
+    if (element.count > result.size() || !stride || element.count > reader.remaining() / stride) {
+        throw std::runtime_error("Truncated PLY vertex data or element count mismatch");
     }
-    if (header_end == std::string_view::npos) {
-        throw std::runtime_error("Missing PLY header terminator");
+    constexpr size_t MISSING = std::numeric_limits<size_t>::max();
+    std::array<size_t, splat::ShOffset + splat::SH_COUNTS.back()> offsets;
+    offsets.fill(MISSING);
+    for (size_t p = 0; p < bindings.size(); ++p) {
+        if (bindings[p] >= 0 && size_t(bindings[p]) < result.attribute_count()) {
+            offsets[size_t(bindings[p])] = p * sizeof(float);
+        }
     }
-    std::istringstream header(std::string(text.substr(0, header_end)));
+    const auto decode = [&](std::span<const uint8_t> bytes, size_t first, size_t begin, size_t end) {
+        for (size_t i = begin; i < end; ++i) {
+            auto& gaussian = result.gaussians[first + i];
+            const auto* row = bytes.data() + i * stride;
+            const auto value = [&](size_t column) {
+                float scalar;
+                std::memcpy(&scalar, row + offsets[column], sizeof(scalar));
+                return scalar;
+            };
+            auto* sh = gaussian.sh.data();
+            for (size_t axis = 0; axis < 3; ++axis) {
+                gaussian.mean[axis] = value(splat::X + axis);
+                gaussian.scale[axis] = std::exp(value(splat::ScaleX + axis));
+                sh[axis] = value(splat::Red + axis) * splat::SH_C0 + 0.5f;
+            }
+            for (size_t axis = 0; axis < 4; ++axis) {
+                gaussian.rotation.coeffs()[axis] = value(splat::QuatX + axis);
+            }
+            gaussian.opacity = 1 / (1 + std::exp(-value(splat::Alpha)));
+            for (size_t c = splat::ShOffset; c < result.attribute_count(); ++c) {
+                if (offsets[c] != MISSING) {
+                    sh[c - splat::ShOffset + 3] = value(c);
+                }
+            }
+            gaussian.normalize_rotation();
+        }
+    };
+    constexpr size_t MIN_PARALLEL_VERTICES = 65536;
+    const size_t batch_rows = std::max(size_t(1), batch_bytes / stride);
+    for (size_t first = 0; first < element.count;) {
+        const size_t count = std::min(batch_rows, element.count - first);
+        const auto bytes = reader.take(count * stride);
+        if (count < MIN_PARALLEL_VERTICES) {
+            decode(bytes, first, 0, count);
+        } else {
+            auto& pool = threading::default_pool();
+            const size_t chunk = std::max(size_t(8192), (count + pool.thread_count() - 1) / pool.thread_count());
+            threading::TaskGroup<void> pending(pool, pool.thread_count());
+            for (size_t begin = 0; begin < count; begin += chunk) {
+                pending.submit(decode, bytes, first, begin, std::min(count, begin + chunk));
+            }
+            for (size_t i = 0; i < pending.size(); ++i) {
+                pending.get(i);
+            }
+        }
+        first += count;
+    }
+}
+bool next_line(std::istream& stream, std::string& line) {
+    return bool(std::getline(stream, line)) && !stream.eof();
+}
+bool next_line(StreamReader& stream, std::string& line) {
+    line.clear();
+    for (;;) {
+        const auto bytes = stream.read_some(1);
+        if (bytes.empty()) {
+            return false;
+        }
+        if (bytes[0] == '\n') {
+            return true;
+        }
+        line.push_back(static_cast<char>(bytes[0]));
+    }
+}
+template<typename Reader>
+Header read_header(Reader& header) {
     std::string line;
-    std::getline(header, line);
+    next_line(header, line);
     if (line != "ply" && line != "ply\r") {
         throw std::runtime_error("Invalid PLY magic");
     }
-    bool little = true, compressed = false;
-    std::vector<Element> elements;
-    while (std::getline(header, line)) {
+    Header result;
+    auto& [little, compressed, elements] = result;
+    bool terminated = false;
+    while (next_line(header, line)) {
+        if (line == "end_header" || line == "end_header\r") {
+            terminated = true;
+            break;
+        }
         std::istringstream fields(line);
         std::string keyword;
         fields >> keyword;
@@ -93,6 +176,14 @@ splat::Splat PlyFile::read(const FileInput& source) const {
             elements.back().properties.push_back(std::move(property));
         }
     }
+    if (!terminated) {
+        throw std::runtime_error("Missing PLY header terminator");
+    }
+    return result;
+}
+template<typename Reader>
+splat::Splat read_ply(const Header& header, Reader& reader, unsigned max_sh_degree, size_t batch_bytes) {
+    const auto& [little, compressed, elements] = header;
     size_t count = 0, sh_count = 0;
     for (const auto& element : elements) {
         if (element.name == "vertex") {
@@ -110,8 +201,7 @@ splat::Splat PlyFile::read(const FileInput& source) const {
     if (degree_it == splat::SH_COUNTS.end()) {
         throw std::runtime_error("Unsupported PLY ShCoefficients coefficient count");
     }
-    splat::Splat result(count, source.retained_degree(static_cast<unsigned>(degree_it - splat::SH_COUNTS.begin())));
-    ByteReader reader(bytes.subspan(header_end + terminator));
+    splat::Splat result(count, std::min(max_sh_degree, static_cast<unsigned>(degree_it - splat::SH_COUNTS.begin())));
     std::vector<std::map<std::string, float>> chunks;
     for (const auto& element : elements) {
         std::vector<int> bindings;
@@ -129,6 +219,11 @@ splat::Splat PlyFile::read(const FileInput& source) const {
                 if (std::find(bindings.begin(), bindings.end(), c) == bindings.end()) {
                     throw std::runtime_error("Missing PLY property: " + FIELDS[c]);
                 }
+            }
+            if (little == (std::endian::native == std::endian::little) &&
+                std::ranges::all_of(element.properties, [](const auto& property) { return property.type == "float"; })) {
+                read_float_vertices(element, bindings, reader, result, batch_bytes);
+                continue;
             }
         }
         for (size_t i = 0; i < element.count; ++i) {
@@ -209,6 +304,29 @@ splat::Splat PlyFile::read(const FileInput& source) const {
         }
     }
     return result;
+}
+} // namespace
+splat::Splat PlyFile::read(const FileInput& source) const {
+    const auto bytes = source.bytes;
+    std::string_view text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    auto header_end = text.find("end_header\n");
+    size_t terminator = 11;
+    if (header_end == std::string_view::npos) {
+        header_end = text.find("end_header\r\n");
+        terminator = 12;
+    }
+    if (header_end == std::string_view::npos) {
+        throw std::runtime_error("Missing PLY header terminator");
+    }
+    std::istringstream stream(std::string(text.substr(0, header_end + terminator)));
+    const auto header = read_header(stream);
+    ByteReader reader(bytes.subspan(header_end + terminator));
+    return read_ply(header, reader, source.max_sh_degree, std::numeric_limits<size_t>::max());
+}
+splat::Splat PlyFile::read(const std::filesystem::path& path, unsigned max_sh_degree) const {
+    StreamReader reader(path, PLY_BUFFER_SIZE);
+    const auto header = read_header(reader);
+    return read_ply(header, reader, max_sh_degree, PLY_BUFFER_SIZE);
 }
 Bytes PlyFile::write(const splat::Splat& data, std::span<const uint32_t> indices) const {
     std::ostringstream header;

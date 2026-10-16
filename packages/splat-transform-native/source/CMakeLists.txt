@@ -13,8 +13,10 @@ include(CTest)
 include(GNUInstallDirs)
 option(SPLAT_TRANSFORM_STATIC_RUNTIME "Link the Linux C++ runtime statically" ON)
 option(SPLAT_TRANSFORM_TEST_GPU "Run tests requiring a user-installed Vulkan runtime" OFF)
+option(SPLAT_TRANSFORM_TEST_NATIVE_FILE_IO "Require Asio's native file backend in runtime tests" OFF)
 
 find_package(Threads REQUIRED)
+find_package(Boost CONFIG REQUIRED COMPONENTS asio)
 find_package(Eigen3 CONFIG REQUIRED)
 find_package(nanoflann CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
@@ -39,6 +41,8 @@ set(SPLAT_TRANSFORM_SOURCE_FILES
     src/codec/compression.cpp
     src/codec/image.cpp
     src/io/file.cpp
+    src/io/file_stream.cpp
+    src/io/stream_reader.cpp
     src/io/resource.cpp
     src/io/ply.cpp
     src/io/spz.cpp
@@ -117,8 +121,11 @@ set(SPLAT_TRANSFORM_HEADER_FILES
     include/voxel/voxel.h
 )
 set(SPLAT_TRANSFORM_PRIVATE_HEADER_FILES
+    src/codec/compression_stream.h
     src/gpu/cluster_schedule.h
     src/io/zip_archive.h
+    src/io/file_stream.h
+    src/io/stream_reader.h
     src/pipeline/data_support.h
     src/pipeline/lod_support.h
     src/voxel/grid.h
@@ -149,8 +156,14 @@ set_source_files_properties(src/utility/logger.cpp PROPERTIES
 target_link_libraries(splat_transform_core
     PUBLIC Eigen3::Eigen nlohmann_json::nlohmann_json Threads::Threads
     PRIVATE nanoflann::nanoflann WebP::webp avif ZLIB::ZLIB zstd::libzstd
-        libzip::zip Vulkan::Headers GPUOpen::VulkanMemoryAllocator ${CMAKE_DL_LIBS} CURL::libcurl
+        libzip::zip Vulkan::Headers GPUOpen::VulkanMemoryAllocator ${CMAKE_DL_LIBS} CURL::libcurl Boost::asio
 )
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_path(URING_INCLUDE_DIR liburing.h REQUIRED)
+    find_library(URING_LIBRARY uring REQUIRED)
+    target_include_directories(splat_transform_core PRIVATE "${URING_INCLUDE_DIR}")
+    target_link_libraries(splat_transform_core PRIVATE "${URING_LIBRARY}")
+endif()
 # Clang's AArch64 SME code needs builtins absent from GCC 12's runtime.
 # Keep the GCC unwinder used by libstdc++, including when linked statically.
 target_link_options(splat_transform_core INTERFACE
@@ -161,6 +174,7 @@ set_target_properties(splat_transform_core PROPERTIES
     INTERFACE_COMPILE_FEATURES cxx_std_20
     INTERFACE_COMPILE_DEFINITIONS "$<$<PLATFORM_ID:Windows>:NOMINMAX;WIN32_LEAN_AND_MEAN;UNICODE;_UNICODE>"
 )
+target_compile_definitions(splat_transform_core PRIVATE "$<$<PLATFORM_ID:Linux>:BOOST_ASIO_HAS_IO_URING>")
 
 add_executable(splat-transform)
 target_sources(splat-transform PRIVATE
@@ -189,6 +203,14 @@ if(CLANG_FORMAT)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(splat_transform_streaming_tests)
+    target_sources(splat_transform_streaming_tests PRIVATE tests/streaming_tests.cpp)
+    target_include_directories(splat_transform_streaming_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(splat_transform_streaming_tests PRIVATE splat_transform_core)
+    add_test(NAME streaming_contracts COMMAND splat_transform_streaming_tests)
+    if(SPLAT_TRANSFORM_TEST_NATIVE_FILE_IO)
+        add_test(NAME native_file_io COMMAND splat_transform_streaming_tests --require-native-file-io)
+    endif()
     add_executable(splat_transform_logging_tests)
     target_sources(splat_transform_logging_tests PRIVATE tests/logging_tests.cpp)
     target_link_libraries(splat_transform_logging_tests PRIVATE splat_transform_core)
@@ -237,6 +259,7 @@ if(BUILD_TESTING)
         add_test(NAME linux_abi COMMAND "${CMAKE_COMMAND}" "-DEXECUTABLE=$<TARGET_FILE:splat-transform>" -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_linux_abi.cmake")
     endif()
     list(APPEND SPLAT_TRANSFORM_TARGETS
+        splat_transform_streaming_tests
         splat_transform_logging_tests
         splat_transform_abstraction_tests splat_transform_tests splat_transform_pipeline_tests
         splat_transform_data_task_tests

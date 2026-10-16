@@ -92,7 +92,9 @@ public:
     virtual ~IFile() = default;
     virtual std::string_view name() const noexcept = 0;
     virtual splat::Splat read(const FileInput& input) const = 0;
+    virtual splat::Splat read(const std::filesystem::path& path, unsigned max_sh_degree) const;
     virtual Bytes write(const splat::Splat& splat, std::span<const uint32_t> indices) const;
+    virtual void write(const std::filesystem::path& path, const splat::Splat& splat, std::span<const uint32_t> indices) const;
     virtual bool requires_gpu() const noexcept { return false; }
     virtual bool preserve_bundle_order() const noexcept { return false; }
 };

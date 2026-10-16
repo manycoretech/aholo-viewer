@@ -113,25 +113,30 @@ Grid voxelize(const PreparedData& data, const splat::Bounds& bounds, float resol
     }
     Grid output(dimensions);
     const auto batches = build_batches(data, output, bounds, resolution);
-    for (size_t begin = 0; begin < batches.size(); begin += 256) {
-        const size_t end = std::min(begin + 256, batches.size());
-        std::vector<gpu::VoxelBatch> specs;
-        std::vector<uint32_t> indices;
-        for (size_t j = begin; j < end; ++j) {
-            const auto& b = batches[j];
-            specs.push_back({ uint32_t(indices.size()), uint32_t(b.candidates.size()), uint32_t(b.dimensions[0]), uint32_t(b.dimensions[1]), uint32_t(b.dimensions[2]),
-                float(bounds.min[0] + b.origin[0] * 4 * resolution), float(bounds.min[1] + b.origin[1] * 4 * resolution), float(bounds.min[2] + b.origin[2] * 4 * resolution) });
-            indices.insert(indices.end(), b.candidates.begin(), b.candidates.end());
-        }
-        const auto masks = gpu::voxelize(data.gaussians, indices, specs, resolution, cutoff, 64);
-        for (size_t j = begin; j < end; ++j) {
-            const auto& b = batches[j];
-            for (int z = 0; z < b.dimensions[2]; ++z) {
-                for (int y = 0; y < b.dimensions[1]; ++y) {
-                    for (int x = 0; x < b.dimensions[0]; ++x) {
-                        const size_t local = (j - begin) * 128 + 2 * (x + y * b.dimensions[0] + z * b.dimensions[0] * b.dimensions[1]);
-                        output.set_mask(output.block_index({ b.origin[0] + x, b.origin[1] + y, b.origin[2] + z }), uint64_t(masks[local]) | (uint64_t(masks[local + 1]) << 32));
-                    }
+    std::vector<gpu::VoxelBatch> specs;
+    std::vector<uint32_t> indices;
+    specs.reserve(batches.size());
+    size_t candidate_count = 0;
+    for (const auto& b : batches) {
+        candidate_count += b.candidates.size();
+    }
+    indices.reserve(candidate_count);
+    for (const auto& b : batches) {
+        specs.push_back({ uint32_t(indices.size()), uint32_t(b.candidates.size()), uint32_t(b.dimensions[0]), uint32_t(b.dimensions[1]), uint32_t(b.dimensions[2]),
+            float(bounds.min[0] + b.origin[0] * 4 * resolution), float(bounds.min[1] + b.origin[1] * 4 * resolution), float(bounds.min[2] + b.origin[2] * 4 * resolution) });
+        indices.insert(indices.end(), b.candidates.begin(), b.candidates.end());
+    }
+    // The GPU layer splits for device storage/dispatch limits and retains the
+    // full Gaussian input across splits. Fixed 256-batch calls re-uploaded the
+    // entire scene on every call, even though only the batch descriptors changed.
+    const auto masks = gpu::voxelize(data.gaussians, indices, specs, resolution, cutoff, 64);
+    for (size_t j = 0; j < batches.size(); ++j) {
+        const auto& b = batches[j];
+        for (int z = 0; z < b.dimensions[2]; ++z) {
+            for (int y = 0; y < b.dimensions[1]; ++y) {
+                for (int x = 0; x < b.dimensions[0]; ++x) {
+                    const size_t local = j * 128 + 2 * (x + y * b.dimensions[0] + z * b.dimensions[0] * b.dimensions[1]);
+                    output.set_mask(output.block_index({ b.origin[0] + x, b.origin[1] + y, b.origin[2] + z }), uint64_t(masks[local]) | (uint64_t(masks[local + 1]) << 32));
                 }
             }
         }

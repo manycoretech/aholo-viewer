@@ -5,6 +5,7 @@
 #include <io/file.h>
 #include <iostream>
 #include <pipeline/runner.h>
+#include <random>
 #include <voxel/voxel.h>
 
 using namespace splat_transform;
@@ -18,6 +19,51 @@ void save_json(const std::filesystem::path& path, const io::Json& json) {
     const auto text = json.dump();
     io::write_bytes(path, std::span(reinterpret_cast<const uint8_t*>(text.data()), text.size()));
 }
+void filter_neighborhoods() {
+    std::mt19937_64 random(0x8193);
+    for (const voxel::Point dimensions : { voxel::Point { 4, 4, 4 }, voxel::Point { 8, 12, 16 }, voxel::Point { 12, 8, 4 } }) {
+        for (bool inverted : { false, true }) {
+            voxel::Grid grid(dimensions);
+            for (uint32_t index = 0; index < grid.block_count(); ++index) {
+                grid.set_mask(index, index % 7 == 0 ? 0 : index % 7 == 1 ? voxel::FULL_BLOCK
+                                                                         : random());
+            }
+            if (inverted) {
+                grid = grid.inverted();
+            }
+            const auto filtered = voxel::filter_blocks(grid);
+            for (int z = 0; z < dimensions[2]; ++z) {
+                for (int y = 0; y < dimensions[1]; ++y) {
+                    for (int x = 0; x < dimensions[0]; ++x) {
+                        const voxel::Point p { x, y, z };
+                        const auto bits = grid.mask(grid.block_index({ x / 4, y / 4, z / 4 }));
+                        int neighbors = 0;
+                        for (int axis = 0; axis < 3; ++axis) {
+                            auto neighbor = p;
+                            --neighbor[axis];
+                            neighbors += grid.get(neighbor);
+                            neighbor[axis] += 2;
+                            neighbors += grid.get(neighbor);
+                        }
+                        const bool expected = bits == voxel::FULL_BLOCK || (bits != 0 && (grid.get(p) ? neighbors != 0 : neighbors == 6));
+                        require(filtered.get(p) == expected, "Blockwise filtering changed a scalar six-neighbor decision");
+                    }
+                }
+            }
+        }
+    }
+    voxel::Grid shell({ 12, 12, 12 });
+    const voxel::Point center { 4, 4, 4 };
+    for (int axis = 0; axis < 3; ++axis) {
+        auto p = center;
+        --p[axis];
+        shell.set(p);
+        p[axis] += 2;
+        shell.set(p);
+    }
+    const auto filtered = voxel::filter_blocks(shell);
+    require(filtered.get(center) && filtered.voxel_count() == 1, "Cross-face hole filling must use the original neighbors");
+}
 } // namespace
 int main() {
     const auto directory = std::filesystem::temp_directory_path() / ("splat-transform-tests-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
@@ -30,6 +76,7 @@ int main() {
         }
     } cleanup { directory };
     try {
+        filter_neighborhoods();
         splat::Splat points(16, 3);
         for (size_t i = 0; i < points.size(); ++i) {
             for (size_t a = 0; a < 3; ++a) {

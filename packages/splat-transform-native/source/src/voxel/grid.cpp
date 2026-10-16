@@ -271,6 +271,8 @@ Grid dilate(const Grid& grid, Point radius) {
     return output;
 }
 Grid filter_blocks(const Grid& grid) {
+    constexpr std::array<uint64_t, 3> LOW_FACE { face_mask(0, 0), face_mask(1, 0), face_mask(2, 0) };
+    constexpr std::array<uint64_t, 3> HIGH_FACE { face_mask(0, 3), face_mask(1, 3), face_mask(2, 3) };
     Grid output = grid;
     uint64_t removed = 0, filled = 0;
     for (auto index : grid.active_blocks()) {
@@ -279,21 +281,27 @@ Grid filter_blocks(const Grid& grid) {
             continue;
         }
         const auto block = grid.block_point(index);
-        uint64_t filtered = 0;
-        for (int b = 0; b < 64; ++b) {
-            Point p { block[0] * 4 + b % 4, block[1] * 4 + b / 4 % 4, block[2] * 4 + b / 16 };
-            int neighbors = 0;
-            for (int axis = 0; axis < 3; ++axis) {
-                --p[axis];
-                neighbors += grid.get(p);
-                p[axis] += 2;
-                neighbors += grid.get(p);
-                --p[axis];
+        uint64_t any_neighbor = 0, all_neighbors = FULL_BLOCK;
+        for (int axis = 0; axis < 3; ++axis) {
+            const int stride = BIT_STRIDES[axis];
+            // Shift all 64 cells at once, masking intra-block wraparound and
+            // adding only the facing cells from the two neighboring blocks.
+            uint64_t plus = (bits >> stride) & ~HIGH_FACE[axis];
+            uint64_t minus = (bits << stride) & ~LOW_FACE[axis];
+            auto adjacent = block;
+            if (block[axis] + 1 < grid.blocks[axis]) {
+                ++adjacent[axis];
+                plus |= (grid.mask(grid.block_index(adjacent)) & LOW_FACE[axis]) << (3 * stride);
             }
-            if (((bits >> b) & 1) ? neighbors != 0 : neighbors == 6) {
-                filtered |= uint64_t { 1 } << b;
+            if (block[axis] > 0) {
+                adjacent = block;
+                --adjacent[axis];
+                minus |= (grid.mask(grid.block_index(adjacent)) & HIGH_FACE[axis]) >> (3 * stride);
             }
+            any_neighbor |= plus | minus;
+            all_neighbors &= plus & minus;
         }
+        const uint64_t filtered = (bits & any_neighbor) | all_neighbors;
         output.set_mask(index, filtered);
         removed += std::popcount(bits & ~filtered);
         filled += std::popcount(filtered & ~bits);

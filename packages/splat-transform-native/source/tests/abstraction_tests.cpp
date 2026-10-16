@@ -1,3 +1,7 @@
+#include <algorithm>
+#include <bit>
+#include <chrono>
+#include <cmath>
 #include <io/ksplat.h>
 #include <io/ply.h>
 #include <iostream>
@@ -181,6 +185,94 @@ void packed_ply_fields() {
     require(point.mean.z() == float(0xa5a5a5a5u & 2047) / 2047, "Packed PLY position lost integer bits");
     require(point.opacity == 239.0f / 255 && point.sh[0] == 137.0f / 255 && point.sh[2] == 205.0f / 255, "Packed PLY color lost integer bits");
 }
+void float_ply_layouts() {
+    const auto path = std::filesystem::temp_directory_path() / ("splat-ply-layouts-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".PLY");
+    struct Cleanup {
+        std::filesystem::path path;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove(path, error);
+        }
+    } cleanup { path };
+    const std::array<std::string, 14> fields {
+        "x", "y", "z", "scale_0", "scale_1", "scale_2", "rot_1", "rot_2", "rot_3", "rot_0", "f_dc_0", "f_dc_1", "f_dc_2", "opacity"
+    };
+    const auto make_file = [&](size_t count, unsigned degree, bool native_endian, bool mixed) {
+        const bool little = native_endian == (std::endian::native == std::endian::little);
+        std::string header = "ply\nformat binary_" + std::string(little ? "little" : "big") + "_endian 1.0\nelement vertex " + std::to_string(count) + '\n';
+        // Deliberately reorder the fields and keep an unused property in every
+        // record. The big-endian/mixed files exercise the generic decoder.
+        std::vector<std::string> names(fields.rbegin(), fields.rend());
+        for (size_t i = 0; i < splat::SH_COUNTS[degree]; ++i) {
+            names.push_back("f_rest_" + std::to_string(i));
+        }
+        for (const auto& name : names) {
+            header += "property " + std::string(mixed && name == "x" ? "double " : "float ") + name + '\n';
+        }
+        header += "property " + std::string(mixed ? "uchar" : "float") + " ignored\nend_header\n";
+        io::Bytes bytes(header.begin(), header.end());
+        const auto append_value = [&]<typename T>(T value) {
+            auto data = std::bit_cast<std::array<uint8_t, sizeof(T)>>(value);
+            if (little != (std::endian::native == std::endian::little)) {
+                std::ranges::reverse(data);
+            }
+            bytes.insert(bytes.end(), data.begin(), data.end());
+        };
+        for (size_t row = 0; row < count; ++row) {
+            for (size_t c = 0; c < names.size(); ++c) {
+                const float value = float(int((row * 7 + c * 11) % 97) - 48) / 32;
+                if (mixed && names[c] == "x") {
+                    append_value(double(value));
+                } else {
+                    append_value(value);
+                }
+            }
+            if (mixed) {
+                append_value(uint8_t(17));
+            } else {
+                append_value(17.0f);
+            }
+        }
+        return bytes;
+    };
+    for (unsigned degree : { 0u, 1u, 2u, 3u }) {
+        const size_t count = degree == 3 ? 65537 : 13;
+        const auto fast_bytes = make_file(count, degree, true, false);
+        const auto opposite = make_file(count, degree, false, false);
+        const auto mixed = make_file(count, degree, true, true);
+        for (unsigned retained : { 0u, degree }) {
+            const auto fast = io::PlyFile().read({ {}, fast_bytes, retained });
+            for (const auto* generic_bytes : { &fast_bytes, &opposite, &mixed }) {
+                const auto generic = io::PlyFile().read({ {}, *generic_bytes, retained });
+                io::write_bytes(path, *generic_bytes);
+                const auto streamed = io::read_splat(path, retained);
+                require(fast.size() == generic.size() && fast.sh_degree == generic.sh_degree, "Fast PLY layout changed shape");
+                require(streamed.size() == fast.size() && streamed.sh_degree == fast.sh_degree, "Streamed PLY layout changed shape");
+                for (size_t row = 0; row < count; ++row) {
+                    for (size_t c = 0; c < fast.attribute_count(); ++c) {
+                        require(fast.gaussians[row].attribute(c) == generic.gaussians[row].attribute(c), "Fast PLY decode differs from generic numeric conversion");
+                        require(streamed.gaussians[row].attribute(c) == generic.gaussians[row].attribute(c), "Streamed PLY decode differs from memory input");
+                    }
+                }
+            }
+        }
+        bool rejected = false;
+        try {
+            io::PlyFile().read({ {}, std::span(fast_bytes).first(fast_bytes.size() - 1), degree });
+        } catch (const std::runtime_error&) {
+            rejected = true;
+        }
+        require(rejected, "Fast PLY decoder accepted a truncated record");
+        rejected = false;
+        io::write_bytes(path, std::span(fast_bytes).first(fast_bytes.size() - 1));
+        try {
+            io::read_splat(path, degree);
+        } catch (const std::runtime_error&) {
+            rejected = true;
+        }
+        require(rejected, "Streamed PLY decoder accepted a truncated record");
+    }
+}
 } // namespace
 int main() {
     try {
@@ -190,6 +282,7 @@ int main() {
         gaussian_rotation();
         formats();
         packed_ply_fields();
+        float_ply_layouts();
         std::cout << "Abstraction contracts passed; sizeof(Gaussian)=" << sizeof(splat::Gaussian) << '\n';
         return 0;
     } catch (const std::exception& error) {

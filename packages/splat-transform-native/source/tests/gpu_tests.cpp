@@ -67,6 +67,25 @@ int main(int argc, char** argv) {
         if (devices.empty()) {
             throw std::runtime_error("GPU tests require a Vulkan compute device");
         }
+        {
+            splat::Splat points(512, 0);
+            for (size_t i = 0; i < points.size(); ++i) {
+                auto& g = points.gaussians[i];
+                g.mean = { float(i) * 1.6f + 0.05f, 0.05f, 0.05f };
+                g.scale = { 0.02f, 0.02f, 0.02f };
+                g.rotation = Eigen::Quaternionf::Identity();
+                g.opacity = 0.9f;
+            }
+            const auto grid = voxel::voxelize(voxel::prepare(points), { { 0, 0, 0 }, { 512 * 1.6f, 0.4f, 0.4f } }, 0.1f, 0.2f);
+            if (grid.voxel_count() != points.size()) {
+                throw std::runtime_error("Scene-wide voxel dispatch changed isolated Gaussian occupancy");
+            }
+            for (size_t i = 0; i < points.size(); ++i) {
+                if (!grid.get({ int(i * 16), 0, 0 })) {
+                    throw std::runtime_error("Scene-wide voxel dispatch lost a batch after the old 256-batch boundary");
+                }
+            }
+        }
         for (unsigned degree : { 1u, 2u, 3u }) {
             const auto columns = splat::SH_COUNTS[degree];
             spatial::FeatureMatrix points(257, columns), centroids(129, columns);

@@ -1,5 +1,5 @@
+#include "file_stream.h"
 #include <algorithm>
-#include <fstream>
 #include <io/file.h>
 #include <memory>
 #include <zip.h>
@@ -13,30 +13,17 @@ std::string path_utf8(const std::filesystem::path& path) {
     return std::string(value.begin(), value.end());
 }
 Bytes read_bytes(const std::filesystem::path& path) {
-    std::ifstream stream(path, std::ios::binary | std::ios::ate);
-    if (!stream) {
-        throw std::runtime_error("Cannot open input: " + path.string());
-    }
-    const auto size = stream.tellg();
-    if (size < 0 || uint64_t(size) > std::numeric_limits<size_t>::max()) {
-        throw std::runtime_error("Invalid input length");
-    }
-    Bytes bytes(static_cast<size_t>(size));
-    stream.seekg(0);
-    if (!bytes.empty() && !stream.read(reinterpret_cast<char*>(bytes.data()), size)) {
+    FileStream stream(path, FileStream::Access::Read);
+    Bytes bytes(stream.size());
+    if (stream.read(bytes) != bytes.size()) {
         throw std::runtime_error("Cannot read complete input: " + path.string());
     }
     return bytes;
 }
 void write_bytes(const std::filesystem::path& path, std::span<const uint8_t> bytes) {
-    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
-    if (!stream || (!bytes.empty() && !stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())))) {
-        throw std::runtime_error("Cannot write output: " + path.string());
-    }
+    FileStream stream(path, FileStream::Access::Write);
+    stream.write(bytes);
     stream.close();
-    if (!stream) {
-        throw std::runtime_error("Cannot finish output: " + path.string());
-    }
 }
 Json read_json(const std::filesystem::path& path) {
     const auto bytes = read_bytes(path);

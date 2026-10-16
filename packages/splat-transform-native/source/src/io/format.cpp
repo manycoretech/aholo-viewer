@@ -69,6 +69,13 @@ std::string input_extension(const FileInput& input) {
 Bytes IFile::write(const splat::Splat&, std::span<const uint32_t>) const {
     throw std::runtime_error("Writing is unsupported for " + std::string(name()));
 }
+void IFile::write(const std::filesystem::path& path, const splat::Splat& splat, std::span<const uint32_t> indices) const {
+    write_bytes(path, write(splat, indices));
+}
+splat::Splat IFile::read(const std::filesystem::path& path, unsigned max_sh_degree) const {
+    const auto bytes = read_bytes(path);
+    return read({ path, bytes, max_sh_degree });
+}
 std::unique_ptr<IFile> create_file(std::string_view extension, const Json& options, FileOperation operation) {
     const auto normalized = lower(std::string(extension));
     const auto found = std::ranges::find(FORMATS, normalized, &Format::extension);
@@ -84,6 +91,13 @@ splat::Splat read_splat(const FileInput& input) {
     return result;
 }
 splat::Splat read_splat(const std::filesystem::path& path, unsigned max_sh_degree) {
+    const auto extension = lower(path.extension().string());
+    if (extension != ".zip") {
+        auto result = create_file(extension)->read(path, max_sh_degree);
+        result.block_offsets = { 0 };
+        result.block_counts = { result.size() };
+        return result;
+    }
     auto bytes = read_bytes(path);
     return read_splat({ path, bytes, max_sh_degree });
 }
@@ -96,6 +110,6 @@ void write_splat(const std::filesystem::path& path, const splat::Splat& splat, c
         indices.resize(splat.size());
         std::iota(indices.begin(), indices.end(), 0);
     }
-    write_bytes(path, format->write(splat, indices));
+    format->write(path, splat, indices);
 }
 } // namespace splat_transform::io

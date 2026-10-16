@@ -1,3 +1,4 @@
+#include "stream_reader.h"
 #include <codec/codec.h>
 #include <codec/quantization.h>
 #include <io/esz.h>
@@ -8,7 +9,7 @@ namespace splat_transform::io {
 namespace {
 constexpr uint32_t ESZ_MAGIC = 0x262834;
 constexpr float COLOR_SCALE = splat::SH_C0 / 0.15f;
-Bytes segment(ByteReader& reader, bool image) {
+Bytes segment(StreamReader& reader, bool image) {
     const auto length = reader.read<uint32_t>();
     const auto content = reader.take(length);
     if (image) {
@@ -29,10 +30,16 @@ void require_size(const Bytes& bytes, size_t expected, bool exact = false) {
     }
 }
 } // namespace
-splat::Splat EszFile::read(const FileInput& source) const {
-    auto input = source.bytes;
-    const auto unpacked = codec::zstd_decompress(input);
-    ByteReader reader(unpacked);
+namespace {
+template<typename F>
+void high_segment(StreamReader& reader, size_t count, F&& decode) {
+    if (reader.read<uint32_t>() != count * 16) {
+        throw std::runtime_error("Invalid ESZ segment size");
+    }
+    decode_records(reader, count, 16, std::forward<F>(decode));
+}
+splat::Splat read_esz_stream(StreamReader& source, unsigned max_sh_degree) {
+    auto reader = zstd_reader(source);
     if (reader.read<uint32_t>() != ESZ_MAGIC) {
         throw std::runtime_error("Invalid ESZ magic");
     }
@@ -43,97 +50,128 @@ splat::Splat EszFile::read(const FileInput& source) const {
     }
     const auto layout = meta.at("layout").get<std::string>();
     const auto degree = meta.at("shDegree").get<unsigned>();
-    splat::Splat output(meta.at("counts").get<size_t>(), source.retained_degree(degree));
+    if (degree > 3) {
+        throw std::runtime_error("Invalid ESZ SH degree");
+    }
+    splat::Splat output(meta.at("counts").get<size_t>(), std::min(degree, max_sh_degree));
     const auto source_sh_count = splat::SH_COUNTS.at(degree);
     if (layout == "low") {
-        const auto low = segment(reader, true), high = segment(reader, true);
-        require_size(low, output.size() * 4);
-        require_size(high, output.size() * 4);
-        for (size_t c = 0; c < 3; ++c) {
-            const float min = codec::signed_log(meta.at("box").at("min").at(c).get<float>());
-            const float max = codec::signed_log(meta.at("box").at("max").at(c).get<float>());
-            for (size_t i = 0; i < output.size(); ++i) {
-                const auto value = low[i * 4 + c] | (uint32_t(high[i * 4 + c]) << 8);
-                output.gaussians[i].attribute(c) = codec::signed_exp(min + (max - min) / 65535 * value);
-            }
-        }
-        auto scales = segment(reader, true);
-        require_size(scales, output.size() * 4);
-        for (size_t i = 0; i < output.size(); ++i) {
+        {
+            const auto low = segment(reader, true), high = segment(reader, true);
+            require_size(low, output.size() * 4);
+            require_size(high, output.size() * 4);
             for (size_t c = 0; c < 3; ++c) {
-                output.gaussians[i].attribute(splat::ScaleX + c) = std::exp(scales[i * 4 + c] / 16.0f - 10);
+                const float min = codec::signed_log(meta.at("box").at("min").at(c).get<float>());
+                const float max = codec::signed_log(meta.at("box").at("max").at(c).get<float>());
+                parallel_rows(output.size(), [&](size_t first, size_t end) {
+                    for (size_t i = first; i < end; ++i) {
+                        const auto value = low[i * 4 + c] | (uint32_t(high[i * 4 + c]) << 8);
+                        output.gaussians[i].attribute(c) = codec::signed_exp(min + (max - min) / 65535 * value);
+                    }
+                });
             }
         }
-        auto quaternions = segment(reader, true);
-        require_size(quaternions, output.size() * 4);
-        for (size_t i = 0; i < output.size(); ++i) {
-            codec::decode_quaternion(std::span(quaternions).subspan(i * 4, 4), output, i);
+        {
+            const auto scales = segment(reader, true);
+            require_size(scales, output.size() * 4);
+            parallel_rows(output.size(), [&](size_t first, size_t end) {
+                for (size_t i = first; i < end; ++i) {
+                    for (size_t c = 0; c < 3; ++c) {
+                        output.gaussians[i].attribute(splat::ScaleX + c) = std::exp(scales[i * 4 + c] / 16.0f - 10);
+                    }
+                }
+            });
         }
-        auto colors = segment(reader, true);
-        require_size(colors, output.size() * 4);
-        for (size_t i = 0; i < output.size(); ++i) {
-            for (size_t c = 0; c < 3; ++c) {
-                output.gaussians[i].attribute(splat::Red + c) = ((colors[i * 4 + c] / 255.0f - 0.5f) * COLOR_SCALE + 0.5f);
-            }
-            output.gaussians[i].attribute(splat::Alpha) = static_cast<float>(colors[i * 4 + 3] / 255.0f);
+        {
+            const auto quaternions = segment(reader, true);
+            require_size(quaternions, output.size() * 4);
+            parallel_rows(output.size(), [&](size_t first, size_t end) {
+                for (size_t i = first; i < end; ++i) {
+                    codec::decode_quaternion(std::span(quaternions).subspan(i * 4, 4), output, i);
+                }
+            });
+        }
+        {
+            const auto colors = segment(reader, true);
+            require_size(colors, output.size() * 4);
+            parallel_rows(output.size(), [&](size_t first, size_t end) {
+                for (size_t i = first; i < end; ++i) {
+                    for (size_t c = 0; c < 3; ++c) {
+                        output.gaussians[i].attribute(splat::Red + c) = ((colors[i * 4 + c] / 255.0f - 0.5f) * COLOR_SCALE + 0.5f);
+                    }
+                    output.gaussians[i].attribute(splat::Alpha) = static_cast<float>(colors[i * 4 + 3] / 255.0f);
+                }
+            });
         }
         if (degree) {
-            auto sh = segment(reader, true);
+            const auto sh = segment(reader, true);
             const size_t coefficients = source_sh_count / 3;
             require_size(sh, output.size() * coefficients * 4);
-            for (size_t i = 0; i < output.size(); ++i) {
-                for (size_t j = 0; j < output.sh_count() / 3; ++j) {
-                    for (size_t c = 0; c < 3; ++c) {
-                        output.gaussians[i].attribute(splat::ShOffset + j * 3 + c) = (int(sh[(i * coefficients + j) * 4 + c]) - 128) / 128.0f;
+            parallel_rows(output.size(), [&](size_t first, size_t end) {
+                for (size_t i = first; i < end; ++i) {
+                    for (size_t j = 0; j < output.sh_count() / 3; ++j) {
+                        for (size_t c = 0; c < 3; ++c) {
+                            output.gaussians[i].attribute(splat::ShOffset + j * 3 + c) = (int(sh[(i * coefficients + j) * 4 + c]) - 128) / 128.0f;
+                        }
                     }
                 }
-            }
+            });
         }
     } else if (layout == "high") {
-        auto first = segment(reader, false);
-        require_size(first, output.size() * 16, true);
-        ByteReader centers(first);
-        for (size_t i = 0; i < output.size(); ++i) {
-            for (size_t c = 0; c < 3; ++c) {
-                output.gaussians[i].attribute(c) = centers.read<float>();
-            }
-            output.gaussians[i].attribute(splat::Alpha) = from_half(centers.read<uint16_t>());
-            centers.take(2);
-        }
-        auto second = segment(reader, false);
-        require_size(second, output.size() * 16, true);
-        ByteReader attributes(second);
-        for (size_t i = 0; i < output.size(); ++i) {
-            for (size_t c = 0; c < 3; ++c) {
-                output.gaussians[i].attribute(splat::Red + c) = from_half(attributes.read<uint16_t>());
-            }
-            for (size_t c = 0; c < 3; ++c) {
-                output.gaussians[i].attribute(splat::ScaleX + c) = std::exp(from_half(attributes.read<uint16_t>()));
-            }
-            codec::decode_oct_quaternion(attributes.read<uint32_t>(), output, i);
-        }
-        for (size_t group = 0; group < source_sh_count / 3; group += 4) {
-            auto bytes = segment(reader, false);
-            require_size(bytes, output.size() * 16, true);
-            ByteReader sh(bytes);
-            for (size_t i = 0; i < output.size(); ++i) {
-                for (size_t j = 0; j < 4; ++j) {
-                    const auto value = sh.read<uint32_t>();
-                    if (group + j >= output.sh_count() / 3) {
-                        continue;
-                    }
-                    const size_t col = splat::ShOffset + (group + j) * 3;
-                    output.gaussians[i].attribute(col) = static_cast<float>(((value >> 21) & 2047) / 2047.0f * 2 - 1);
-                    output.gaussians[i].attribute(col + 1) = static_cast<float>(((value >> 11) & 1023) / 1023.0f * 2 - 1);
-                    output.gaussians[i].attribute(col + 2) = static_cast<float>((value & 2047) / 2047.0f * 2 - 1);
+        high_segment(reader, output.size(), [&](std::span<const uint8_t> bytes, size_t first, size_t count) {
+            ByteReader centers(bytes);
+            for (size_t i = first; i < first + count; ++i) {
+                for (size_t c = 0; c < 3; ++c) {
+                    output.gaussians[i].attribute(c) = centers.read<float>();
                 }
+                output.gaussians[i].attribute(splat::Alpha) = from_half(centers.read<uint16_t>());
+                centers.take(2);
             }
+        });
+        high_segment(reader, output.size(), [&](std::span<const uint8_t> bytes, size_t first, size_t count) {
+            ByteReader attributes(bytes);
+            for (size_t i = first; i < first + count; ++i) {
+                for (size_t c = 0; c < 3; ++c) {
+                    output.gaussians[i].attribute(splat::Red + c) = from_half(attributes.read<uint16_t>());
+                }
+                for (size_t c = 0; c < 3; ++c) {
+                    output.gaussians[i].attribute(splat::ScaleX + c) = std::exp(from_half(attributes.read<uint16_t>()));
+                }
+                codec::decode_oct_quaternion(attributes.read<uint32_t>(), output, i);
+            }
+        });
+        for (size_t group = 0; group < source_sh_count / 3; group += 4) {
+            high_segment(reader, output.size(), [&](std::span<const uint8_t> bytes, size_t first, size_t count) {
+                ByteReader sh(bytes);
+                for (size_t i = first; i < first + count; ++i) {
+                    for (size_t j = 0; j < 4; ++j) {
+                        const auto value = sh.read<uint32_t>();
+                        if (group + j < output.sh_count() / 3) {
+                            const size_t col = splat::ShOffset + (group + j) * 3;
+                            output.gaussians[i].attribute(col) = static_cast<float>(((value >> 21) & 2047) / 2047.0f * 2 - 1);
+                            output.gaussians[i].attribute(col + 1) = static_cast<float>(((value >> 11) & 1023) / 1023.0f * 2 - 1);
+                            output.gaussians[i].attribute(col + 2) = static_cast<float>((value & 2047) / 2047.0f * 2 - 1);
+                        }
+                    }
+                }
+            });
         }
     } else {
         throw std::runtime_error("Unsupported ESZ layout");
     }
+    reader.require_end();
     return output;
 }
+} // namespace
+splat::Splat EszFile::read(const FileInput& source) const {
+    StreamReader reader(source.bytes);
+    return read_esz_stream(reader, source.max_sh_degree);
+}
+splat::Splat EszFile::read(const std::filesystem::path& path, unsigned max_sh_degree) const {
+    StreamReader reader(path);
+    return read_esz_stream(reader, max_sh_degree);
+}
+
 Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices) const {
     const auto high_precision = high_precision_;
     auto& logger = utility::logger();
