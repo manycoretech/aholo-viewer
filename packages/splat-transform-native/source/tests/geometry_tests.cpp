@@ -59,7 +59,7 @@ void voxel_geometry() {
     invalid.gaussians[0] = point;
     invalid.gaussians[0].opacity = 1;
     const auto prepared = voxel::prepare(invalid);
-    require(prepared.invalid_extents == 1 && prepared.scene.isEmpty(), "Invalid voxel extents changed the scene bounds");
+    require(prepared.invalid_extents.size() == 1 && prepared.scene.isEmpty(), "Invalid voxel extents changed the scene bounds");
     require(prepared.gaussians[0].values[11] == 0 && prepared.gaussians[0].values[12] == 0 && prepared.gaussians[0].values[13] == 0, "Invalid extents must be packed as zero");
 
     gpu::Gaussian packed;
@@ -79,6 +79,53 @@ void voxel_geometry() {
     require(std::abs(voxel::distance_squared(packed, Eigen::Vector3f::Constant(1e-8f)) - 3) < 1e-6f, "Distance scale floor changed");
     packed.values[8] = std::numeric_limits<float>::quiet_NaN();
     require(std::isnan(voxel::distance_squared(packed, Eigen::Vector3f::Ones())), "Distance no longer propagates a NaN scale");
+}
+void voxel_selection() {
+    for (unsigned degree = 0; degree <= 3; ++degree) {
+        splat::Splat source(12, degree);
+        for (size_t i = 0; i < source.size(); ++i) {
+            auto& point = source.gaussians[i];
+            point.mean = { float(i), float(i % 3), -float(i) };
+            point.scale = { 0.1f, 0.2f, 0.3f };
+            point.rotation.setIdentity();
+            point.opacity = 0.8f;
+            for (size_t j = 0; j < point.sh.size(); ++j) {
+                point.sh[j] = float(i * 100 + j);
+            }
+        }
+        for (const auto i : { 0, 3, 5, 7, 11 }) {
+            source.gaussians[i].scale.x() = std::numeric_limits<float>::infinity();
+        }
+        source.gaussians[10].opacity = voxel::ALPHA_THRESHOLD;
+        const auto original = source;
+        for (const std::vector<uint32_t> indices : { std::vector<uint32_t> {}, { 0, 3, 5, 7, 11 }, { 1, 2, 4, 6, 8, 9, 10 }, { 0, 2, 3, 4, 7, 10, 11 } }) {
+            auto actual = voxel::prepare(source);
+            const auto* allocation = actual.gaussians.data();
+            const auto expected = voxel::prepare(source.select(indices));
+            actual.select(indices);
+            require(actual.gaussians.data() == allocation, "Voxel selection must reuse its geometry allocation");
+            require(actual.gaussians.size() == expected.gaussians.size() && actual.invalid_extents == expected.invalid_extents,
+                "Voxel selection lost indices or invalid-extent accounting");
+            require(actual.scene.min() == expected.scene.min() && actual.scene.max() == expected.scene.max(), "Voxel selection changed scene bounds");
+            for (size_t i = 0; i < actual.gaussians.size(); ++i) {
+                require(actual.gaussians[i].values == expected.gaussians[i].values, "Voxel selection changed packed geometry or input order");
+            }
+            // Repeated compaction must also remap the sparse invalid indices.
+            if (actual.gaussians.size() > 2) {
+                const std::array<uint32_t, 2> subset { 1, 2 };
+                actual.select(subset);
+                const auto twice = voxel::prepare(source.select(indices).select(subset));
+                require(actual.invalid_extents == twice.invalid_extents && actual.scene.min() == twice.scene.min() && actual.scene.max() == twice.scene.max(),
+                    "Repeated voxel selection changed invalid-extent bounds");
+            }
+        }
+        for (size_t i = 0; i < source.size(); ++i) {
+            require(source.gaussians[i].mean == original.gaussians[i].mean, "Voxel selection mutated shared input positions");
+            for (size_t j = 0; j < source.gaussians[i].sh.size(); ++j) {
+                require(source.gaussians[i].sh[j] == original.gaussians[i].sh[j], "Voxel selection mutated shared SH coefficients");
+            }
+        }
+    }
 }
 void sh_rotation() {
     const Eigen::Matrix3f rotation = Eigen::AngleAxisf(0.73f, Eigen::Vector3f(1, 2, 3).normalized()).toRotationMatrix();
@@ -148,6 +195,7 @@ int main() {
     try {
         center_bounds();
         voxel_geometry();
+        voxel_selection();
         sh_rotation();
         coplanar_mesh();
         std::cout << "Geometry contracts passed\n";

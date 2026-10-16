@@ -360,6 +360,43 @@ int main(int argc, char** argv) {
         if (empty.voxel_count()) {
             throw std::runtime_error("An empty GPU result must stay empty");
         }
+        {
+            // Interleave two disconnected clusters to check stable selection.
+            splat::Splat clusters(5, 3);
+            const std::array<float, 5> positions { 0.55f, 2.55f, 0.56f, 2.56f, 2.57f };
+            for (size_t i = 0; i < clusters.size(); ++i) {
+                auto& point = clusters.gaussians[i];
+                point.mean = { positions[i], 0.55f, 0.55f };
+                point.scale.setConstant(0.06f);
+                point.rotation.setIdentity();
+                point.opacity = 1;
+            }
+            const Eigen::AlignedBox3f cluster_box(Eigen::Vector3f::Zero(), Eigen::Vector3f(4, 2, 2));
+            const io::Json options { { "voxelResolution", 0.1 }, { "opacityCutoff", 0.1 }, { "seed", { { "x", 2.55 }, { "y", 0.55 }, { "z", 0.55 } } } };
+            auto selected = voxel::prepare(clusters);
+            const auto* allocation = selected.gaussians.data();
+            voxel::filter_cluster(selected, options, cluster_box);
+            const std::array<uint32_t, 3> expected_indices { 1, 3, 4 };
+            const auto expected = voxel::prepare(clusters.select(expected_indices));
+            if (selected.gaussians.data() != allocation || selected.gaussians.size() != expected.gaussians.size() ||
+                selected.scene.min() != expected.scene.min() || selected.scene.max() != expected.scene.max()) {
+                throw std::runtime_error("Cluster filtering did not compact the selected geometry in place");
+            }
+            for (size_t i = 0; i < expected.gaussians.size(); ++i) {
+                if (selected.gaussians[i].values != expected.gaussians[i].values) {
+                    throw std::runtime_error("Cluster filtering changed input order or geometry");
+                }
+            }
+            // An already connected cluster must leave the buffer intact.
+            voxel::filter_cluster(selected, options, cluster_box);
+            if (selected.gaussians.data() != allocation || selected.gaussians.size() != expected.gaussians.size()) {
+                throw std::runtime_error("Connected cluster filtering changed the geometry buffer");
+            }
+            voxel::filter_cluster(selected, options, Eigen::AlignedBox3f(Eigen::Vector3f::Constant(10), Eigen::Vector3f::Constant(12)));
+            if (!selected.gaussians.empty() || !selected.scene.isEmpty()) {
+                throw std::runtime_error("Nonoverlapping cluster bounds must return empty geometry");
+            }
+        }
         const auto directory = std::filesystem::temp_directory_path() / ("splat-voxel-links-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         struct Cleanup {
             std::filesystem::path path;

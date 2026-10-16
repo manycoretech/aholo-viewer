@@ -1,5 +1,6 @@
 #include "voxelize.h"
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <limits>
 #include <utility/logger.h>
@@ -30,9 +31,14 @@ namespace {
 struct Batch {
     Point origin;
     Point dimensions;
-    std::vector<uint32_t> candidates;
+    uint32_t offset;
+    uint32_t count;
 };
-std::vector<Batch> build_batches(const PreparedData& data, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
+struct Batches {
+    std::vector<Batch> batches;
+    std::vector<uint32_t> indices;
+};
+Batches build_batches(const PreparedData& data, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
     Point count;
     for (int a = 0; a < 3; ++a) {
         count[a] = (grid.blocks[a] + 3) / 4;
@@ -47,16 +53,17 @@ std::vector<Batch> build_batches(const PreparedData& data, const Grid& grid, con
             continue;
         }
         const auto start = candidates.indices.begin() + candidates.offsets[key];
-        std::vector<uint32_t> indices(start, start + candidates.counts[key]);
-        std::ranges::sort(indices);
+        // Keep deterministic accumulation order without copying each bin and
+        // subsequently flattening all of those copies into another buffer.
+        std::sort(start, start + candidates.counts[key]);
         Point origin { int(key % count[0]) * 4, int(key / count[0] % count[1]) * 4, int(key / (uint64_t(count[0]) * count[1])) * 4 };
         Point dimensions;
         for (int a = 0; a < 3; ++a) {
             dimensions[a] = std::min(4, grid.blocks[a] - origin[a]);
         }
-        output.push_back({ origin, dimensions, std::move(indices) });
+        output.push_back({ origin, dimensions, candidates.offsets[key], candidates.counts[key] });
     }
-    return output;
+    return { std::move(output), std::move(candidates.indices) };
 }
 } // namespace
 
@@ -70,7 +77,7 @@ PreparedData prepare(const splat::Splat& data) {
         const bool valid = e.allFinite();
         if (!valid) {
             e.setZero();
-            ++output.invalid_extents;
+            output.invalid_extents.push_back(uint32_t(i));
         }
         auto& g = output.gaussians[i].values;
         for (int a = 0; a < 3; ++a) {
@@ -90,6 +97,36 @@ PreparedData prepare(const splat::Splat& data) {
     }
     return output;
 }
+void PreparedData::select(std::span<const uint32_t> indices) {
+    assert(std::adjacent_find(indices.begin(), indices.end(), std::greater_equal<uint32_t>()) == indices.end());
+    assert(indices.empty() || indices.back() < gaussians.size());
+    scene.min().setConstant(INFINITY);
+    scene.max().setConstant(-INFINITY);
+    size_t next_invalid = 0, kept_invalid = 0;
+    for (size_t i = 0; i < indices.size(); ++i) {
+        const auto index = indices[i];
+        while (next_invalid < invalid_extents.size() && invalid_extents[next_invalid] < index) {
+            ++next_invalid;
+        }
+        const bool valid = next_invalid == invalid_extents.size() || invalid_extents[next_invalid] != index;
+        if (i != index) {
+            gaussians[i] = gaussians[index];
+        }
+        if (!valid) {
+            // Read positions advance before writing the compacted sparse list.
+            ++next_invalid;
+            invalid_extents[kept_invalid++] = uint32_t(i);
+            continue;
+        }
+        const auto& g = gaussians[i].values;
+        for (int a = 0; a < 3; ++a) {
+            scene.min()[a] = std::min(scene.min()[a], g[a] - g[11 + a]);
+            scene.max()[a] = std::max(scene.max()[a], g[a] + g[11 + a]);
+        }
+    }
+    gaussians.resize(indices.size());
+    invalid_extents.resize(kept_invalid);
+}
 Eigen::AlignedBox3f align_bounds(Eigen::AlignedBox3f bounds, float resolution) {
     const float block_size = resolution * 4;
     for (int a = 0; a < 3; ++a) {
@@ -104,19 +141,12 @@ Grid voxelize(const PreparedData& data, const Eigen::AlignedBox3f& bounds, float
         dimensions[a] = std::max(4, int(std::llround((bounds.max()[a] - bounds.min()[a]) / resolution)));
     }
     Grid output(dimensions);
-    const auto batches = build_batches(data, output, bounds, resolution);
+    const auto [batches, indices] = build_batches(data, output, bounds, resolution);
     std::vector<gpu::VoxelBatch> specs;
-    std::vector<uint32_t> indices;
     specs.reserve(batches.size());
-    size_t candidate_count = 0;
     for (const auto& b : batches) {
-        candidate_count += b.candidates.size();
-    }
-    indices.reserve(candidate_count);
-    for (const auto& b : batches) {
-        specs.push_back({ uint32_t(indices.size()), uint32_t(b.candidates.size()), uint32_t(b.dimensions[0]), uint32_t(b.dimensions[1]), uint32_t(b.dimensions[2]),
+        specs.push_back({ b.offset, b.count, uint32_t(b.dimensions[0]), uint32_t(b.dimensions[1]), uint32_t(b.dimensions[2]),
             float(bounds.min()[0] + b.origin[0] * 4 * resolution), float(bounds.min()[1] + b.origin[1] * 4 * resolution), float(bounds.min()[2] + b.origin[2] * 4 * resolution) });
-        indices.insert(indices.end(), b.candidates.begin(), b.candidates.end());
     }
     // The GPU layer splits for device storage/dispatch limits and retains the
     // full Gaussian input across splits. Fixed 256-batch calls re-uploaded the
@@ -136,7 +166,7 @@ Grid voxelize(const PreparedData& data, const Eigen::AlignedBox3f& bounds, float
     return output;
 }
 
-Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const io::Json& config) {
+Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBox3f& scene, const io::Json& config) {
     Eigen::AlignedBox3f box(Eigen::Vector3f::Constant(-100), Eigen::Vector3f::Constant(100));
     if (config.contains("box")) {
         const auto minimum = config.at("box").at("minCorner").get<std::array<float, 3>>();
@@ -149,7 +179,7 @@ Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const io::Json& config
         return box;
     }
     const auto options = automatic.is_object() ? automatic : io::Json::object();
-    const auto center = splat::bounds(data), scene = prepare(data).scene;
+    const auto center = splat::bounds(data);
     float inflation = 0, center_volume = 1, scene_volume = 1;
     for (int a = 0; a < 3; ++a) {
         const float c = std::max(0.0f, center.max()[a] - center.min()[a]), s = std::max(0.0f, scene.max()[a] - scene.min()[a]);
@@ -182,16 +212,16 @@ Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const io::Json& config
     utility::logger().info("autoDenseBox: applied, kept ", kept, '/', data.size(), " centers (", utility::fixed(float(kept) / data.size() * 100), "%)");
     return dense;
 }
-splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, const Eigen::AlignedBox3f& box) {
+void filter_cluster(PreparedData& prepared, const io::Json& options, const Eigen::AlignedBox3f& box) {
     auto& logger = utility::logger();
     const float resolution = options.value("voxelResolution", 1.0f), cutoff = options.value("opacityCutoff", 0.999f), contribution = options.value("minContribution", 0.1f);
     if (!(resolution > 0) || cutoff < 0 || cutoff > 1 || contribution < 0) {
         throw std::runtime_error("Invalid filterCluster options");
     }
-    if (!data.size()) {
-        return data;
+    const auto count = prepared.gaussians.size();
+    if (!count) {
+        return;
     }
-    auto prepared = prepare(data);
     auto bounds = align_bounds(prepared.scene, resolution);
     Eigen::Vector3f seed = Eigen::Vector3f::Zero();
     if (options.contains("seed")) {
@@ -206,7 +236,8 @@ splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, c
     for (int a = 0; a < 3; ++a) {
         if (bounds.min()[a] >= bounds.max()[a]) {
             logger.warn("filterCluster: box does not overlap scene bounds, returning empty data");
-            return data.select({});
+            prepared.select({});
+            return;
         }
         if (bounds.max()[a] - bounds.min()[a] > 4096 * resolution) {
             const float half = 2048 * resolution, center = std::clamp(seed[a], bounds.min()[a] + half, bounds.max()[a] - half);
@@ -217,7 +248,8 @@ splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, c
     const auto occupied = voxelize(prepared, bounds, resolution, cutoff);
     if (!occupied.voxel_count()) {
         logger.warn("filterCluster: no occupied voxels, returning empty data");
-        return data.select({});
+        prepared.select({});
+        return;
     }
     Point seed_cell;
     for (int a = 0; a < 3; ++a) {
@@ -247,11 +279,11 @@ splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, c
     auto cluster = flood(occupied, { seed_cell });
     if (cluster.voxel_count() == occupied.voxel_count()) {
         logger.info("filterCluster: all occupied voxels are connected, no filtering needed");
-        return data;
+        return;
     }
     auto select = [&](const Grid& component) {
         std::vector<uint32_t> selected;
-        for (uint32_t i = 0; i < data.size(); ++i) {
+        for (uint32_t i = 0; i < count; ++i) {
             const auto& gaussian = prepared.gaussians[i];
             const auto& g = gaussian.values;
             Point center;
@@ -291,7 +323,7 @@ splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, c
         return selected;
     };
     auto chosen = select(cluster);
-    if (!options.contains("seed") && float(chosen.size()) / data.size() < 0.3f) {
+    if (!options.contains("seed") && float(chosen.size()) / count < 0.3f) {
         Grid processed = cluster;
         std::vector<Grid> candidates;
         for (auto index : occupied.active_blocks()) {
@@ -316,7 +348,7 @@ splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, c
             }
         }
     }
-    logger.info("filterCluster: kept ", chosen.size(), " / ", data.size(), " gaussians");
-    return data.select(chosen);
+    logger.info("filterCluster: kept ", chosen.size(), " / ", count, " gaussians");
+    prepared.select(chosen);
 }
 } // namespace splat_transform::voxel

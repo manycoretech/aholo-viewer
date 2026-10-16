@@ -150,22 +150,23 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
     if (!(resolution > 0) || !std::isfinite(resolution) || cutoff < 0 || cutoff > 1) {
         throw std::runtime_error("Invalid voxel resolution or opacityCutoff");
     }
-    const auto box = resolve_box(input, config);
+    // Voxelization needs geometry and opacity only. Retain one packed buffer
+    // through bounds resolution and filtering; never clone the source's SH data.
+    auto bounds_time = logger.time("Voxel bounding/extents");
+    auto prepared = prepare(input);
+    bounds_time.finish();
+    const auto box = resolve_box(input, prepared.scene, config);
     const auto filter = config.value("filterCluster", io::Json(true));
-    std::optional<splat::Splat> filtered;
     if (filter != false) {
         logger.info("voxel filterCluster enabled");
-        filtered = filter_cluster(input, filter.is_object() ? filter : io::Json::object(), box);
+        auto filter_time = logger.time("Filter clusters");
+        filter_cluster(prepared, filter.is_object() ? filter : io::Json::object(), box);
     }
-    const auto& source = filtered ? *filtered : input;
-    auto bounds_time = logger.time("Voxel bounding/extents");
-    const auto prepared = prepare(source);
-    if (prepared.invalid_extents) {
-        logger.info("voxel: skipped ", prepared.invalid_extents, " gaussians with invalid extent values");
+    if (!prepared.invalid_extents.empty()) {
+        logger.info("voxel: skipped ", prepared.invalid_extents.size(), " gaussians with invalid extent values");
     }
     logger.info("scene extents: (", utility::fixed(prepared.scene.min()[0]), ',', utility::fixed(prepared.scene.min()[1]), ',', utility::fixed(prepared.scene.min()[2]),
         ") - (", utility::fixed(prepared.scene.max()[0]), ',', utility::fixed(prepared.scene.max()[1]), ',', utility::fixed(prepared.scene.max()[2]), ')');
-    bounds_time.finish();
     Navigation navigation;
     navigation.floor_fill = config.value("floorFill", false);
     navigation.floor_dilation = config.value("floorFillDilation", 0.0f);
