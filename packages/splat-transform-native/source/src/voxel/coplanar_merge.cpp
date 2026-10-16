@@ -7,14 +7,13 @@
 
 namespace splat_transform::voxel {
 namespace {
-using Vector = Eigen::Vector3f;
 struct Triangle {
     std::array<uint32_t, 3> vertices;
-    std::array<float, 3> normal;
+    Eigen::Vector3f normal = Eigen::Vector3f::Zero();
     float plane = 0;
     bool alive = true;
 };
-std::vector<std::array<uint32_t, 3>> triangulate(const std::vector<uint32_t>& polygon, const std::vector<std::array<float, 2>>& points) {
+std::vector<std::array<uint32_t, 3>> triangulate(const std::vector<uint32_t>& polygon, const std::vector<Eigen::Vector2f>& points) {
     const size_t n = polygon.size();
     if (n < 3) {
         return {};
@@ -77,7 +76,7 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
     if (mesh.indices.empty()) {
         return {};
     }
-    auto position = [&](uint32_t index) -> Vector { return { mesh.positions[index * 3], mesh.positions[index * 3 + 1], mesh.positions[index * 3 + 2] }; };
+    auto position = [&](uint32_t index) -> Eigen::Vector3f { return { mesh.positions[index * 3], mesh.positions[index * 3 + 1], mesh.positions[index * 3 + 2] }; };
     std::vector<Triangle> triangles;
     std::vector<std::vector<uint32_t>> incident(count);
     auto append = [&](Triangle triangle) {
@@ -90,17 +89,15 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
         }
     };
     for (size_t i = 0; i < mesh.indices.size(); i += 3) {
-        Triangle triangle { { mesh.indices[i], mesh.indices[i + 1], mesh.indices[i + 2] }, {} };
-        const Vector a = position(triangle.vertices[0]), b = position(triangle.vertices[1]), c = position(triangle.vertices[2]);
-        Vector normal = (b - a).cross(c - a);
+        Triangle triangle { { mesh.indices[i], mesh.indices[i + 1], mesh.indices[i + 2] } };
+        const Eigen::Vector3f a = position(triangle.vertices[0]), b = position(triangle.vertices[1]), c = position(triangle.vertices[2]);
+        Eigen::Vector3f normal = (b - a).cross(c - a);
         const float length = normal.norm();
         if (length < 1e-12f) {
             triangle.alive = false;
         } else {
             normal /= length;
-            for (int axis = 0; axis < 3; ++axis) {
-                triangle.normal[axis] = float(normal[axis]);
-            }
+            triangle.normal = normal;
             triangle.plane = normal.dot(a);
         }
         append(triangle);
@@ -108,10 +105,7 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
     auto coplanar = [&](uint32_t a, uint32_t b) {
         const auto& first = triangles[a];
         const auto& second = triangles[b];
-        float dot = 0;
-        for (int axis = 0; axis < 3; ++axis) {
-            dot += float(first.normal[axis]) * second.normal[axis];
-        }
+        const float dot = first.normal.dot(second.normal);
         return dot >= 1 - 1e-3f && std::abs(first.plane - second.plane) <= 1e-3f * (resolution + std::max(std::abs(first.plane), std::abs(second.plane)));
     };
     std::deque<uint32_t> queue;
@@ -186,7 +180,7 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
             if (transitions.size() != 2) {
                 continue;
             }
-            const Vector a = position(ring[transitions[0]]) - position(vertex), b = position(ring[transitions[1]]) - position(vertex);
+            const Eigen::Vector3f a = position(ring[transitions[0]]) - position(vertex), b = position(ring[transitions[1]]) - position(vertex);
             if (a.norm() < 1e-12f || b.norm() < 1e-12f || a.dot(b) / (a.norm() * b.norm()) > -1 + 1e-3f) {
                 continue;
             }
@@ -196,20 +190,20 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
         std::vector<Triangle> replacements;
         for (auto arc : arcs) {
             const auto plane = triangles[arc.plane];
-            const Vector n(plane.normal[0], plane.normal[1], plane.normal[2]);
-            Vector tangent;
+            const auto& n = plane.normal;
+            Eigen::Vector3f tangent;
             const auto absolute = n.cwiseAbs();
             if (absolute[0] <= absolute[1] && absolute[0] <= absolute[2]) {
-                tangent = Vector(0, -n[2], n[1]);
+                tangent = Eigen::Vector3f(0, -n[2], n[1]);
             } else if (absolute[1] <= absolute[2]) {
-                tangent = Vector(n[2], 0, -n[0]);
+                tangent = Eigen::Vector3f(n[2], 0, -n[0]);
             } else {
-                tangent = Vector(-n[1], n[0], 0);
+                tangent = Eigen::Vector3f(-n[1], n[0], 0);
             }
             tangent.normalize();
-            const Vector bitangent = n.cross(tangent);
+            const Eigen::Vector3f bitangent = n.cross(tangent);
             std::vector<uint32_t> polygon;
-            std::vector<std::array<float, 2>> projected;
+            std::vector<Eigen::Vector2f> projected;
             for (size_t i = 0; i < arc.size; ++i) {
                 const auto v = ring[(arc.start + i) % ring.size()];
                 polygon.push_back(v);

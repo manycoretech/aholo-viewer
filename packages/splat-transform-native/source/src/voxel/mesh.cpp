@@ -41,7 +41,7 @@ struct Rectangle {
     }
 };
 } // namespace
-Mesh voxel_faces(const Grid& grid, const splat::Bounds& bounds, float resolution) {
+Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
     std::map<std::array<int, 2>, std::set<std::array<int, 2>>> planes;
     for (auto index : grid.active_blocks()) {
         const auto block = grid.block_point(index);
@@ -113,7 +113,7 @@ Mesh voxel_faces(const Grid& grid, const splat::Bounds& bounds, float resolution
         const auto index = uint32_t(output.positions.size() / 3);
         vertices[p] = index;
         for (int axis = 0; axis < 3; ++axis) {
-            output.positions.push_back(float(bounds.min[axis] + p[axis] * resolution));
+            output.positions.push_back(float(bounds.min()[axis] + p[axis] * resolution));
         }
         return index;
     };

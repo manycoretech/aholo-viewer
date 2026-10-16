@@ -122,7 +122,7 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         const auto bounds = splat::bounds(data);
         Bytes low(image_size, 255), high(image_size, 255);
         for (size_t c = 0; c < 3; ++c) {
-            const float min = codec::signed_log(bounds.min[c]), max = codec::signed_log(bounds.max[c]);
+            const float min = codec::signed_log(bounds.min()[c]), max = codec::signed_log(bounds.max()[c]);
             result.metadata["means"]["mins"].push_back(min);
             result.metadata["means"]["maxs"].push_back(max);
             const float scale = 65535 / std::max(max - min, 1e-9f);

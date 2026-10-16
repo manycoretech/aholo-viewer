@@ -5,48 +5,40 @@
 #include <utility/logger.h>
 
 namespace splat_transform::voxel {
-namespace {
-std::array<float, 3> extents(const splat::Splat& data, size_t index) {
-    auto at = [&](size_t column) -> float { return data.gaussians[index].attribute(column); };
-    const float opacity = at(splat::Alpha);
+Eigen::Vector3f extents(const splat::Gaussian& gaussian) {
+    const float opacity = gaussian.opacity;
     if (opacity <= ALPHA_THRESHOLD) {
-        return {};
+        return Eigen::Vector3f::Zero();
     }
     float extend = 3;
     const float aware = std::sqrt(2 * std::log(opacity / ALPHA_THRESHOLD));
     if (std::isfinite(aware)) {
         extend = std::min(extend, aware);
     }
-    const float sx = extend * at(splat::ScaleX), sy = extend * at(splat::ScaleY), sz = extend * at(splat::ScaleZ);
-    const float x = at(splat::QuatX), y = at(splat::QuatY), z = at(splat::QuatZ), w = at(splat::QuatW);
-    return {
-        std::abs(1 - 2 * (y * y + z * z)) * sx + std::abs(2 * (x * y - w * z)) * sy + std::abs(2 * (x * z + w * y)) * sz,
-        std::abs(2 * (x * y + w * z)) * sx + std::abs(1 - 2 * (x * x + z * z)) * sy + std::abs(2 * (y * z - w * x)) * sz,
-        std::abs(2 * (x * z - w * y)) * sx + std::abs(2 * (y * z + w * x)) * sy + std::abs(1 - 2 * (x * x + y * y)) * sz
-    };
+    const Eigen::Vector3f scale = extend * gaussian.scale;
+    return gaussian.rotation.toRotationMatrix().cwiseAbs() * scale;
 }
-float distance_squared(const gpu::Gaussian& gaussian, const std::array<float, 3>& difference) {
+float distance_squared(const gpu::Gaussian& gaussian, const Eigen::Vector3f& difference) {
     const auto& g = gaussian.values;
-    const float x = -float(g[5]), y = -float(g[6]), z = -float(g[7]), w = g[4];
-    const float dx = difference[0], dy = difference[1], dz = difference[2];
-    const float tx = 2 * (y * dz - z * dy), ty = 2 * (z * dx - x * dz), tz = 2 * (x * dy - y * dx);
-    const float sx = (dx + w * tx + (y * tz - z * ty)) / std::max(float(g[8]), 1e-8f);
-    const float sy = (dy + w * ty + (z * tx - x * tz)) / std::max(float(g[9]), 1e-8f);
-    const float sz = (dz + w * tz + (x * ty - y * tx)) / std::max(float(g[10]), 1e-8f);
-    return sx * sx + sy * sy + sz * sz;
+    // The GPU layout stores wxyz; Eigen's coefficient buffer stores xyzw.
+    const Eigen::Quaternionf rotation(g[4], g[5], g[6], g[7]);
+    const Eigen::Map<const Eigen::Vector3f> scale(g.data() + 8);
+    const Eigen::Vector3f local = (rotation.conjugate() * difference).cwiseQuotient(scale.cwiseMax<Eigen::PropagateNaN>(1e-8f));
+    return local.squaredNorm();
 }
+namespace {
 struct Batch {
     Point origin;
     Point dimensions;
     std::vector<uint32_t> candidates;
 };
-std::vector<Batch> build_batches(const PreparedData& data, const Grid& grid, const splat::Bounds& bounds, float resolution) {
+std::vector<Batch> build_batches(const PreparedData& data, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
     Point count;
     for (int a = 0; a < 3; ++a) {
         count[a] = (grid.blocks[a] + 3) / 4;
     }
     const float batch_size = 16 * resolution;
-    auto candidates = gpu::candidates(data.gaussians, { float(bounds.min[0]), float(bounds.min[1]), float(bounds.min[2]) }, float(batch_size),
+    auto candidates = gpu::candidates(data.gaussians, { float(bounds.min()[0]), float(bounds.min()[1]), float(bounds.min()[2]) }, float(batch_size),
         { uint32_t(count[0]), uint32_t(count[1]), uint32_t(count[2]) });
     std::vector<Batch> output;
     output.reserve(std::ranges::count_if(candidates.counts, [](auto size) { return size != 0; }));
@@ -71,13 +63,13 @@ std::vector<Batch> build_batches(const PreparedData& data, const Grid& grid, con
 PreparedData prepare(const splat::Splat& data) {
     PreparedData output;
     output.gaussians.resize(data.size());
-    output.scene.min.fill(INFINITY);
-    output.scene.max.fill(-INFINITY);
+    output.scene.min().setConstant(INFINITY);
+    output.scene.max().setConstant(-INFINITY);
     for (size_t i = 0; i < data.size(); ++i) {
-        auto e = extents(data, i);
-        const bool valid = std::all_of(e.begin(), e.end(), [](float v) { return std::isfinite(v); });
+        auto e = extents(data.gaussians[i]);
+        const bool valid = e.allFinite();
         if (!valid) {
-            e.fill(0);
+            e.setZero();
             ++output.invalid_extents;
         }
         auto& g = output.gaussians[i].values;
@@ -86,8 +78,8 @@ PreparedData prepare(const splat::Splat& data) {
             g[8 + a] = data.gaussians[i].attribute(splat::ScaleX + a);
             g[11 + a] = float(e[a]);
             if (valid) {
-                output.scene.min[a] = std::min(output.scene.min[a], g[a] - e[a]);
-                output.scene.max[a] = std::max(output.scene.max[a], g[a] + e[a]);
+                output.scene.min()[a] = std::min(output.scene.min()[a], g[a] - e[a]);
+                output.scene.max()[a] = std::max(output.scene.max()[a], g[a] + e[a]);
             }
         }
         g[3] = data.gaussians[i].attribute(splat::Alpha);
@@ -98,18 +90,18 @@ PreparedData prepare(const splat::Splat& data) {
     }
     return output;
 }
-splat::Bounds align_bounds(splat::Bounds bounds, float resolution) {
+Eigen::AlignedBox3f align_bounds(Eigen::AlignedBox3f bounds, float resolution) {
     const float block_size = resolution * 4;
     for (int a = 0; a < 3; ++a) {
-        bounds.min[a] = std::floor(bounds.min[a] / block_size) * block_size;
-        bounds.max[a] = std::ceil(bounds.max[a] / block_size) * block_size;
+        bounds.min()[a] = std::floor(bounds.min()[a] / block_size) * block_size;
+        bounds.max()[a] = std::ceil(bounds.max()[a] / block_size) * block_size;
     }
     return bounds;
 }
-Grid voxelize(const PreparedData& data, const splat::Bounds& bounds, float resolution, float cutoff) {
+Grid voxelize(const PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff) {
     Point dimensions;
     for (int a = 0; a < 3; ++a) {
-        dimensions[a] = std::max(4, int(std::llround((bounds.max[a] - bounds.min[a]) / resolution)));
+        dimensions[a] = std::max(4, int(std::llround((bounds.max()[a] - bounds.min()[a]) / resolution)));
     }
     Grid output(dimensions);
     const auto batches = build_batches(data, output, bounds, resolution);
@@ -123,7 +115,7 @@ Grid voxelize(const PreparedData& data, const splat::Bounds& bounds, float resol
     indices.reserve(candidate_count);
     for (const auto& b : batches) {
         specs.push_back({ uint32_t(indices.size()), uint32_t(b.candidates.size()), uint32_t(b.dimensions[0]), uint32_t(b.dimensions[1]), uint32_t(b.dimensions[2]),
-            float(bounds.min[0] + b.origin[0] * 4 * resolution), float(bounds.min[1] + b.origin[1] * 4 * resolution), float(bounds.min[2] + b.origin[2] * 4 * resolution) });
+            float(bounds.min()[0] + b.origin[0] * 4 * resolution), float(bounds.min()[1] + b.origin[1] * 4 * resolution), float(bounds.min()[2] + b.origin[2] * 4 * resolution) });
         indices.insert(indices.end(), b.candidates.begin(), b.candidates.end());
     }
     // The GPU layer splits for device storage/dispatch limits and retains the
@@ -144,11 +136,13 @@ Grid voxelize(const PreparedData& data, const splat::Bounds& bounds, float resol
     return output;
 }
 
-splat::Bounds resolve_box(const splat::Splat& data, const io::Json& config) {
-    splat::Bounds box { { -100, -100, -100 }, { 100, 100, 100 } };
+Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const io::Json& config) {
+    Eigen::AlignedBox3f box(Eigen::Vector3f::Constant(-100), Eigen::Vector3f::Constant(100));
     if (config.contains("box")) {
-        box.min = config.at("box").at("minCorner").get<std::array<float, 3>>();
-        box.max = config.at("box").at("maxCorner").get<std::array<float, 3>>();
+        const auto minimum = config.at("box").at("minCorner").get<std::array<float, 3>>();
+        const auto maximum = config.at("box").at("maxCorner").get<std::array<float, 3>>();
+        box.min() = Eigen::Map<const Eigen::Vector3f>(minimum.data());
+        box.max() = Eigen::Map<const Eigen::Vector3f>(maximum.data());
     }
     const auto automatic = config.value("autoDenseBox", io::Json(true));
     if (automatic == false || data.size() == 0) {
@@ -158,7 +152,7 @@ splat::Bounds resolve_box(const splat::Splat& data, const io::Json& config) {
     const auto center = splat::bounds(data), scene = prepare(data).scene;
     float inflation = 0, center_volume = 1, scene_volume = 1;
     for (int a = 0; a < 3; ++a) {
-        const float c = std::max(0.0f, center.max[a] - center.min[a]), s = std::max(0.0f, scene.max[a] - scene.min[a]);
+        const float c = std::max(0.0f, center.max()[a] - center.min()[a]), s = std::max(0.0f, scene.max()[a] - scene.min()[a]);
         inflation = std::max(inflation, s / std::max(c, 1e-6f));
         center_volume *= c;
         scene_volume *= s;
@@ -168,9 +162,9 @@ splat::Bounds resolve_box(const splat::Splat& data, const io::Json& config) {
     }
     auto dense = splat::dense_bounds(data, 1 - options.value("targetCenterKeepRatio", 0.98f));
     for (int a = 0; a < 3; ++a) {
-        dense.min[a] = std::max(dense.min[a], box.min[a]);
-        dense.max[a] = std::min(dense.max[a], box.max[a]);
-        if (dense.min[a] >= dense.max[a]) {
+        dense.min()[a] = std::max(dense.min()[a], box.min()[a]);
+        dense.max()[a] = std::min(dense.max()[a], box.max()[a]);
+        if (dense.min()[a] >= dense.max()[a]) {
             return box;
         }
     }
@@ -178,7 +172,7 @@ splat::Bounds resolve_box(const splat::Splat& data, const io::Json& config) {
     for (size_t i = 0; i < data.size(); ++i) {
         bool inside = true;
         for (int a = 0; a < 3; ++a) {
-            inside &= data.gaussians[i].attribute(a) >= dense.min[a] && data.gaussians[i].attribute(a) <= dense.max[a];
+            inside &= data.gaussians[i].attribute(a) >= dense.min()[a] && data.gaussians[i].attribute(a) <= dense.max()[a];
         }
         kept += inside;
     }
@@ -188,7 +182,7 @@ splat::Bounds resolve_box(const splat::Splat& data, const io::Json& config) {
     utility::logger().info("autoDenseBox: applied, kept ", kept, '/', data.size(), " centers (", utility::fixed(float(kept) / data.size() * 100), "%)");
     return dense;
 }
-splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, const splat::Bounds& box) {
+splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, const Eigen::AlignedBox3f& box) {
     auto& logger = utility::logger();
     const float resolution = options.value("voxelResolution", 1.0f), cutoff = options.value("opacityCutoff", 0.999f), contribution = options.value("minContribution", 0.1f);
     if (!(resolution > 0) || cutoff < 0 || cutoff > 1 || contribution < 0) {
@@ -199,25 +193,25 @@ splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, c
     }
     auto prepared = prepare(data);
     auto bounds = align_bounds(prepared.scene, resolution);
-    std::array<float, 3> seed {};
+    Eigen::Vector3f seed = Eigen::Vector3f::Zero();
     if (options.contains("seed")) {
         const auto& s = options.at("seed");
-        seed = { s.at("x"), s.at("y"), s.at("z") };
+        seed = { s.at("x").get<float>(), s.at("y").get<float>(), s.at("z").get<float>() };
     }
     for (int a = 0; a < 3; ++a) {
-        bounds.min[a] = std::max(bounds.min[a], box.min[a]);
-        bounds.max[a] = std::min(bounds.max[a], box.max[a]);
+        bounds.min()[a] = std::max(bounds.min()[a], box.min()[a]);
+        bounds.max()[a] = std::min(bounds.max()[a], box.max()[a]);
     }
     bounds = align_bounds(bounds, resolution);
     for (int a = 0; a < 3; ++a) {
-        if (bounds.min[a] >= bounds.max[a]) {
+        if (bounds.min()[a] >= bounds.max()[a]) {
             logger.warn("filterCluster: box does not overlap scene bounds, returning empty data");
             return data.select({});
         }
-        if (bounds.max[a] - bounds.min[a] > 4096 * resolution) {
-            const float half = 2048 * resolution, center = std::clamp(seed[a], bounds.min[a] + half, bounds.max[a] - half);
-            bounds.min[a] = center - half;
-            bounds.max[a] = center + half;
+        if (bounds.max()[a] - bounds.min()[a] > 4096 * resolution) {
+            const float half = 2048 * resolution, center = std::clamp(seed[a], bounds.min()[a] + half, bounds.max()[a] - half);
+            bounds.min()[a] = center - half;
+            bounds.max()[a] = center + half;
         }
     }
     const auto occupied = voxelize(prepared, bounds, resolution, cutoff);
@@ -227,7 +221,7 @@ splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, c
     }
     Point seed_cell;
     for (int a = 0; a < 3; ++a) {
-        seed_cell[a] = std::clamp(int(std::floor((seed[a] - bounds.min[a]) / resolution)), 0, occupied.size[a] - 1);
+        seed_cell[a] = std::clamp(int(std::floor((seed[a] - bounds.min()[a]) / resolution)), 0, occupied.size[a] - 1);
     }
     // Find the same Chebyshev shell and z/y/x tie ordering without scanning empty volume.
     if (!occupied.get(seed_cell)) {
@@ -262,7 +256,7 @@ splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, c
             const auto& g = gaussian.values;
             Point center;
             for (int a = 0; a < 3; ++a) {
-                center[a] = int(std::floor((g[a] - bounds.min[a]) / resolution));
+                center[a] = int(std::floor((g[a] - bounds.min()[a]) / resolution));
             }
             if (component.get(center)) {
                 selected.push_back(i);
@@ -272,8 +266,8 @@ splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, c
             const float hits_needed = maximum_extent > resolution ? std::max(1.0f, std::ceil(8 * float(g[11]) * g[12] * g[13] / (resolution * resolution * resolution) * 0.1f)) : 1;
             Point minimum, maximum;
             for (int a = 0; a < 3; ++a) {
-                minimum[a] = std::max(0, int(std::floor((float(g[a]) - g[11 + a] - bounds.min[a]) / (4 * resolution))));
-                maximum[a] = std::min(component.blocks[a] - 1, int(std::floor((float(g[a]) + g[11 + a] - bounds.min[a]) / (4 * resolution))));
+                minimum[a] = std::max(0, int(std::floor((float(g[a]) - g[11 + a] - bounds.min()[a]) / (4 * resolution))));
+                maximum[a] = std::min(component.blocks[a] - 1, int(std::floor((float(g[a]) + g[11 + a] - bounds.min()[a]) / (4 * resolution))));
             }
             size_t hits = 0;
             for (int z = minimum[2]; z <= maximum[2] && hits < hits_needed; ++z) {
@@ -283,8 +277,8 @@ splat::Splat filter_cluster(const splat::Splat& data, const io::Json& options, c
                         while (bits && hits < hits_needed) {
                             const int b = std::countr_zero(bits);
                             bits &= bits - 1;
-                            std::array<float, 3> difference { bounds.min[0] + x * 4 * resolution + (b % 4 + 0.5f) * resolution - g[0],
-                                bounds.min[1] + y * 4 * resolution + (b / 4 % 4 + 0.5f) * resolution - g[1], bounds.min[2] + z * 4 * resolution + (b / 16 + 0.5f) * resolution - g[2] };
+                            const Eigen::Vector3f difference { bounds.min()[0] + x * 4 * resolution + (b % 4 + 0.5f) * resolution - g[0],
+                                bounds.min()[1] + y * 4 * resolution + (b / 4 % 4 + 0.5f) * resolution - g[1], bounds.min()[2] + z * 4 * resolution + (b / 16 + 0.5f) * resolution - g[2] };
                             hits += g[3] * std::exp(-0.5f * distance_squared(gaussian, difference)) >= contribution;
                         }
                     }

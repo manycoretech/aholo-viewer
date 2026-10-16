@@ -101,7 +101,7 @@ Quantization detail::quantize_values(std::vector<float> values, size_t rows, siz
 Clustering k_means(FeatureView points, size_t count, size_t iterations) {
     const auto rows = points.rows();
     if (!rows || !count || rows < count) {
-        FeatureMatrix centroids(rows, points.dimensions());
+        Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> centroids(rows, points.dimensions());
         for (size_t row = 0; row < rows; ++row) {
             for (size_t c = 0; c < points.dimensions(); ++c) {
                 centroids(row, c) = points(row, c);
@@ -111,7 +111,7 @@ Clustering k_means(FeatureView points, size_t count, size_t iterations) {
         std::iota(labels.begin(), labels.end(), 0);
         return { std::move(centroids), std::move(labels) };
     }
-    Clustering result { FeatureMatrix::Zero(count, points.dimensions()), {} };
+    Clustering result { Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>::Zero(count, points.dimensions()), {} };
     auto& rng = utility::default_random();
     auto random_index = [&](size_t upper) { return static_cast<size_t>((uint64_t(rng()) * upper) >> 32); };
     std::unordered_set<size_t> selected;

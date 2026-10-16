@@ -133,12 +133,9 @@ struct Splat {
     void compute_compact_bounding_box();
 };
 
-struct Bounds {
-    std::array<float, 3> min {};
-    std::array<float, 3> max {};
-};
 Splat combine(std::vector<Splat>&& source, bool minimum_sh = false);
-Bounds bounds(const Splat& splat);
-Bounds dense_bounds(const Splat& splat, float ratio = 0.98f);
+Eigen::AlignedBox3f bounds(const Splat& splat);
+Eigen::AlignedBox3f bounds(const Splat& splat, std::span<const uint32_t> indices);
+Eigen::AlignedBox3f dense_bounds(const Splat& splat, float ratio = 0.98f);
 std::vector<uint32_t> morton_order(const Splat& splat);
 } // namespace splat_transform::splat

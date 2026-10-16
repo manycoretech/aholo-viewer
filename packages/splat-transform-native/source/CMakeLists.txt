@@ -219,6 +219,11 @@ if(BUILD_TESTING)
     target_sources(splat_transform_abstraction_tests PRIVATE tests/abstraction_tests.cpp)
     target_link_libraries(splat_transform_abstraction_tests PRIVATE splat_transform_core)
     add_test(NAME abstraction_contracts COMMAND splat_transform_abstraction_tests)
+    add_executable(splat_transform_geometry_tests)
+    target_sources(splat_transform_geometry_tests PRIVATE tests/geometry_tests.cpp)
+    target_include_directories(splat_transform_geometry_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(splat_transform_geometry_tests PRIVATE splat_transform_core)
+    add_test(NAME geometry_contracts COMMAND splat_transform_geometry_tests)
     add_executable(splat_transform_tests)
     target_sources(splat_transform_tests PRIVATE tests/core_tests.cpp)
     set_target_properties(splat_transform_tests PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -261,7 +266,7 @@ if(BUILD_TESTING)
     list(APPEND SPLAT_TRANSFORM_TARGETS
         splat_transform_streaming_tests
         splat_transform_logging_tests
-        splat_transform_abstraction_tests splat_transform_tests splat_transform_pipeline_tests
+        splat_transform_abstraction_tests splat_transform_geometry_tests splat_transform_tests splat_transform_pipeline_tests
         splat_transform_data_task_tests
         splat_transform_frozen_pipeline_tests
         splat_transform_threading_tests splat_transform_shader_tests splat_transform_gpu_tests)

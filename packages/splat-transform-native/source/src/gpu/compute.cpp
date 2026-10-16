@@ -429,7 +429,7 @@ public:
         } catch (...) {
         }
     }
-    std::vector<uint32_t> assign(const spatial::FeatureMatrix& centroids) {
+    std::vector<uint32_t> assign(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& centroids) {
         if (static_cast<size_t>(centroids.cols()) != columns_) {
             throw std::runtime_error("GPU centroid column count differs");
         }
@@ -700,7 +700,7 @@ ClusterSession::ClusterSession(spatial::FeatureView points, size_t centroid_coun
     impl_->work = std::make_unique<vulkan::ClusterWork>(vulkan::shared_context, points, centroid_count);
 }
 ClusterSession::~ClusterSession() = default;
-std::vector<uint32_t> ClusterSession::assign(const spatial::FeatureMatrix& centroids) { return impl_->work->assign(centroids); }
+std::vector<uint32_t> ClusterSession::assign(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& centroids) { return impl_->work->assign(centroids); }
 std::vector<uint32_t> voxelize(std::span<const Gaussian> gaussians, std::span<const uint32_t> indices, std::span<const VoxelBatch> batches,
     float resolution, float cutoff, uint32_t max_blocks) {
     if (batches.empty()) {

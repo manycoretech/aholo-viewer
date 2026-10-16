@@ -309,7 +309,7 @@ Grid filter_blocks(const Grid& grid) {
     utility::logger().info("voxel filter: ", removed, " voxels removed, ", filled, " voxels filled");
     return output;
 }
-void crop_grid(Grid& grid, splat::Bounds& bounds, float resolution, bool navigable, int margin) {
+void crop_grid(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, bool navigable, int margin) {
     auto extent = grid.extent(navigable);
     if (!extent) {
         return;
@@ -318,17 +318,17 @@ void crop_grid(Grid& grid, splat::Bounds& bounds, float resolution, bool navigab
     for (int axis = 0; axis < 3; ++axis) {
         minimum[axis] = std::max(0, minimum[axis] - margin);
         maximum[axis] = std::min(grid.blocks[axis], maximum[axis] + 1 + margin);
-        bounds.max[axis] = bounds.min[axis] + maximum[axis] * 4 * resolution;
-        bounds.min[axis] += minimum[axis] * 4 * resolution;
+        bounds.max()[axis] = bounds.min()[axis] + maximum[axis] * 4 * resolution;
+        bounds.min()[axis] += minimum[axis] * 4 * resolution;
     }
     grid = grid.crop(minimum, maximum);
 }
-void navigate(Grid& grid, splat::Bounds& bounds, float resolution, const Navigation& options) {
+void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const Navigation& options) {
     auto& logger = utility::logger();
     auto seed_cell = [&] {
         Point p {};
         for (int a = 0; a < 3; ++a) {
-            p[a] = int(std::floor(((*options.seed)[a] - bounds.min[a]) / resolution));
+            p[a] = int(std::floor(((*options.seed)[a] - bounds.min()[a]) / resolution));
         }
         return p;
     };
@@ -380,7 +380,7 @@ void navigate(Grid& grid, splat::Bounds& bounds, float resolution, const Navigat
         if (reachable.voxel_count() == 0) {
             logger.warn("carve: no navigable cells remain, returning empty result");
             grid = Grid();
-            bounds.max = bounds.min;
+            bounds.max() = bounds.min();
             return;
         }
         crop_grid(reachable, bounds, resolution, false, 1);

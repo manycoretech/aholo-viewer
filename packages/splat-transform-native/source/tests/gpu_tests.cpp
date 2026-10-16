@@ -12,7 +12,7 @@
 
 using namespace splat_transform;
 namespace {
-splat::Splat feature_splats(const spatial::FeatureMatrix& matrix, unsigned degree) {
+splat::Splat feature_splats(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& matrix, unsigned degree) {
     splat::Splat result(static_cast<size_t>(matrix.rows()), degree);
     const auto coefficients = result.sh_count() / 3;
     for (size_t row = 0; row < result.size(); ++row) {
@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
                 g.rotation = Eigen::Quaternionf::Identity();
                 g.opacity = 0.9f;
             }
-            const auto grid = voxel::voxelize(voxel::prepare(points), { { 0, 0, 0 }, { 512 * 1.6f, 0.4f, 0.4f } }, 0.1f, 0.2f);
+            const auto grid = voxel::voxelize(voxel::prepare(points), Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f(512 * 1.6f, 0.4f, 0.4f)), 0.1f, 0.2f);
             if (grid.voxel_count() != points.size()) {
                 throw std::runtime_error("Scene-wide voxel dispatch changed isolated Gaussian occupancy");
             }
@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
         }
         for (unsigned degree : { 1u, 2u, 3u }) {
             const auto columns = splat::SH_COUNTS[degree];
-            spatial::FeatureMatrix points(257, columns), centroids(129, columns);
+            Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> points(257, columns), centroids(129, columns);
             for (size_t c = 0; c < columns; ++c) {
                 for (size_t k = 0; k < 129; ++k) {
                     centroids(k, c) = float(std::sin((k + 1) * (c + 3) * 0.173));
@@ -128,7 +128,7 @@ int main(int argc, char** argv) {
         }
         {
             constexpr size_t ROWS = 200003, COLUMNS = 45, CENTROIDS = 129;
-            spatial::FeatureMatrix points(ROWS, COLUMNS), centroids(CENTROIDS, COLUMNS);
+            Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> points(ROWS, COLUMNS), centroids(CENTROIDS, COLUMNS);
             for (size_t c = 0; c < COLUMNS; ++c) {
                 for (size_t k = 0; k < CENTROIDS; ++k) {
                     centroids(k, c) = float(std::sin((k + 1) * (c + 3) * 0.173));
@@ -351,11 +351,12 @@ int main(int argc, char** argv) {
         source.gaussians[0].attribute(splat::QuatW) = 1;
         source.gaussians[0].attribute(splat::Alpha) = 1;
         const auto prepared = voxel::prepare(source);
-        const auto grid = voxel::voxelize(prepared, { { 0, 0, 0 }, { 1.6, 1.6, 1.6 } }, 0.1, 0.1);
+        const Eigen::AlignedBox3f box(Eigen::Vector3f::Zero(), Eigen::Vector3f::Constant(1.6f));
+        const auto grid = voxel::voxelize(prepared, box, 0.1, 0.1);
         if (!grid.get({ 8, 8, 8 }) || grid.get({ 0, 0, 0 })) {
             throw std::runtime_error("Vulkan voxel occupancy differs");
         }
-        const auto empty = voxel::voxelize(prepared, { { 0, 0, 0 }, { 1.6, 1.6, 1.6 } }, 0.1, 1);
+        const auto empty = voxel::voxelize(prepared, box, 0.1, 1);
         if (empty.voxel_count()) {
             throw std::runtime_error("An empty GPU result must stay empty");
         }

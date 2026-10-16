@@ -31,7 +31,7 @@ BlockedSplat generate(splat::Splat input, const Json& levels, float precision, s
     BlockedSplat output;
     if (!input.size()) {
         output.splats.push_back(std::move(input));
-        output.blocks.push_back({ {}, std::vector<uint32_t>(levels.size(), 0) });
+        output.blocks.push_back({ Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f::Zero()), std::vector<uint32_t>(levels.size(), 0) });
         return output;
     }
     if (!(precision > 0 && precision <= 1) || levels.empty()) {
@@ -59,10 +59,7 @@ BlockedSplat generate(splat::Splat input, const Json& levels, float precision, s
     for (size_t index = 0; index < futures.size(); ++index) {
         auto lod = futures.get(index);
         Block block;
-        for (size_t c = 0; c < 3; ++c) {
-            block.bounds.min[c] = lod.splats.front().bounding_box.min()[c];
-            block.bounds.max[c] = lod.splats.front().bounding_box.max()[c];
-        }
+        block.bounds = lod.splats.front().bounding_box;
         const auto base = static_cast<uint32_t>(output.splats.size());
         for (auto ref : lod.levels) {
             block.references.push_back(base + ref);

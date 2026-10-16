@@ -76,7 +76,7 @@ std::vector<SingleFile> chunk_lod(splat::Splat source, const Json& config) {
                 permanent.insert(location.file);
             }
         }
-        tree.push_back({ { "bound", { { "min", block.bounds.min }, { "max", block.bounds.max } } }, { "lods", lods } });
+        tree.push_back({ { "bound", io::bounds_json(block.bounds) }, { "lods", lods } });
     }
     Json names = Json::array();
     for (const auto& file : files) {
@@ -97,7 +97,7 @@ std::vector<SingleFile> chunk_lod(splat::Splat source, const Json& config) {
             std::setw(9), '(' + utility::fixed(float(count) / source_count * 100) + "%)");
     }
     Json meta { { "magicCode", 0x262834 }, { "type", "lod-splat" }, { "version", "1.0" }, { "counts", source_count },
-        { "shDegree", source_degree }, { "levels", levels.size() }, { "forwardBox", { { "min", forward.min }, { "max", forward.max } } },
+        { "shDegree", source_degree }, { "levels", levels.size() }, { "forwardBox", io::bounds_json(forward) },
         { "files", names }, { "permanentFiles", permanent }, { "tree", tree } };
     files.insert(files.begin(), { "lod-meta.json", meta.dump() });
     return files;

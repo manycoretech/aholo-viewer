@@ -163,8 +163,8 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
     if (prepared.invalid_extents) {
         logger.info("voxel: skipped ", prepared.invalid_extents, " gaussians with invalid extent values");
     }
-    logger.info("scene extents: (", utility::fixed(prepared.scene.min[0]), ',', utility::fixed(prepared.scene.min[1]), ',', utility::fixed(prepared.scene.min[2]),
-        ") - (", utility::fixed(prepared.scene.max[0]), ',', utility::fixed(prepared.scene.max[1]), ',', utility::fixed(prepared.scene.max[2]), ')');
+    logger.info("scene extents: (", utility::fixed(prepared.scene.min()[0]), ',', utility::fixed(prepared.scene.min()[1]), ',', utility::fixed(prepared.scene.min()[2]),
+        ") - (", utility::fixed(prepared.scene.max()[0]), ',', utility::fixed(prepared.scene.max()[1]), ',', utility::fixed(prepared.scene.max()[2]), ')');
     bounds_time.finish();
     Navigation navigation;
     navigation.floor_fill = config.value("floorFill", false);
@@ -175,7 +175,7 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
     }
     if (config.contains("navSeed")) {
         const auto& seed = config.at("navSeed");
-        navigation.seed = std::array<float, 3> { seed.at("x"), seed.at("y"), seed.at("z") };
+        navigation.seed = Eigen::Vector3f { seed.at("x").get<float>(), seed.at("y").get<float>(), seed.at("z").get<float>() };
     }
     if (config.contains("navCapsule")) {
         navigation.capsule_height = config.at("navCapsule").at("height");
@@ -188,9 +188,9 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
         auto bounds = prepared.scene;
         for (int a = 0; a < 3; ++a) {
             const float pad = a == 1 ? exterior_pad : std::max(exterior_pad, floor_pad);
-            bounds.min[a] = std::max(bounds.min[a] - pad, box.min[a]);
-            bounds.max[a] = std::min(bounds.max[a] + pad, box.max[a]);
-            if (!(bounds.min[a] < bounds.max[a])) {
+            bounds.min()[a] = std::max(bounds.min()[a] - pad, box.min()[a]);
+            bounds.max()[a] = std::min(bounds.max()[a] + pad, box.max()[a]);
+            if (!(bounds.min()[a] < bounds.max()[a])) {
                 throw std::runtime_error("Voxel box does not overlap scene bounds");
             }
         }
@@ -201,7 +201,7 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
         for (int grid_attempt = 0; grid_attempt < 4; ++grid_attempt) {
             float count = 1;
             for (int a = 0; a < 3; ++a) {
-                count *= std::round((bounds.max[a] - bounds.min[a]) / (4 * resolution));
+                count *= std::round((bounds.max()[a] - bounds.min()[a]) / (4 * resolution));
             }
             const float target = std::floor(0x7fffffff * 0.55f);
             if (count <= target) {
@@ -253,8 +253,8 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
             filename += ".zst";
         }
         const io::Json metadata {
-            { "version", "1.2" }, { "gridBounds", { { "min", bounds.min }, { "max", bounds.max } } },
-            { "sceneBounds", { { "min", prepared.scene.min }, { "max", prepared.scene.max } } },
+            { "version", "1.2" }, { "gridBounds", io::bounds_json(bounds) },
+            { "sceneBounds", io::bounds_json(prepared.scene) },
             { "voxelResolution", resolution }, { "leafSize", 4 }, { "treeDepth", tree.depth },
             { "numInteriorNodes", tree.interiors }, { "numMixedLeaves", tree.mixed },
             { "nodeCount", tree.nodes.size() }, { "leafDataCount", tree.leaves.size() },

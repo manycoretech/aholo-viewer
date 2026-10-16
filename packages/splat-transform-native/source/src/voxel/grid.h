@@ -51,8 +51,8 @@ Grid flood(const Grid& allowed, const std::vector<Point>& seeds, bool boundary =
 std::optional<Point> nearest_cell(const Grid& allowed, Point seed, int radius);
 Grid dilate(const Grid& grid, Point radius);
 Grid filter_blocks(const Grid& grid);
-void crop_grid(Grid& grid, splat::Bounds& bounds, float resolution, bool navigable, int margin);
-void navigate(Grid& grid, splat::Bounds& bounds, float resolution, const struct Navigation& options);
+void crop_grid(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, bool navigable, int margin);
+void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const struct Navigation& options);
 
 struct Navigation {
     bool floor_fill = false;
@@ -60,14 +60,14 @@ struct Navigation {
     float exterior_radius = 0;
     float capsule_height = 0;
     float capsule_radius = 0;
-    std::optional<std::array<float, 3>> seed;
+    std::optional<Eigen::Vector3f> seed;
 };
 struct Mesh {
     std::vector<float> positions;
     std::vector<uint32_t> indices;
 };
-Mesh voxel_faces(const Grid& grid, const splat::Bounds& bounds, float resolution);
-Mesh marching_cubes(const Grid& grid, const splat::Bounds& bounds, float resolution);
+Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution);
+Mesh marching_cubes(const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution);
 Mesh merge_coplanar(const Mesh& mesh, float resolution);
 std::vector<uint8_t> encode_glb(const Mesh& mesh);
 } // namespace splat_transform::voxel

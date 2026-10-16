@@ -44,7 +44,7 @@ public:
     ~ClusterSession();
     ClusterSession(const ClusterSession&) = delete;
     ClusterSession& operator=(const ClusterSession&) = delete;
-    std::vector<uint32_t> assign(const spatial::FeatureMatrix& centroids);
+    std::vector<uint32_t> assign(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& centroids);
 
 private:
     struct Impl;

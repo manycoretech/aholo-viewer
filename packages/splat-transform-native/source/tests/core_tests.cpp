@@ -11,7 +11,7 @@ namespace {
 using namespace splat_transform;
 
 template<typename Transform>
-concept AcceptsQuantization = requires(const spatial::FeatureMatrix& matrix, std::span<const splat::AttributeView> fields, Transform&& transform) {
+concept AcceptsQuantization = requires(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& matrix, std::span<const splat::AttributeView> fields, Transform&& transform) {
     { spatial::quantize_1d(matrix, std::forward<Transform>(transform)) } -> std::same_as<spatial::Quantization>;
     { spatial::quantize_1d(fields, std::forward<Transform>(transform)) } -> std::same_as<spatial::Quantization>;
 };
@@ -44,7 +44,7 @@ void half_values() {
 }
 
 void quantization() {
-    spatial::FeatureMatrix matrix(12, 3);
+    Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> matrix(12, 3);
     for (Eigen::Index row = 0; row < matrix.rows(); ++row) {
         for (Eigen::Index column = 0; column < matrix.cols(); ++column) {
             matrix(row, column) = float((row * 5 + column) % 9) * 0.25f;
@@ -92,14 +92,14 @@ void quantization() {
     if (attributes.centroids != expected.centroids || attributes.labels != expected.labels) {
         throw std::runtime_error("Attribute and matrix quantization disagree");
     }
-    const auto constant = spatial::quantize_1d(spatial::FeatureMatrix::Constant(4, 2, 1));
+    const auto constant = spatial::quantize_1d(Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>::Constant(4, 2, 1));
     if (!constant.labels.isZero() || !std::ranges::all_of(constant.centroids, [](float value) { return value == 1; })) {
         throw std::runtime_error("Constant quantization changed its zero-bin convention");
     }
-    if (spatial::quantize_1d(spatial::FeatureMatrix(0, 3)).labels.size() != 0) {
+    if (spatial::quantize_1d(Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>(0, 3)).labels.size() != 0) {
         throw std::runtime_error("Empty quantization produced labels");
     }
-    spatial::FeatureMatrix shifted(512, 1);
+    Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> shifted(512, 1);
     for (Eigen::Index row = 0; row < shifted.rows(); ++row) {
         shifted(row, 0) = 10000.0f + float(row % 65) * 0.001f;
     }

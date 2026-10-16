@@ -5,7 +5,7 @@
 #include <set>
 
 namespace splat_transform::voxel {
-Mesh marching_cubes(const Grid& grid, const splat::Bounds& bounds, float resolution) {
+Mesh marching_cubes(const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
     constexpr Point CORNERS[8] { { 0, 0, 0 }, { 1, 0, 0 }, { 1, 1, 0 }, { 0, 1, 0 }, { 0, 0, 1 }, { 1, 0, 1 }, { 1, 1, 1 }, { 0, 1, 1 } };
     constexpr std::array<int, 4> EDGES[12] {
         { 0, 0, 0, 0 }, { 1, 0, 0, 1 }, { 0, 1, 0, 0 }, { 0, 0, 0, 1 },
@@ -40,7 +40,7 @@ Mesh marching_cubes(const Grid& grid, const splat::Bounds& bounds, float resolut
         const auto index = uint32_t(output.positions.size() / 3);
         vertices[key] = index;
         for (int a = 0; a < 3; ++a) {
-            float coordinate = bounds.min[a] + key[a] * resolution;
+            float coordinate = bounds.min()[a] + key[a] * resolution;
             if (a == key[3]) {
                 coordinate += resolution * 0.5f;
             }

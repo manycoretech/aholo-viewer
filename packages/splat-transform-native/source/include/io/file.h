@@ -19,6 +19,11 @@ using Bytes = std::vector<uint8_t>;
 using Json = nlohmann::ordered_json;
 using Archive = std::map<std::string, Bytes>;
 
+inline Json bounds_json(const Eigen::AlignedBox3f& bounds) {
+    return { { "min", { bounds.min().x(), bounds.min().y(), bounds.min().z() } },
+        { "max", { bounds.max().x(), bounds.max().y(), bounds.max().z() } } };
+}
+
 class ByteReader {
 public:
     explicit ByteReader(std::span<const uint8_t> bytes) : bytes_(bytes) {}

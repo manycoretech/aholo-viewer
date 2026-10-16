@@ -11,7 +11,7 @@ splat::Splat skeleton(const splat::Splat& data, const Json& config) {
     if (!target || !data.size()) {
         return splat::Splat(0, 0);
     }
-    auto group = [&](std::span<const uint32_t> indices, const std::array<float, 3>& origin, const std::array<float, 3>& scale) {
+    auto group = [&](std::span<const uint32_t> indices, const Eigen::Vector3f& origin, const Eigen::Vector3f& scale) {
         std::map<std::array<int64_t, 3>, size_t> lookup;
         std::vector<std::vector<uint32_t>> groups;
         for (auto index : indices) {
@@ -29,7 +29,7 @@ splat::Splat skeleton(const splat::Splat& data, const Json& config) {
     };
     std::vector<uint32_t> indices(data.size());
     std::iota(indices.begin(), indices.end(), 0);
-    auto groups = group(indices, splat::bounds(data).min, { 50, 50, 50 });
+    auto groups = group(indices, splat::bounds(data).min(), { 50, 50, 50 });
     float ratio = 0;
     for (const auto& block : groups) {
         ratio += std::pow(float(block.size()), 1.3f);
@@ -42,18 +42,10 @@ splat::Splat skeleton(const splat::Splat& data, const Json& config) {
             merged.push_back(std::move(block));
             continue;
         }
-        std::array<float, 3> min, max, scale;
+        const auto box = splat::bounds(data, block);
         const float count = std::ceil(std::cbrt(float(size)));
-        for (size_t c = 0; c < 3; ++c) {
-            min[c] = std::numeric_limits<float>::infinity();
-            max[c] = -min[c];
-            for (auto index : block) {
-                min[c] = std::min(min[c], float(data.gaussians[index].attribute(c)));
-                max[c] = std::max(max[c], float(data.gaussians[index].attribute(c)));
-            }
-            scale[c] = count / std::max(max[c] - min[c], 1e-9f);
-        }
-        auto subgroups = group(block, min, scale);
+        const Eigen::Vector3f scale = count / box.sizes().array().max(1e-9f);
+        auto subgroups = group(block, box.min(), scale);
         if (subgroups.size() > size) {
             std::ranges::stable_sort(subgroups, std::ranges::greater {}, &std::vector<uint32_t>::size);
             subgroups.resize(size);

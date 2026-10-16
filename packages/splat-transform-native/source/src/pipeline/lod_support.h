@@ -4,7 +4,7 @@
 
 namespace splat_transform::pipeline {
 struct Block {
-    splat::Bounds bounds;
+    Eigen::AlignedBox3f bounds;
     std::vector<uint32_t> references;
 };
 struct BlockedSplat {

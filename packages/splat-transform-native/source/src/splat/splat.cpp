@@ -4,6 +4,7 @@
 #include <cmath>
 #include <numbers>
 #include <numeric>
+#include <ranges>
 #include <splat/splat.h>
 #include <stdexcept>
 #include <utility>
@@ -270,36 +271,46 @@ void Splat::compute_compact_bounding_box() {
         this->bounding_box.extend(this->gaussians[ref[i].first].bounding_box());
     }
 }
-Bounds bounds(const Splat& data) {
-    Bounds result;
-    if (!data.size()) {
+namespace {
+template<typename Indices>
+Eigen::AlignedBox3f center_bounds(const Splat& data, const Indices& indices) {
+    // Empty center bounds historically serialize as two zero vectors.
+    Eigen::AlignedBox3f result(Eigen::Vector3f::Zero(), Eigen::Vector3f::Zero());
+    if (std::ranges::empty(indices)) {
         return result;
     }
-    for (size_t axis = 0; axis < 3; ++axis) {
-        result.min[axis] = std::numeric_limits<float>::infinity();
-        result.max[axis] = -result.min[axis];
-        for (const auto& gaussian : data.gaussians) {
-            result.min[axis] = std::min(result.min[axis], float(gaussian.mean[axis]));
-            result.max[axis] = std::max(result.max[axis], float(gaussian.mean[axis]));
-        }
+    result.min().setConstant(std::numeric_limits<float>::infinity());
+    result.max() = -result.min();
+    for (auto index : indices) {
+        const auto& mean = data.gaussians[index].mean;
+        // Match the previous std::min/max accumulator: ignore a NaN input.
+        result.min() = result.min().cwiseMin<Eigen::PropagateNumbers>(mean);
+        result.max() = result.max().cwiseMax<Eigen::PropagateNumbers>(mean);
     }
     return result;
 }
-Bounds dense_bounds(const Splat& data, float ratio) {
+} // namespace
+Eigen::AlignedBox3f bounds(const Splat& data) {
+    return center_bounds(data, std::views::iota(size_t { 0 }, data.size()));
+}
+Eigen::AlignedBox3f bounds(const Splat& data, std::span<const uint32_t> indices) {
+    return center_bounds(data, indices);
+}
+Eigen::AlignedBox3f dense_bounds(const Splat& data, float ratio) {
     auto result = bounds(data);
     if (!data.size() || ratio >= 1) {
         return result;
     }
     constexpr int BIN_COUNT = 65535;
     std::array<std::vector<uint32_t>, 3> bins;
-    std::array<float, 3> scale;
+    Eigen::Vector3f scale;
     std::array<int, 3> start { 0, 0, 0 }, end { BIN_COUNT - 1, BIN_COUNT - 1, BIN_COUNT - 1 };
     for (size_t axis = 0; axis < 3; ++axis) {
         bins[axis].resize(BIN_COUNT, 0);
-        scale[axis] = BIN_COUNT / std::max(result.max[axis] - result.min[axis], 1e-9f);
+        scale[axis] = BIN_COUNT / std::max(result.max()[axis] - result.min()[axis], 1e-9f);
         for (const auto& gaussian : data.gaussians) {
             const float value = gaussian.mean[axis];
-            const auto index = static_cast<int>((value - result.min[axis]) * scale[axis]);
+            const auto index = static_cast<int>((value - result.min()[axis]) * scale[axis]);
             // The original typed array does not count a point in the upper endpoint bin.
             if (index >= 0 && index < BIN_COUNT) {
                 ++bins[axis][index];
@@ -333,8 +344,8 @@ Bounds dense_bounds(const Splat& data, float ratio) {
         remaining -= minimum;
     }
     for (size_t axis = 0; axis < 3; ++axis) {
-        result.max[axis] = end[axis] / scale[axis] + result.min[axis];
-        result.min[axis] += start[axis] / scale[axis];
+        result.max()[axis] = end[axis] / scale[axis] + result.min()[axis];
+        result.min()[axis] += start[axis] / scale[axis];
     }
     return result;
 }
@@ -354,14 +365,11 @@ std::vector<uint32_t> morton_order(const Splat& data) {
         if (slice.size() < 2) {
             return;
         }
-        std::array<float, 3> min, max, scale;
+        const auto box = bounds(data, slice);
+        const auto& min = box.min();
+        const auto& max = box.max();
+        Eigen::Vector3f scale;
         for (size_t axis = 0; axis < 3; ++axis) {
-            min[axis] = std::numeric_limits<float>::infinity();
-            max[axis] = -min[axis];
-            for (uint32_t i : slice) {
-                min[axis] = std::min(min[axis], float(data.gaussians[i].attribute(axis)));
-                max[axis] = std::max(max[axis], float(data.gaussians[i].attribute(axis)));
-            }
             if (!std::isfinite(max[axis] - min[axis])) {
                 return;
             }

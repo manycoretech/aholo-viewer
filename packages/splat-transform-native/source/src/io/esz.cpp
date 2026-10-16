@@ -178,7 +178,7 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
     logger.info(high_precision ? "ESZ encoding high mode" : "ESZ encoding low mode");
     constexpr int LEVEL = 3;
     const auto bounds = splat::bounds(data);
-    const Json meta { { "version", 2 }, { "layout", high_precision ? "high" : "low" }, { "counts", data.size() }, { "shDegree", data.sh_degree }, { "box", { { "min", bounds.min }, { "max", bounds.max } } } };
+    const Json meta { { "version", 2 }, { "layout", high_precision ? "high" : "low" }, { "counts", data.size() }, { "shDegree", data.sh_degree }, { "box", bounds_json(bounds) } };
     const auto text = meta.dump();
     Bytes output;
     append(output, ESZ_MAGIC);
@@ -231,8 +231,8 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         auto means_time = logger.time("ESZ encoding means");
         Bytes low(size_t(width) * height * 4, 255), high(low.size(), 255);
         for (size_t c = 0; c < 3; ++c) {
-            const float min = codec::signed_log(bounds.min[c]);
-            const float max = codec::signed_log(bounds.max[c]);
+            const float min = codec::signed_log(bounds.min()[c]);
+            const float max = codec::signed_log(bounds.max()[c]);
             const float scale = 65535 / std::max(max - min, 1e-9f);
             for (size_t i = 0; i < indices.size(); ++i) {
                 const auto value = static_cast<uint32_t>(std::clamp(std::floor((codec::signed_log(data.gaussians[indices[i]].attribute(c)) - min) * scale + 0.5f), 0.0f, 65535.0f));

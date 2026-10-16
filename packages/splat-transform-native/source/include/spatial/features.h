@@ -2,7 +2,6 @@
 #include <splat/splat.h>
 
 namespace splat_transform::spatial {
-using FeatureMatrix = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
 // Borrow native SH records without copying their coefficient storage.
 // The feature permutation preserves the existing clustering arithmetic order.

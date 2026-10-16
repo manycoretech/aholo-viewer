@@ -16,7 +16,7 @@ struct Quantization {
     Eigen::Matrix<uint8_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> labels;
 };
 struct Clustering {
-    FeatureMatrix centroids;
+    Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> centroids;
     std::vector<uint32_t> labels;
 };
 namespace detail {
@@ -41,7 +41,7 @@ Quantization quantize_1d(std::span<const splat::AttributeView> fields, Transform
 }
 
 template<QuantizationTransform Transform = std::identity>
-Quantization quantize_1d(const FeatureMatrix& fields, Transform&& transform = {}) {
+Quantization quantize_1d(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& fields, Transform&& transform = {}) {
     std::vector<splat::AttributeView> attributes;
     attributes.reserve(static_cast<size_t>(fields.cols()));
     const std::span values(fields.data(), static_cast<size_t>(fields.size()));
