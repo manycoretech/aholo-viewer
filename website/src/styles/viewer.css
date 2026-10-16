@@ -758,6 +758,51 @@
     backdrop-filter: blur(14px);
 }
 
+.orbit-gizmo {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 4;
+    width: 180px;
+    height: 180px;
+    overflow: visible;
+    color: var(--scene-text);
+    pointer-events: none;
+    touch-action: none;
+    transform: translate(-50%, -50%);
+}
+
+.orbit-gizmo-hit {
+    outline: none;
+    pointer-events: stroke;
+    cursor: grab;
+}
+
+.orbit-gizmo-feature {
+    opacity: 0.24;
+}
+
+.orbit-gizmo-hit-dragging {
+    cursor: grabbing;
+}
+
+.orbit-gizmo-arc {
+    transition:
+        stroke-opacity 120ms ease,
+        stroke-width 120ms ease;
+}
+
+.orbit-gizmo:has(.orbit-gizmo-hit-x:is(:hover, :focus-visible, .orbit-gizmo-hit-dragging)) .orbit-gizmo-arc-x,
+.orbit-gizmo:has(.orbit-gizmo-hit-y:is(:hover, :focus-visible, .orbit-gizmo-hit-dragging)) .orbit-gizmo-arc-y,
+.orbit-gizmo:has(.orbit-gizmo-hit-z:is(:hover, :focus-visible, .orbit-gizmo-hit-dragging)) .orbit-gizmo-arc-z {
+    stroke-width: 5;
+}
+
+.orbit-gizmo-hit:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+
 .viewer-config-panel {
     --tool-panel-label-width: 90px;
     border: 0;
@@ -960,5 +1005,10 @@
     .viewer-shell:is([data-left-collapsed='auto'], [data-left-collapsed='true']) .viewer-status {
         left: var(--viewer-panel-gap);
         transform: none;
+    }
+
+    .orbit-gizmo {
+        width: 144px;
+        height: 144px;
     }
 }
