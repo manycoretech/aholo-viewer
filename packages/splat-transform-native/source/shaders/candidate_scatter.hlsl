@@ -15,13 +15,31 @@
     if (!candidate_range(gaussians[index], parameters, first, last)) {
         return;
     }
+    uint result_index = (CANDIDATE_MODE & 2) != 0 ? index + parameters.first_point : index;
+    if ((CANDIDATE_MODE & 1) == 0) {
+        for (int z = first.z; z <= last.z; ++z) {
+            for (int y = first.y; y <= last.y; ++y) {
+                for (int x = first.x; x <= last.x; ++x) {
+                    uint bin = x + y * parameters.nx + z * parameters.nx * parameters.ny;
+                    uint offset;
+                    InterlockedAdd(heads[bin], 1, offset);
+                    indices[offsets[bin] + offset] = result_index;
+                }
+            }
+        }
+        return;
+    }
     for (int z = first.z; z <= last.z; ++z) {
         for (int y = first.y; y <= last.y; ++y) {
-            for (int x = first.x; x <= last.x; ++x) {
-                uint bin = x + y * parameters.nx + z * parameters.nx * parameters.ny;
+            uint begin, end;
+            if (!candidate_row(parameters, first, last, y, z, begin, end)) {
+                continue;
+            }
+            for (uint global_bin = begin; global_bin < end; ++global_bin) {
+                uint bin = global_bin - parameters.first_bin;
                 uint offset;
                 InterlockedAdd(heads[bin], 1, offset);
-                indices[offsets[bin] + offset] = index;
+                indices[offsets[bin] + offset] = result_index;
             }
         }
     }

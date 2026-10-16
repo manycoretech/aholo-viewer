@@ -1,5 +1,7 @@
 #include "gaussian.hlsli"
 
+[[vk::constant_id(0)]] const uint VOXEL_MODE = 0;
+
 struct Batch {
     uint offset;
     uint count;
@@ -14,6 +16,8 @@ struct Parameters {
     float resolution;
     float cutoff;
     uint max_blocks;
+    uint accumulation;
+    uint first_block;
 };
 
 [[vk::push_constant]] ConstantBuffer<Parameters> parameters;
@@ -43,6 +47,9 @@ float evaluate(float3 center, float half_size, Gaussian g) {
 [numthreads(64, 1, 1)] void main(uint3 group_id : SV_GroupID, uint local_id : SV_GroupIndex) {
     uint batch_id = group_id.z;
     uint block_id = group_id.x;
+    if (VOXEL_MODE != 0) {
+        block_id += parameters.first_block;
+    }
     Batch batch = batches[batch_id];
     if (block_id >= batch.nx * batch.ny * batch.nz) {
         return;
@@ -58,7 +65,9 @@ float evaluate(float3 center, float half_size, Gaussian g) {
         masks[local_id] = 0;
     }
     GroupMemoryBarrierWithGroupSync();
-    precise float total = 0.0;
+    uint result_stride = VOXEL_MODE != 0 && parameters.accumulation != 0 ? 64 : 2;
+    uint result_base = (batch_id * parameters.max_blocks + group_id.x) * result_stride;
+    precise float total = VOXEL_MODE != 0 && (parameters.accumulation & 1) != 0 ? asfloat(results[result_base + local_id]) : 0.0;
     for (uint start = 0; start < batch.count; start += 64) {
         uint count = min(64u, batch.count - start);
         if (local_id < count) {
@@ -75,12 +84,19 @@ float evaluate(float3 center, float half_size, Gaussian g) {
         }
         GroupMemoryBarrierWithGroupSync();
     }
+    // Keep partial density in the result buffer until the final candidate chunk.
+    // Each block owns 64 words while streaming, so final masks cannot overwrite
+    // another workgroup's partial totals.
+    if (VOXEL_MODE != 0 && (parameters.accumulation & 2) != 0) {
+        results[result_base + local_id] = asuint(total);
+        return;
+    }
     if (1.0 - exp(-total) >= parameters.cutoff) {
         uint bit_index = position.z * 16 + position.y * 4 + position.x;
         InterlockedOr(masks[bit_index >> 5], 1u << (bit_index & 31));
     }
     GroupMemoryBarrierWithGroupSync();
     if (local_id < 2) {
-        results[(batch_id * parameters.max_blocks + block_id) * 2 + local_id] = masks[local_id];
+        results[result_base + local_id] = masks[local_id];
     }
 }

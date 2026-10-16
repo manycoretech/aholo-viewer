@@ -13,10 +13,24 @@
     if (!candidate_range(gaussians[index], parameters, first, last)) {
         return;
     }
+    if ((CANDIDATE_MODE & 1) == 0) {
+        for (int z = first.z; z <= last.z; ++z) {
+            for (int y = first.y; y <= last.y; ++y) {
+                for (int x = first.x; x <= last.x; ++x) {
+                    InterlockedAdd(counts[x + y * parameters.nx + z * parameters.nx * parameters.ny], 1);
+                }
+            }
+        }
+        return;
+    }
     for (int z = first.z; z <= last.z; ++z) {
         for (int y = first.y; y <= last.y; ++y) {
-            for (int x = first.x; x <= last.x; ++x) {
-                InterlockedAdd(counts[x + y * parameters.nx + z * parameters.nx * parameters.ny], 1);
+            uint begin, end;
+            if (!candidate_row(parameters, first, last, y, z, begin, end)) {
+                continue;
+            }
+            for (uint bin = begin; bin < end; ++bin) {
+                InterlockedAdd(counts[bin - parameters.first_bin], 1);
             }
         }
     }

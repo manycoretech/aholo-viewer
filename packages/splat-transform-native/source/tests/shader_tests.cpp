@@ -169,9 +169,9 @@ int main() {
         for (const auto& shader : cluster_variants) {
             check(shader.spirv, std::array { 16u, 16u, 4u, 4u }, 8, 128, shader.tile * (shader.columns * 16 + 4));
         }
-        check(candidate_count, std::array { 64u, 4u }, 36, 128, 0);
-        check(candidate_scatter, std::array { 64u, 4u, 4u, 4u }, 36, 128, 0);
-        check(voxelize, std::array { 64u, 4u, 32u, 4u }, 12, 64, 64 * 64 + 8);
+        check(candidate_count, std::array { 64u, 4u }, 48, 128, 0);
+        check(candidate_scatter, std::array { 64u, 4u, 4u, 4u }, 48, 128, 0);
+        check(voxelize, std::array { 64u, 4u, 32u, 4u }, 20, 64, 64 * 64 + 8);
         for (const auto shader : { std::span<const uint8_t>(expand), std::span<const uint8_t>(compact) }) {
             check(shader, std::array { 4u, 4u }, 20, 128, 0);
         }
