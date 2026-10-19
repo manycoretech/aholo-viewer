@@ -1,6 +1,7 @@
 Language: Cpp
 BasedOnStyle: LLVM
 UseTab: Never
+LineEnding: LF
 IndentWidth: 4
 TabWidth: 4
 BreakBeforeBraces: Attach

@@ -12,7 +12,6 @@
     { "name": "libzip", "default-features": false },
     "vulkan-headers",
     "vulkan-memory-allocator",
-    { "name": "dxc", "host": true },
     "libwebp",
     {
       "name": "libavif",

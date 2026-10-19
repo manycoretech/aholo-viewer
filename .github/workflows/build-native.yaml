@@ -35,6 +35,38 @@ permissions:
   packages: write
 
 jobs:
+  compile-shaders:
+    name: Compile shared SPIR-V shaders (Windows)
+    runs-on: windows-2025-vs2026
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download DXC
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'dxc_2025_07_14.zip'
+          $dxcRoot = Join-Path $env:RUNNER_TEMP 'aholo-dxc'
+          Invoke-WebRequest 'https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2505.1/dxc_2025_07_14.zip' -OutFile $archive
+          $expectedHash = '69dd74ee2bc8a7ac569fa71351209412f74ef901c58dc59d413277e3129ce78d31dbca0996c2910048bfd0575e7a10655d89d361b5a2ed2963c831385711380f'
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA512).Hash -ne $expectedHash) {
+            throw 'DXC archive checksum mismatch'
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $dxcRoot
+          "DXC_EXECUTABLE=$dxcRoot/bin/x64/dxc.exe" >> $env:GITHUB_ENV
+
+      - name: Compile shaders
+        run: cmake -P packages/splat-transform-native/source/cmake/compile-shaders.cmake
+
+      - name: Upload shader headers
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-shader-headers
+          path: packages/splat-transform-native/source/build/generated/shaders/*.h
+          if-no-files-found: error
+
   build-linux-image:
     name: Build native Linux image (${{ matrix.arch }})
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
@@ -134,9 +166,10 @@ jobs:
   build-splat-transform-native:
     name: Build splat-transform native (${{ matrix.target }})
     needs:
+      - compile-shaders
       - build-linux-image
       - publish-linux-image
-    if: ${{ always() && ((needs.build-linux-image.result == 'success' && needs.publish-linux-image.result == 'success') || (needs.build-linux-image.result == 'skipped' && needs.publish-linux-image.result == 'skipped')) }}
+    if: ${{ always() && needs.compile-shaders.result == 'success' && ((needs.build-linux-image.result == 'success' && needs.publish-linux-image.result == 'success') || (needs.build-linux-image.result == 'skipped' && needs.publish-linux-image.result == 'skipped')) }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -177,6 +210,12 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: recursive
+
+      - name: Download shader headers
+        uses: actions/download-artifact@v8
+        with:
+          name: native-shader-headers
+          path: packages/splat-transform-native/source/build/generated/shaders
 
       - name: Login to GitHub Container Registry
         if: startsWith(matrix.os, 'ubuntu')
@@ -264,16 +303,6 @@ jobs:
           $manifestLog = 'packages/splat-transform-native/source/build/vcpkg-manifest-install.log'
           if (Test-Path -LiteralPath $manifestLog) {
             Get-Content -LiteralPath $manifestLog -Tail 150
-          }
-          if ($env:VCPKG_ROOT) {
-            $dxcLogs = Join-Path $env:VCPKG_ROOT 'buildtrees/dxc'
-            if (Test-Path -LiteralPath $dxcLogs) {
-              Get-ChildItem -LiteralPath $dxcLogs -Filter '*.log' | ForEach-Object {
-                Write-Output "::group::$($_.Name)"
-                Get-Content -LiteralPath $_.FullName -Tail 200
-                Write-Output '::endgroup::'
-              }
-            }
           }
 
       - name: Validate executable (Windows)

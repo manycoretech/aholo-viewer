@@ -8,7 +8,7 @@ CLI11 generates help and validates command-line arguments. `-h` is an alias for 
 
 Install CMake 3.31+, a C++20 compiler, and vcpkg. Set `VCPKG_ROOT` to the bootstrapped vcpkg checkout. Linux CI uses Ubuntu 22.04 and Clang 21 through `/usr/bin/cc` and `/usr/bin/c++`. Linux Clang builds also require the matching compiler-rt development package. Windows presets let CMake select the generator and host architecture; use the preset matching the native build host, or pass cross-compilation settings explicitly. AppleClang builds enable `-fexperimental-library` for the logger translation unit because libc++ currently gates `<syncstream>` behind that flag.
 
-Run from this directory:
+CMake automatically generates missing or outdated shader headers during configuration. Install DXC using the [development setup](#dxc-and-shader-generation) below, or download matching CI shader headers to build without DXC. Run from this directory:
 
 ```sh
 cmake --workflow --preset x64-windows-static
@@ -42,11 +42,40 @@ Run these commands inside the Ubuntu 22.04 build container. The preset still sup
 
 The main packages/splat-transform/package.json is the version source. CMake uses its numeric part for the project version and reconfigures when the manifest changes. configure_file generates build-directory generated/version.h from src/cli/version.h.in with the full version for native --version output. The npm CLI and publishing script also use the full version, including prerelease suffixes. Platform package manifests keep version 0.0.0 in source control; scripts/publish-packages.mjs assigns the main package version to them and the matching optional dependencies before publishing. Changing the main package manifest also triggers the native build workflow.
 
-Vcpkg supplies static image/compression/archive/HTTP libraries, Eigen, nanoflann, nlohmann-json, Vulkan headers, VMA, and the DXC host compiler. HLSL compute shaders compile to embedded SPIR-V during the build. The local dxc overlay port pins DXC v1.8.2505.1 and its source dependencies. Windows x64/ARM64 and Linux x64 use Microsoft's release binaries; Linux ARM64 and macOS compile the same release from source. The optional dxc[from-source] feature also selects the source build on Linux x64. Only the build host needs DXC; runtime shader compilation and a Vulkan SDK are not required.
+Vcpkg supplies static image/compression/archive/HTTP libraries, Eigen, nanoflann, nlohmann-json, Vulkan headers, and VMA. DXC is a separate development tool used only to generate shader headers. The native CMake build reuses matching headers without finding DXC and invokes the generator only when headers need regeneration. Vcpkg does not install or build DXC.
 
-The DXC source overlay disables its legacy `StringRef` standard-trait specializations when using libc++, which already computes the correct traits and rejects those specializations with Apple Clang 21. Other standard libraries retain the existing workaround.
+### DXC and shader generation
 
-On macOS, the overlay preserves DXC's `@loader_path/../lib` install RPATH and disables vcpkg's generic Mach-O RPATH rewrite for this port. This keeps `libdxcompiler.dylib` resolvable in `tools/dxc/lib` after installation.
+Shader generation requires CMake 3.31+ and a DXC build with SPIR-V support for the development host. CI uses Microsoft's [DXC v1.8.2505.1 release](https://github.com/microsoft/DirectXShaderCompiler/releases/tag/v1.8.2505.1); use that version where available to match CI.
+
+| Platform                    | DXC setup                                                                                                                                                                                                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows x64 / ARM64         | Extract `dxc_2025_07_14.zip` from the release. Add the matching `bin/x64` or `bin/arm64` directory to `PATH`, keeping the DLLs beside `dxc.exe`.                                                                                                                    |
+| Linux x64                   | Extract `linux_dxc_2025_07_14.x86_64.tar.gz` from the release. Add its `bin` directory to `PATH` and preserve the adjacent `lib` directory.                                                                                                                         |
+| macOS                       | Install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/doc/view/latest/mac/getting_started.html), then source its `setup-env.sh` or use `$VULKAN_SDK/bin/dxc` explicitly. The SDK includes a SPIR-V-enabled DXC; its version may differ from CI.                 |
+| Linux ARM64 / source builds | Use a native DXC with SPIR-V support, or follow the [upstream Unix build instructions](https://github.com/microsoft/DirectXShaderCompiler/blob/main/docs/BuildingAndTestingDXC.rst) with `ENABLE_SPIRV_CODEGEN=ON`. The pinned release's Linux archive is x64-only. |
+
+Check `dxc --version` and confirm that `dxc -help` lists `-spirv`. A DXC bundled with another toolchain may omit the SPIR-V backend. Compilation, input hashing, variant enumeration, and header generation run directly through CMake; no Python or Node.js installation is needed.
+
+Normal CMake configure and workflow commands generate the headers automatically when needed. Changes to `shaders/*.hlsl`, `shaders/*.hlsli`, `cmake/compile-shaders.cmake`, or `cmake/shader-inputs.cmake` also trigger reconfiguration and regeneration on the next build. To generate headers explicitly, run from this directory:
+
+```sh
+cmake -P cmake/compile-shaders.cmake
+# Optional explicit compiler path; -D arguments must precede -P:
+cmake -DDXC_EXECUTABLE=/path/to/dxc -P cmake/compile-shaders.cmake
+# Generate for a different native build directory:
+cmake -DSHADER_OUTPUT_DIR=build/arm64/generated/shaders -P cmake/compile-shaders.cmake
+```
+
+This CMake script runs independently of the native project: it does not configure C++, install vcpkg dependencies, or require a CMake build directory.
+
+The CMake script also accepts `DXC_EXECUTABLE` as an environment variable and otherwise searches `PATH`. It resolves shader sources relative to the script, so it can be invoked from any working directory. Native configuration also accepts `-DDXC_EXECUTABLE=/path/to/dxc`; workflow presets can use `DXC_EXECUTABLE` from the environment.
+
+Native builds write headers to `${CMAKE_CURRENT_BINARY_DIR}/generated/shaders`, so separate `cmake -B` directories have separate outputs. Standalone generation defaults to `source/build/generated/shaders`, matching the supplied presets. Override the output with `-DSHADER_OUTPUT_DIR=/path/to/generated/shaders` in either native configuration or the standalone CMake command. Relative output paths are resolved against the native binary directory during configuration, or against the working directory for standalone commands.
+
+The generator compiles every `shaders/*.hlsl` entry point and the 24 clustering variants, producing 30 SPIR-V byte-array headers plus the aggregate `cluster.h` in the selected output directory. The source `shaders/` directory contains only HLSL inputs. Outputs under `build/` are covered by the existing Git ignore rule. Temporary files are staged inside the output directory and removed after generation; existing headers are replaced only after every shader compiles successfully. Unchanged headers retain their timestamps. Missing headers or an input checksum mismatch trigger automatic regeneration. If DXC is unavailable or compilation fails, configuration stops with a diagnostic and the previous headers remain intact.
+
+CI runs `cmake -P packages/splat-transform-native/source/cmake/compile-shaders.cmake` once on Windows with the pinned, SHA-512-verified DXC archive. It uploads `source/build/generated/shaders/*.h` as the `native-shader-headers` artifact. Every Windows, Linux, and macOS native build job downloads it into `source/build/generated/shaders/`, matching the presets' binary directory. Matching artifacts skip generation and do not require DXC on those hosts. A developer can also extract the artifact from a successful workflow for the same source revision into their build directory's `generated/shaders/` folder. Subsequent shader changes require a local DXC for automatic regeneration or an updated matching artifact.
 
 Shaders target Vulkan 1.1 / SPIR-V 1.3 with explicit descriptor bindings, push constants, and std430-compatible storage layouts. The build uses -fvk-use-gl-layout and does not require scalar-block-layout or subgroup extensions. HLSL clustering variants cover SH1/SH2/SH3 and all supported shared-memory tile sizes; runtime selection continues to respect each device's shared-memory limit. Linear kernels receive the dispatch width through push constants to preserve indexing across two-dimensional dispatches.
 

@@ -1,0 +1,47 @@
+get_filename_component(SHADER_SOURCE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+set(SHADER_DIRECTORY "${SHADER_SOURCE_DIRECTORY}/shaders")
+if(NOT DEFINED SHADER_OUTPUT_DIR OR SHADER_OUTPUT_DIR STREQUAL "")
+    if(CMAKE_SCRIPT_MODE_FILE)
+        set(SHADER_OUTPUT_DIR "${SHADER_SOURCE_DIRECTORY}/build/generated/shaders")
+    else()
+        set(SHADER_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/shaders")
+    endif()
+endif()
+get_filename_component(SHADER_OUTPUT_DIR "${SHADER_OUTPUT_DIR}" ABSOLUTE
+    BASE_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+set(SHADER_GLOB_OPTIONS)
+if(NOT CMAKE_SCRIPT_MODE_FILE)
+    list(APPEND SHADER_GLOB_OPTIONS CONFIGURE_DEPENDS)
+endif()
+file(GLOB COMPUTE_SHADERS ${SHADER_GLOB_OPTIONS} "${SHADER_DIRECTORY}/*.hlsl")
+file(GLOB SHADER_INCLUDES ${SHADER_GLOB_OPTIONS} "${SHADER_DIRECTORY}/*.hlsli")
+
+set(SHADER_DXC_OPTIONS -spirv -T cs_6_0 -E main -HV 2021
+    -fspv-target-env=vulkan1.1 -fvk-use-gl-layout -Ges -WX)
+# HLSL array extents are compile-time constants: SH1/SH2/SH3 x tile sizes.
+set(SHADER_CLUSTER_COLUMNS 3 6 12)
+set(SHADER_CLUSTER_TILES 1 2 4 8 16 32 64 128)
+set(GENERATED_SHADER_HEADERS)
+foreach(SHADER IN LISTS COMPUTE_SHADERS)
+    get_filename_component(SHADER_NAME "${SHADER}" NAME_WE)
+    list(APPEND GENERATED_SHADER_HEADERS "${SHADER_OUTPUT_DIR}/${SHADER_NAME}.h")
+endforeach()
+foreach(COLUMNS IN LISTS SHADER_CLUSTER_COLUMNS)
+    foreach(TILE IN LISTS SHADER_CLUSTER_TILES)
+        list(APPEND GENERATED_SHADER_HEADERS "${SHADER_OUTPUT_DIR}/cluster_${COLUMNS}_${TILE}.h")
+    endforeach()
+endforeach()
+
+# Hash relative names and file bytes so headers can be shared across hosts.
+set(SHADER_INPUTS
+    "${SHADER_SOURCE_DIRECTORY}/cmake/shader-inputs.cmake"
+    "${SHADER_SOURCE_DIRECTORY}/cmake/compile-shaders.cmake"
+    ${COMPUTE_SHADERS} ${SHADER_INCLUDES})
+list(SORT SHADER_INPUTS)
+set(SHADER_INPUT_RECORDS "")
+foreach(INPUT IN LISTS SHADER_INPUTS)
+    file(RELATIVE_PATH INPUT_NAME "${SHADER_SOURCE_DIRECTORY}" "${INPUT}")
+    file(SHA256 "${INPUT}" INPUT_HASH)
+    string(APPEND SHADER_INPUT_RECORDS "${INPUT_HASH}  ${INPUT_NAME}\n")
+endforeach()
+string(SHA256 SHADER_INPUT_HASH "${SHADER_INPUT_RECORDS}")
