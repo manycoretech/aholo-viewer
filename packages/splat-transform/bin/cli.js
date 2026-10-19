@@ -17,6 +17,16 @@ SUPPORTED OUTPUTS
     .ply   .spz   .uspz   .splat   .sog   .esz
 `;
 
+const splitNormalOption = {
+    describe: 'block split reference normal (case-insensitive)',
+    choices: [0, 1, 2, 3, 'None', 'X', 'Y', 'Z'],
+    coerce(value) {
+        if (typeof value !== 'string') return value;
+        const normal = value.toUpperCase();
+        return normal === 'NONE' ? 'None' : normal;
+    },
+};
+
 const cli = yargs(hideBin(process.argv))
     .scriptName('splat-transform')
     .version(packageJson.version)
@@ -104,10 +114,7 @@ const cli = yargs(hideBin(process.argv))
         describe: 'Generate auto-lod for gaussian splat file',
         builder(argv) {
             argv.option('ratio', { describe: 'ratio', type: 'number' })
-                .option('split-normal', {
-                    describe: 'block split reference normal',
-                    choices: [0, 1, 2, 3, 'None', 'X', 'Y', 'Z'],
-                })
+                .option('split-normal', splitNormalOption)
                 .positional('input', { describe: 'input filepath', type: 'string' })
                 .positional('output', { describe: 'output filepath', type: 'string' });
         },
@@ -137,10 +144,7 @@ const cli = yargs(hideBin(process.argv))
                     describe: 'output file type',
                     type: 'string',
                 })
-                .option('split-normal', {
-                    describe: 'block split reference normal',
-                    choices: [0, 1, 2, 3, 'None', 'X', 'Y', 'Z'],
-                })
+                .option('split-normal', splitNormalOption)
                 .positional('input', { describe: 'input filepath', type: 'string' })
                 .positional('output', { describe: 'output directory', type: 'string' });
         },
@@ -176,10 +180,7 @@ const cli = yargs(hideBin(process.argv))
                     describe: 'output file type',
                     type: 'string',
                 })
-                .option('split-normal', {
-                    describe: 'block split reference normal',
-                    choices: [0, 1, 2, 3, 'None', 'X', 'Y', 'Z'],
-                })
+                .option('split-normal', splitNormalOption)
                 .positional('input', { describe: 'input filepath', type: 'string' })
                 .positional('output', { describe: 'output directory', type: 'string' });
         },

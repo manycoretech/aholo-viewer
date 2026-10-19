@@ -1,5 +1,5 @@
 #pragma once
-#include "grid.h"
+#include "backend.h"
 #include <gpu/compute.h>
 #include <io/file.h>
 
@@ -17,7 +17,7 @@ struct PreparedData {
 };
 PreparedData prepare(const splat::Splat& data);
 Eigen::AlignedBox3f align_bounds(Eigen::AlignedBox3f bounds, float resolution);
-Grid voxelize(const PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff);
-void filter_cluster(PreparedData& data, const io::Json& options, const Eigen::AlignedBox3f& box);
+Grid make_grid(const Eigen::AlignedBox3f& bounds, float resolution);
+void filter_cluster(PreparedData& data, const io::Json& options, const Eigen::AlignedBox3f& box, const Backend& backend = gpu_backend());
 Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBox3f& scene, const io::Json& config);
 } // namespace splat_transform::voxel

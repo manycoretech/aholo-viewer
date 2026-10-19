@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
                 g.rotation = Eigen::Quaternionf::Identity();
                 g.opacity = 0.9f;
             }
-            const auto grid = voxel::voxelize(voxel::prepare(points), Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f(512 * 1.6f, 0.4f, 0.4f)), 0.1f, 0.2f);
+            const auto grid = voxel::gpu_backend().voxelize(voxel::prepare(points), Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f(512 * 1.6f, 0.4f, 0.4f)), 0.1f, 0.2f);
             if (grid.voxel_count() != points.size()) {
                 throw std::runtime_error("Scene-wide voxel dispatch changed isolated Gaussian occupancy");
             }
@@ -340,7 +340,7 @@ int main(int argc, char** argv) {
         }
         voxel::Grid single({ 12, 12, 12 });
         single.set({ 5, 5, 5 });
-        if (voxel::dilate(single, { 1, 2, 1 }).voxel_count() != 45) {
+        if (voxel::gpu_backend().dilate(single, { 1, 2, 1 }).voxel_count() != 45) {
             throw std::runtime_error("Box dilation changed its kernel");
         }
         splat::Splat source(1, 0);
@@ -352,11 +352,11 @@ int main(int argc, char** argv) {
         source.gaussians[0].attribute(splat::Alpha) = 1;
         const auto prepared = voxel::prepare(source);
         const Eigen::AlignedBox3f box(Eigen::Vector3f::Zero(), Eigen::Vector3f::Constant(1.6f));
-        const auto grid = voxel::voxelize(prepared, box, 0.1, 0.1);
+        const auto grid = voxel::gpu_backend().voxelize(prepared, box, 0.1, 0.1);
         if (!grid.get({ 8, 8, 8 }) || grid.get({ 0, 0, 0 })) {
             throw std::runtime_error("Vulkan voxel occupancy differs");
         }
-        const auto empty = voxel::voxelize(prepared, box, 0.1, 1);
+        const auto empty = voxel::gpu_backend().voxelize(prepared, box, 0.1, 1);
         if (empty.voxel_count()) {
             throw std::runtime_error("An empty GPU result must stay empty");
         }

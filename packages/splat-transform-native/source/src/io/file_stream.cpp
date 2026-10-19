@@ -6,6 +6,7 @@
 #include <boost/asio/thread_pool.hpp>
 #include <fstream>
 #include <future>
+#include <io/file.h>
 #include <limits>
 #include <system_error>
 #if defined(BOOST_ASIO_HAS_FILE)
@@ -52,7 +53,8 @@ struct FileStream::Impl {
                     FILE_SHARE_READ, nullptr, mode == Access::Read ? OPEN_EXISTING : CREATE_ALWAYS,
                     FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
                 if (handle == INVALID_HANDLE_VALUE) {
-                    throw std::system_error(int(GetLastError()), std::system_category(), "Cannot open input/output file");
+                    const auto error = GetLastError();
+                    throw std::system_error(int(error), std::system_category(), "Cannot open input/output file: " + path_utf8(path));
                 }
                 boost::system::error_code error;
                 native->assign(handle, error);
@@ -79,7 +81,7 @@ struct FileStream::Impl {
 #endif
         fallback.open(path, std::ios::binary | (mode == Access::Read ? std::ios::in : std::ios::out | std::ios::trunc));
         if (!fallback) {
-            throw std::runtime_error("Cannot open input/output file: " + path.string());
+            throw std::runtime_error("Cannot open input/output file: " + path_utf8(path));
         }
         if (mode == Access::Read) {
             const auto size = std::filesystem::file_size(path);

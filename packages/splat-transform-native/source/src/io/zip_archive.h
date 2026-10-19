@@ -1,5 +1,5 @@
 #pragma once
-#include <io/file.h>
+#include <io/resource.h>
 #include <limits>
 #include <memory>
 #include <zip.h>
@@ -44,7 +44,7 @@ public:
     Bytes read(const std::string& name) const {
         zip_stat_t stat;
         if (zip_stat(archive_.get(), name.c_str(), 0, &stat) != 0 || stat.size > std::numeric_limits<size_t>::max()) {
-            throw std::runtime_error("Cannot read ZIP entry: " + name);
+            throw std::runtime_error("Cannot read ZIP entry: " + normalized(name));
         }
         auto file = std::unique_ptr<zip_file_t, decltype(&zip_fclose)>(zip_fopen(archive_.get(), name.c_str(), 0), zip_fclose);
         if (!file) {
@@ -55,7 +55,7 @@ public:
         while (offset < output.size()) {
             const auto count = zip_fread(file.get(), output.data() + offset, output.size() - offset);
             if (count <= 0) {
-                throw std::runtime_error("Truncated ZIP entry: " + name);
+                throw std::runtime_error("Truncated ZIP entry: " + normalized(name));
             }
             offset += size_t(count);
         }

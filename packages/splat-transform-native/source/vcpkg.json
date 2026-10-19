@@ -2,6 +2,7 @@
   "dependencies": [
     { "name": "boost-asio", "default-features": false },
     { "name": "liburing", "platform": "linux" },
+    "cli11",
     "eigen3",
     "nanoflann",
     "nlohmann-json",

@@ -12,7 +12,7 @@ The processing engine is a standalone C++20 executable. The npm package translat
 - macOS 13 or later: Apple silicon ARM64.
 - GPU operations require a user-installed Vulkan 1.1+ loader and a compatible driver. macOS additionally requires a working MoltenVK installation. The packages do not include a Vulkan runtime or GPU drivers.
 
-CPU operations start without Vulkan. SOG output with SH coefficients requires GPU clustering; SH0 SOG encoding runs on CPU. Voxel generation requires Vulkan and reports GPU failures directly. The CPU generation backend and cpuWorkerCount option have been removed.
+CPU operations start without Vulkan. SOG output with SH coefficients requires GPU clustering; SH0 SOG encoding runs on CPU. Voxel tasks accept `backend: "gpu" | "cpu"`, defaulting to `"gpu"`. GPU voxel generation requires Vulkan and reports GPU failures directly. CPU voxel generation, cluster filtering, and navigation dilation run without Vulkan and reuse the process-wide CPU pool for candidate generation and voxel evaluation. Worker counts are managed by that shared pool; the former `cpuWorkerCount` option is not used.
 
 SOG clustering reuses GPU resources across iterations and uses the available Vulkan memory budget to keep as much point data resident as fits. Remaining data streams through reusable slots. Batch sizes follow memory capacity and device buffer/workgroup limits. Memory scheduling is automatic and preserves the existing pipeline JSON parameters; staging and driver memory are additional. See the native build instructions for budget details.
 
@@ -45,7 +45,7 @@ Both the npm CLI and the native executable accept a pipeline file or a single da
 }
 ```
 
-Supported tasks are Read, Write, Modify, Select, ReplaceAppend, ExtractLodLevel, SkeletonLod, FlexLod, AutoLod, AutoChunkLod, SplitSplatTask, and Voxel. Version 1 task configuration fields and defaults remain supported except the removed CPU voxel options. GPU enumeration uses the native executable's standalone `--list-gpu` command through `enumerateAdapters()` and does not enter the pipeline. Task logs keep the 1.x prefixes, counts, LOD summaries, file progress, and timing labels. Information, progress, and timing logs go to stdout; warnings and errors go to stderr.
+Supported tasks are Read, Write, Modify, Select, ReplaceAppend, ExtractLodLevel, SkeletonLod, FlexLod, AutoLod, AutoChunkLod, SplitSplatTask, and Voxel. Version 1 task configuration fields and defaults remain supported except the former per-task `cpuWorkerCount` option. GPU enumeration uses the native executable's standalone `--list-gpu` command through `enumerateAdapters()` and does not enter the pipeline. Task logs keep the 1.x prefixes, counts, LOD summaries, file progress, and timing labels. Information, progress, and timing logs go to stdout; warnings and errors go to stderr.
 
 Inputs: PLY, compressed PLY, SPLAT, KSPLAT, SPZ/USPZ, SOG and unpacked SOG metadata, ESZ, LCC/LCC2, and their supported ZIP resource layouts. Outputs: PLY, SPLAT, SPZ v3/v4, USPZ, SOG, ESZ low/high precision, LOD directories, and voxel raw/compact binaries with optional gzip/zstd compression and collision GLB.
 

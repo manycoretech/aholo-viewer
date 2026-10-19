@@ -19,7 +19,7 @@ order: 5
 ### 需要GPU的功能
 
 - 含 SH 系数的 SOG 生成；SH0 SOG 可在 CPU 上编码。
-- Voxel 生成，仅支持 Vulkan GPU，不再提供 CPU 生成或自动回退。
+- Voxel 使用默认的 `backend: "gpu"` 时需要 Vulkan。设置 `backend: "cpu"` 后，体素生成、聚类过滤和导航膨胀均在 CPU 上执行，无需 Vulkan。
 
 不使用 GPU 的格式转换和 LOD 处理无需 Vulkan。使用 `splat-transform list:gpu` 查询当前 Vulkan 设备；旧版 Dawn 枚举可能包含 D3D12 设备，原有 GPU 下标需要重新确认。
 
@@ -316,10 +316,11 @@ Array<{
             string
             <ul>
                 <li>gpu</li>
+                <li>cpu</li>
             </ul>
         </td>
         <td>N(gpu)</td>
-        <td>仅支持 Vulkan GPU。可省略此字段；CPU 生成和 cpuWorkerCount 已移除，GPU 错误直接返回。</td>
+        <td>默认使用 Vulkan GPU，GPU 错误直接返回。cpu 使用进程级全局线程池调度体素计算，无需 Vulkan；聚类过滤和导航膨胀沿用同一后端。线程数由共享线程池管理，不使用旧版 cpuWorkerCount。</td>
     </tr>
     <tr>
         <td>box</td>

@@ -18,7 +18,7 @@ void ReadTask::exec(const Json& config, TaskContext& context) const {
     auto& logger = utility::logger();
     logger.info("load: ", inputs.size(), " files | sizes=", utility::fixed(float(total_bytes) / (1024 * 1024)), "MB");
     for (const auto& input : inputs) {
-        logger.info("  - ", input.get<std::string>());
+        logger.info("  - ", io::path_utf8(io::utf8_path(input.get<std::string>())));
     }
     logger.info("counts: ", data->size(), ", SH: ", data->sh_degree);
     context.set(config, std::move(data));

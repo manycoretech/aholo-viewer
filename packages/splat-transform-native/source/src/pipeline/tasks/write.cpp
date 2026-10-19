@@ -13,8 +13,8 @@ struct SplatWrite {
     void operator()() const { io::write_splat(path, *data, options); }
 };
 void write_resource(const Resource& resource, const Json& config) {
-    const auto output = config.at("output").get<std::string>();
-    const auto path = io::utf8_path(output);
+    const auto path = io::utf8_path(config.at("output").get<std::string>());
+    const auto output = io::path_utf8(path);
     auto& logger = utility::logger();
     if (const auto* data = std::get_if<SplatPtr>(&resource)) {
         logger.info("writing splat -> file=\"", output, "\" count=", (*data)->size(), " SH=", (*data)->sh_degree);

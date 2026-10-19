@@ -77,6 +77,7 @@ export function execute(args: string[], options: ExecuteOptions = {}): Promise<s
         });
         child.once('error', error => {
             clean();
+            error.message = error.message.replaceAll(executable, () => executable.split(path.sep).join('/'));
             reject(error);
         });
         child.once('close', (code, signal) => {

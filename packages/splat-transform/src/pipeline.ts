@@ -45,6 +45,16 @@ export interface ExtractLodLevelConfig extends Record<string, unknown> {
     level: number;
 }
 
+/** Voxel generation and navigation use the selected backend throughout. */
+export interface VoxelConfig extends Record<string, unknown> {
+    input: string;
+    output: string;
+    /** Defaults to gpu. CPU uses the process-wide pool and does not require Vulkan. */
+    backend?: 'cpu' | 'gpu';
+    voxelResolution?: number;
+    opacityCutoff?: number;
+}
+
 /** JSON task configuration consumed by the standalone executable. */
 export interface PipelineTask {
     id: string;

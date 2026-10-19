@@ -1,6 +1,8 @@
 # Native splat-transform
 
-Standalone C++20 processing engine for version 1 JSON pipelines. The executable accepts a pipeline filename or `-` for stdin. `--list-gpu` lists Vulkan adapters as JSON and exits before pipeline execution. Node is only needed for the npm CLI and JavaScript subprocess wrapper.
+Standalone C++20 processing engine for version 1 JSON pipelines. The executable accepts a pipeline filename or `-` for stdin. `--help` prints usage information and exits. `--version` prints the full package version, including prerelease suffixes, and exits. `--list-gpu` lists Vulkan adapters as JSON and exits before pipeline execution. Node is only needed for the npm CLI and JavaScript subprocess wrapper.
+
+CLI11 generates help and validates command-line arguments. `-h` is an alias for `--help`. A pipeline input and `--list-gpu` are mutually exclusive; unknown options and invalid argument combinations print a diagnostic and help to stderr with exit code 2. Help and version requests exit with code 0, and pipeline/I/O failures use code 1. Use `--` before a filename that starts with `-`. Paths are treated as UTF-8, including on Windows; slash-prefixed Windows option syntax is disabled so paths starting with `/` remain positional arguments. CLI11 is supplied by vcpkg and linked only to the standalone executable.
 
 ## Build
 
@@ -38,7 +40,7 @@ ctest --test-dir build/x64-linux --output-on-failure
 
 Run these commands inside the Ubuntu 22.04 build container. The preset still supplies the toolchain and installation destination. Normal CI jobs have separate workspaces and can use the workflow commands directly.
 
-The main packages/splat-transform/package.json is the version source. CMake uses its numeric part for the project version and reconfigures when the manifest changes. The npm CLI and publishing script use the full version, including prerelease suffixes. Platform package manifests keep version 0.0.0 in source control; scripts/publish-packages.mjs assigns the main package version to them and the matching optional dependencies before publishing. Changing the main package manifest also triggers the native build workflow.
+The main packages/splat-transform/package.json is the version source. CMake uses its numeric part for the project version and reconfigures when the manifest changes. configure_file generates build-directory generated/version.h from src/cli/version.h.in with the full version for native --version output. The npm CLI and publishing script also use the full version, including prerelease suffixes. Platform package manifests keep version 0.0.0 in source control; scripts/publish-packages.mjs assigns the main package version to them and the matching optional dependencies before publishing. Changing the main package manifest also triggers the native build workflow.
 
 Vcpkg supplies static image/compression/archive/HTTP libraries, Eigen, nanoflann, nlohmann-json, Vulkan headers, VMA, and the DXC host compiler. HLSL compute shaders compile to embedded SPIR-V during the build. The local dxc overlay port pins DXC v1.8.2505.1 and its source dependencies. Windows x64/ARM64 and Linux x64 use Microsoft's release binaries; Linux ARM64 and macOS compile the same release from source. The optional dxc[from-source] feature also selects the source build on Linux x64. Only the build host needs DXC; runtime shader compilation and a Vulkan SDK are not required.
 
@@ -76,11 +78,21 @@ Get-Content -Raw pipeline.json | ./splat-transform.exe -
 
 ## CPU task scheduling and compression
 
-threading::default_pool() creates one process-wide pool on first access. LOD generation, cluster-center updates, bundle writers, SOG texture jobs, and parallel gzip blocks all reuse it. The default worker count preserves the previous LOD/clustering policy: half the next power of two of hardware_concurrency(), clamped to 1–16. Write.parallelCounts limits in-flight files and is capped by the pool's worker count.
+threading::default_pool() creates one process-wide pool on first access. LOD generation, cluster-center updates, bundle writers, SOG texture jobs, CPU voxel jobs, and parallel gzip blocks all reuse it. The default worker count preserves the previous LOD/clustering policy: half the next power of two of hardware_concurrency(), clamped to 1–16. Write.parallelCounts limits in-flight files and is capped by the pool's worker count.
 
 Workers use std::jthread and stop-token-aware condition-variable waits. Stopping the pool discards queued tasks, makes their futures report broken promises, and joins running work. TaskGroup and ThreadPool::wait/get let waiting workers execute the same queue, so a full set of file writers can still complete nested gzip work. TaskGroup also waits for unfinished jobs during exception unwinding before borrowed input buffers or local state can be destroyed. Completed operations keep the pool alive for subsequent tasks.
 
 gzip uses 1 MiB raw DEFLATE jobs with the preceding 32 KiB dictionary and combines them into one standard gzip member. zstd uses its native multithreaded compressor and one lazily created, process-wide ZSTD_threadPool shared through ZSTD_CCtx_refThreadPool. That static-library API accepts zstd's own pool type. It does not accept the C++ task executor. Each compression context remains independent; output remains a standard single zstd frame.
+
+## Voxel backends
+
+`Voxel.config.backend` accepts `"gpu"` (default) or `"cpu"`. The selection also controls cluster-filter voxelization and navigation dilation. A CPU-only pipeline does not initialize Vulkan, even when floor fill, exterior fill, or capsule navigation is enabled. Unknown backend names are rejected.
+
+The internal `Backend` interface is the common adapter for voxel generation, dilation, backend names, and GPU requirements. `backend_cpu.cpp` and `backend_gpu.cpp` each contain their complete voxelization and dilation implementation; `backend.cpp` resolves the JSON option. The pipeline, cluster filter, and navigation call that interface. Shared geometry preparation, bounds, and filtering stay in `voxelize.cpp`.
+
+CPU generation follows the historical TypeScript worker's 16 x 16 x 16 voxel batches, closest-point Gaussian evaluation, 1/255 contribution cutoff, and Beer-Lambert density accumulation. Small inputs use the same accumulated-density algorithm. CPU and GPU can differ at boundaries: GPU retains sub-threshold contributions and stops density accumulation at 7; CPU stops once the requested opacity is reached.
+
+CPU candidate generation counts and scatters into one shared packed index buffer. Evaluation sorts each batch's indices into input order, dynamically assigns batches to the process-wide pool, and keeps density scratch local to each job. At most one job per pool worker is queued per phase; sparse output masks are merged after jobs finish. Geometry is shared with filtering without copying source colors or SH coefficients. The old per-task `cpuWorkerCount` option is not used.
 
 ## Layout and ownership
 
@@ -90,7 +102,7 @@ gzip uses 1 MiB raw DEFLATE jobs with the preceding 32 KiB dictionary and combin
 - include/spatial and src/spatial: clustering and SH transforms over native splats.
 - include/gpu, src/gpu, and shaders: Vulkan-Hpp RAII objects, VMA buffers, GPU clustering, candidate generation, voxel evaluation, and dilation.
 - include/pipeline and src/pipeline: BaseTask, concrete task implementations, task registration, and TaskContext resource ownership.
-- include/voxel and src/voxel: GPU voxel generation, navigation topology, sparse octrees, and collision meshes.
+- include/voxel and src/voxel: CPU/GPU voxel generation, navigation topology, sparse octrees, and collision meshes.
 - include/utility and src/utility: shared thread pool and logger.
 
 Namespaces use splat_transform with module namespaces; types use PascalCase, functions and variables use snake_case, constants use UPPER_SNAKE_CASE, and private fields use a trailing underscore. Formatting follows .clang-format. The check-format CMake target is available when clang-format is installed; .clang-tidy provides naming checks.

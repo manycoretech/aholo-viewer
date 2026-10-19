@@ -8,6 +8,7 @@ if(NOT SPLAT_TRANSFORM_PROJECT_VERSION)
 endif()
 project(splat_transform VERSION "${SPLAT_TRANSFORM_PROJECT_VERSION}" LANGUAGES C CXX)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SPLAT_TRANSFORM_PACKAGE_FILE}")
+configure_file(src/cli/version.h.in generated/version.h @ONLY)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -16,6 +17,7 @@ option(SPLAT_TRANSFORM_TEST_GPU "Run tests requiring a user-installed Vulkan run
 option(SPLAT_TRANSFORM_TEST_NATIVE_FILE_IO "Require Asio's native file backend in runtime tests" OFF)
 
 find_package(Threads REQUIRED)
+find_package(CLI11 CONFIG REQUIRED)
 find_package(Boost CONFIG REQUIRED COMPONENTS asio)
 find_package(Eigen3 CONFIG REQUIRED)
 find_package(nanoflann CONFIG REQUIRED)
@@ -75,6 +77,9 @@ set(SPLAT_TRANSFORM_SOURCE_FILES
     src/voxel/voxel.cpp
     src/voxel/grid.cpp
     src/voxel/voxelize.cpp
+    src/voxel/backend.cpp
+    src/voxel/backend_cpu.cpp
+    src/voxel/backend_gpu.cpp
     src/voxel/mesh.cpp
     src/voxel/marching_cubes.cpp
     src/voxel/coplanar_merge.cpp
@@ -129,6 +134,7 @@ set(SPLAT_TRANSFORM_PRIVATE_HEADER_FILES
     src/pipeline/data_support.h
     src/pipeline/lod_support.h
     src/voxel/grid.h
+    src/voxel/backend.h
     src/voxel/marching_tables.h
     src/voxel/voxelize.h
 )
@@ -180,12 +186,17 @@ add_executable(splat-transform)
 target_sources(splat-transform PRIVATE
     src/cli/main.cpp
     "$<$<CXX_COMPILER_ID:MSVC>:${CMAKE_CURRENT_SOURCE_DIR}/src/cli/app.manifest>"
+    PRIVATE FILE_SET cli_generated_headers
+        TYPE HEADERS
+        BASE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/generated"
+        FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/version.h"
 )
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cli/main.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cli/app.manifest"
 )
-target_link_libraries(splat-transform PRIVATE splat_transform_core)
+source_group("generated" FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/version.h")
+target_link_libraries(splat-transform PRIVATE splat_transform_core CLI11::CLI11)
 set_target_properties(splat-transform PROPERTIES
     LINK_OPTIONS "$<$<PLATFORM_ID:Linux>:-Wl,--exclude-libs,ALL>;$<$<AND:$<PLATFORM_ID:Linux>,$<BOOL:${SPLAT_TRANSFORM_STATIC_RUNTIME}>>:-static-libstdc++;-static-libgcc>"
 )
@@ -203,6 +214,16 @@ if(CLANG_FORMAT)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(splat_transform_voxel_cpu_tests)
+    target_sources(splat_transform_voxel_cpu_tests PRIVATE tests/voxel_cpu_tests.cpp)
+    target_include_directories(splat_transform_voxel_cpu_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(splat_transform_voxel_cpu_tests PRIVATE splat_transform_core)
+    add_test(NAME voxel_cpu_contracts COMMAND splat_transform_voxel_cpu_tests)
+    set_tests_properties(voxel_cpu_contracts PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "VK_DRIVER_FILES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json;VK_ICD_FILENAMES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json"
+        FAIL_REGULAR_EXPRESSION "Vulkan dilation failed;initialize GPU adapter"
+    )
     add_executable(splat_transform_streaming_tests)
     target_sources(splat_transform_streaming_tests PRIVATE tests/streaming_tests.cpp)
     target_include_directories(splat_transform_streaming_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -264,6 +285,7 @@ if(BUILD_TESTING)
         add_test(NAME linux_abi COMMAND "${CMAKE_COMMAND}" "-DEXECUTABLE=$<TARGET_FILE:splat-transform>" -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_linux_abi.cmake")
     endif()
     list(APPEND SPLAT_TRANSFORM_TARGETS
+        splat_transform_voxel_cpu_tests
         splat_transform_streaming_tests
         splat_transform_logging_tests
         splat_transform_abstraction_tests splat_transform_geometry_tests splat_transform_tests splat_transform_pipeline_tests

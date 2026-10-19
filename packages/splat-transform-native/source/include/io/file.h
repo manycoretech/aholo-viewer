@@ -70,6 +70,7 @@ void append(Bytes& output, T value) {
 
 std::filesystem::path utf8_path(const std::string& path);
 std::string path_utf8(const std::filesystem::path& path);
+std::string filesystem_error_message(const std::filesystem::filesystem_error& error);
 Bytes read_bytes(const std::filesystem::path& path);
 void write_bytes(const std::filesystem::path& path, std::span<const uint8_t> bytes);
 Json read_json(const std::filesystem::path& path);

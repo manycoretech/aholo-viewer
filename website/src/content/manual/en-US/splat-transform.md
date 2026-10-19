@@ -19,7 +19,7 @@ order: 5
 ### GPU-Required Features
 
 - SOG generation with SH coefficients. SH0 SOG encoding runs on CPU.
-- Voxel generation requires Vulkan GPU support. CPU generation and automatic fallback have been removed.
+- Voxel generation requires Vulkan with the default `backend: "gpu"`. Set `backend: "cpu"` to run voxel generation, cluster filtering, and navigation dilation on CPU without Vulkan.
 
 CPU format conversion and LOD processing do not require Vulkan. Run `splat-transform list:gpu` to list current Vulkan devices. The former Dawn backend could include D3D12 devices, so check saved GPU indices again.
 
@@ -316,10 +316,11 @@ Array<{
       string
       <ul>
         <li>gpu</li>
+        <li>cpu</li>
       </ul>
     </td>
     <td>N(gpu)</td>
-    <td>Vulkan GPU only. This field can be omitted. CPU generation and cpuWorkerCount have been removed; GPU errors are returned directly.</td>
+    <td>Defaults to Vulkan GPU; GPU errors are returned directly. cpu schedules voxel computation on the process-wide thread pool without Vulkan. Cluster filtering and navigation dilation use the same backend. The shared pool manages worker counts; the former cpuWorkerCount option is not used.</td>
   </tr>
   <tr>
     <td>box</td>

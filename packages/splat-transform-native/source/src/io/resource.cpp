@@ -78,7 +78,7 @@ std::string Resources::resolve(const std::string& name) const {
             }
         }
     }
-    throw std::runtime_error("Missing resource: " + name);
+    throw std::runtime_error("Missing resource: " + path_utf8(relative));
 }
 Bytes Resources::read(const std::string& name) const {
     const auto path = resolve(name);

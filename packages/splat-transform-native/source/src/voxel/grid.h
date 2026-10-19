@@ -8,6 +8,7 @@
 #include <vector>
 
 namespace splat_transform::voxel {
+class Backend;
 using Point = std::array<int, 3>;
 inline constexpr uint64_t FULL_BLOCK = ~uint64_t { 0 };
 inline constexpr std::array<int, 3> BIT_STRIDES { 1, 4, 16 };
@@ -49,10 +50,9 @@ public:
 Grid unite(const Grid& left, const Grid& right);
 Grid flood(const Grid& allowed, const std::vector<Point>& seeds, bool boundary = false);
 std::optional<Point> nearest_cell(const Grid& allowed, Point seed, int radius);
-Grid dilate(const Grid& grid, Point radius);
 Grid filter_blocks(const Grid& grid);
 void crop_grid(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, bool navigable, int margin);
-void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const struct Navigation& options);
+void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const struct Navigation& options, const Backend& backend);
 
 struct Navigation {
     bool floor_fill = false;

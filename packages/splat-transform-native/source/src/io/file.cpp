@@ -12,11 +12,21 @@ std::string path_utf8(const std::filesystem::path& path) {
     const auto value = path.generic_u8string();
     return std::string(value.begin(), value.end());
 }
+std::string filesystem_error_message(const std::filesystem::filesystem_error& error) {
+    // Keep the operation and system diagnostic, then format each path ourselves.
+    std::string message = error.std::system_error::what();
+    for (const auto& path : { error.path1(), error.path2() }) {
+        if (!path.empty()) {
+            message += " [" + path_utf8(path) + ']';
+        }
+    }
+    return message;
+}
 Bytes read_bytes(const std::filesystem::path& path) {
     FileStream stream(path, FileStream::Access::Read);
     Bytes bytes(stream.size());
     if (stream.read(bytes) != bytes.size()) {
-        throw std::runtime_error("Cannot read complete input: " + path.string());
+        throw std::runtime_error("Cannot read complete input: " + path_utf8(path));
     }
     return bytes;
 }

@@ -1,0 +1,5 @@
+#pragma once
+
+namespace splat_transform {
+inline constexpr char VERSION[] = "@SPLAT_TRANSFORM_VERSION@";
+} // namespace splat_transform

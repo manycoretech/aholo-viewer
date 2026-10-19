@@ -1,8 +1,8 @@
 #include "grid.h"
+#include "backend.h"
 #include <algorithm>
 #include <cmath>
 #include <deque>
-#include <gpu/compute.h>
 #include <limits>
 #include <stdexcept>
 #include <utility/logger.h>
@@ -225,51 +225,6 @@ std::optional<Point> nearest_cell(const Grid& allowed, Point seed, int radius) {
     }
     return std::nullopt;
 }
-Grid dilate(const Grid& grid, Point radius) {
-    const uint64_t cells = grid.block_count() * 64;
-    if (cells <= 256ull * 1024 * 1024) {
-        try {
-            std::vector<uint32_t> packed;
-            const auto active = grid.active_blocks();
-            packed.reserve(active.size() * 3);
-            for (auto index : active) {
-                const auto bits = grid.mask(index);
-                packed.insert(packed.end(), { index, uint32_t(bits), uint32_t(bits >> 32) });
-            }
-            const auto masks = gpu::dilate_blocks(packed, { uint32_t(grid.size[0]), uint32_t(grid.size[1]), uint32_t(grid.size[2]) },
-                { uint32_t(radius[0]), uint32_t(radius[1]), uint32_t(radius[2]) });
-            Grid output(grid.size);
-            for (uint32_t index = 0; index < grid.block_count(); ++index) {
-                output.set_mask(index, uint64_t(masks[index * 2]) | (uint64_t(masks[index * 2 + 1]) << 32));
-            }
-            return output;
-        } catch (const std::exception& error) {
-            utility::logger().warn("Vulkan dilation failed; using CPU: ", error.what());
-        }
-    }
-    Grid output = grid;
-    for (int axis = 0; axis < 3; ++axis) {
-        for (int distance = 0; distance < radius[axis]; ++distance) {
-            Grid next = output;
-            for (auto index : output.active_blocks()) {
-                auto p = output.block_point(index);
-                const uint64_t bits = output.mask(index);
-                next.or_mask(index, ((bits & ~face_mask(axis, 3)) << BIT_STRIDES[axis]) | ((bits & ~face_mask(axis, 0)) >> BIT_STRIDES[axis]));
-                if (p[axis] > 0) {
-                    --p[axis];
-                    next.or_mask(next.block_index(p), (bits & face_mask(axis, 0)) << (3 * BIT_STRIDES[axis]));
-                    ++p[axis];
-                }
-                if (p[axis] + 1 < output.blocks[axis]) {
-                    ++p[axis];
-                    next.or_mask(next.block_index(p), (bits & face_mask(axis, 3)) >> (3 * BIT_STRIDES[axis]));
-                }
-            }
-            output = std::move(next);
-        }
-    }
-    return output;
-}
 Grid filter_blocks(const Grid& grid) {
     constexpr std::array<uint64_t, 3> LOW_FACE { face_mask(0, 0), face_mask(1, 0), face_mask(2, 0) };
     constexpr std::array<uint64_t, 3> HIGH_FACE { face_mask(0, 3), face_mask(1, 3), face_mask(2, 3) };
@@ -323,7 +278,7 @@ void crop_grid(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, bool n
     }
     grid = grid.crop(minimum, maximum);
 }
-void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const Navigation& options) {
+void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const Navigation& options, const Backend& backend) {
     auto& logger = utility::logger();
     auto seed_cell = [&] {
         Point p {};
@@ -336,10 +291,10 @@ void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const N
         auto elapsed = logger.time("Fill exterior");
         const int radius = int(std::ceil(options.exterior_radius / resolution));
         const auto seed = seed_cell();
-        const auto blocked = dilate(grid, { radius, radius, radius });
+        const auto blocked = backend.dilate(grid, { radius, radius, radius });
         auto outside = flood(blocked.inverted(), {}, true);
         if (grid.contains(seed) && !outside.get(seed)) {
-            grid = unite(grid, dilate(outside, { radius, radius, radius }));
+            grid = unite(grid, backend.dilate(outside, { radius, radius, radius }));
             crop_grid(grid, bounds, resolution, true, 1);
         } else {
             logger.info(grid.contains(seed) ? "fillExteriorMap: seed reachable from outside, skipping" : "fillExteriorMap: seed outside grid bounds, skipping exterior fill");
@@ -348,7 +303,7 @@ void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const N
     if (options.floor_fill) {
         auto elapsed = logger.time("Fill floor");
         const int radius = int(std::ceil(options.floor_dilation / resolution));
-        auto blocked = dilate(grid, { radius, 0, radius });
+        auto blocked = backend.dilate(grid, { radius, 0, radius });
         Grid found(grid.size);
         for (int z = 0; z < grid.size[2]; ++z) {
             for (int x = 0; x < grid.size[0]; ++x) {
@@ -357,7 +312,7 @@ void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const N
                 }
             }
         }
-        grid = unite(grid, dilate(found, { radius, 0, radius }));
+        grid = unite(grid, backend.dilate(found, { radius, 0, radius }));
     }
     if (options.capsule_height > 0 && options.seed) {
         auto elapsed = logger.time("Carve nav");
@@ -370,13 +325,13 @@ void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const N
             logger.warn("carve: seed (", (*options.seed)[0], ", ", (*options.seed)[1], ", ", (*options.seed)[2], ") outside grid, skipping");
             return;
         }
-        auto allowed = dilate(grid, { rx, ry, rx }).inverted();
+        auto allowed = backend.dilate(grid, { rx, ry, rx }).inverted();
         auto start = nearest_cell(allowed, seed, std::max(rx, ry) * 2);
         if (!start) {
             logger.warn("carve: no navigable voxel near seed, skipping");
             return;
         }
-        auto reachable = dilate(flood(allowed, { *start }), { rx, ry, rx });
+        auto reachable = backend.dilate(flood(allowed, { *start }), { rx, ry, rx });
         if (reachable.voxel_count() == 0) {
             logger.warn("carve: no navigable cells remain, returning empty result");
             grid = Grid();

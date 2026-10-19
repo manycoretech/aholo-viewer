@@ -132,10 +132,7 @@ float fallback_resolution(float current, float count, float target) {
 } // namespace
 void write(const splat::Splat& input, const std::filesystem::path& directory, const io::Json& config) {
     auto& logger = utility::logger();
-    const auto backend = config.value("backend", std::string("gpu"));
-    if (backend != "gpu") {
-        throw std::runtime_error("Voxel generation requires the Vulkan GPU backend; CPU generation was removed");
-    }
+    const auto& backend = resolve_backend(config);
     const auto compression = config.value("compression", std::string("none"));
     const auto encoding = config.value("nodeEncoding", std::string("raw"));
     if (compression != "none" && compression != "gzip" && compression != "zstd") {
@@ -147,7 +144,7 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
     float resolution = config.value("voxelResolution", 0.05f);
     const auto requested_resolution = resolution;
     const float cutoff = config.value("opacityCutoff", 0.1f);
-    if (!(resolution > 0) || !std::isfinite(resolution) || cutoff < 0 || cutoff > 1) {
+    if (!(resolution > 0) || !std::isfinite(resolution) || !std::isfinite(cutoff) || cutoff < 0 || cutoff > 1) {
         throw std::runtime_error("Invalid voxel resolution or opacityCutoff");
     }
     // Voxelization needs geometry and opacity only. Retain one packed buffer
@@ -160,7 +157,7 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
     if (filter != false) {
         logger.info("voxel filterCluster enabled");
         auto filter_time = logger.time("Filter clusters");
-        filter_cluster(prepared, filter.is_object() ? filter : io::Json::object(), box);
+        filter_cluster(prepared, filter.is_object() ? filter : io::Json::object(), box, backend);
     }
     if (!prepared.invalid_extents.empty()) {
         logger.info("voxel: skipped ", prepared.invalid_extents.size(), " gaussians with invalid extent values");
@@ -216,14 +213,14 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
         if (resolution != requested_resolution) {
             logger.info("voxel effective resolution=", resolution, " (requested=", requested_resolution, ')');
         }
-        auto voxel_time = logger.time("Voxelizing (GPU) done");
-        auto grid = voxelize(prepared, bounds, resolution, cutoff);
+        auto voxel_time = logger.time("Voxelizing (" + std::string(backend.name()) + ") done");
+        auto grid = backend.voxelize(prepared, bounds, resolution, cutoff);
         voxel_time.finish();
         {
             auto filter_time = logger.time("Filter blocks");
             grid = filter_blocks(grid);
         }
-        navigate(grid, bounds, resolution, navigation);
+        navigate(grid, bounds, resolution, navigation, backend);
         {
             auto crop_time = logger.time("Crop voxel bounds");
             crop_grid(grid, bounds, resolution, has_exterior || navigation.floor_fill, has_exterior || navigation.floor_fill ? 1 : 0);

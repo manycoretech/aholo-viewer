@@ -1,4 +1,5 @@
 #include "lod_support.h"
+#include <io/resource.h>
 #include <splat/splat_lod.h>
 #include <utility/logger.h>
 #include <utility/thread_pool.h>
@@ -19,8 +20,8 @@ splat::block::SplitNormal split_normal(const Json& config) {
             return static_cast<splat::block::SplitNormal>(normal);
         }
     } else if (value.is_string()) {
-        constexpr std::array<std::string_view, 4> NAMES { "None", "X", "Y", "Z" };
-        const auto found = std::ranges::find(NAMES, value.get_ref<const std::string&>());
+        constexpr std::array<std::string_view, 4> NAMES { "none", "x", "y", "z" };
+        const auto found = std::ranges::find(NAMES, io::lower(value.get<std::string>()));
         if (found != NAMES.end()) {
             return static_cast<splat::block::SplitNormal>(found - NAMES.begin());
         }

@@ -10,6 +10,7 @@ export type {
     SelectConfig,
     ReplaceAppendConfig,
     ExtractLodLevelConfig,
+    VoxelConfig,
 } from './pipeline.js';
 export { PipelineError, resolveExecutable, type RunOptions } from './process.js';
 
