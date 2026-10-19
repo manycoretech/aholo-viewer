@@ -82,8 +82,10 @@ void Gaussian::normalize_rotation() {
 }
 
 Eigen::AlignedBox3f Gaussian::bounding_box(float k) const {
-    auto sigma = this->scale.cwiseAbs();
-    return Eigen::AlignedBox3f(this->mean - k * sigma, this->mean + k * sigma);
+    const Eigen::Matrix3f rotation = this->rotation.toRotationMatrix();
+    // The ellipsoid's world-axis radii are the square roots of the covariance diagonal.
+    const Eigen::Vector3f extent = k * (rotation.cwiseAbs2() * this->scale.cwiseAbs2()).cwiseSqrt();
+    return Eigen::AlignedBox3f(this->mean - extent, this->mean + extent);
 }
 
 Eigen::Matrix3f Gaussian::covariance() const {

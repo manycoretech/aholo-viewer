@@ -59,8 +59,7 @@ void single_block(const splat::Splat& data) {
         require(data.bounding_box.isEmpty(), "Empty result has nonempty bounds");
     }
     for (const auto& point : data.gaussians) {
-        require(data.bounding_box.contains(point.mean - 3 * point.scale.cwiseAbs()), "Bounds omit a Gaussian minimum");
-        require(data.bounding_box.contains(point.mean + 3 * point.scale.cwiseAbs()), "Bounds omit a Gaussian maximum");
+        require(data.bounding_box.contains(point.bounding_box()), "Bounds omit a rotated Gaussian");
     }
 }
 void save_json(const std::filesystem::path& path, const Json& value) {

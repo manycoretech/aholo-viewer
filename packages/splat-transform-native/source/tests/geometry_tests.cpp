@@ -44,6 +44,68 @@ void center_bounds() {
     ties.gaussians[2].mean.x() = 1;
     require(splat::morton_order(ties) == std::vector<uint32_t> { 1, 3, 0, 2 }, "Morton ties lost stable input order");
 }
+void gaussian_bounds() {
+    splat::Gaussian point;
+    point.mean = { 5, -3, 2 };
+    point.scale = { -1, 2, -3 };
+    point.rotation.setIdentity();
+    const auto identity = point.bounding_box();
+    require(identity.min() == point.mean - Eigen::Vector3f(3, 6, 9) && identity.max() == point.mean + Eigen::Vector3f(3, 6, 9),
+        "Identity Gaussian bounds must use absolute scales and the default three-sigma extent");
+
+    const float pi = std::acos(-1.0f);
+    point.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(pi / 2, Eigen::Vector3f::UnitZ()));
+    const auto quarter_turn = point.bounding_box();
+    require(quarter_turn.min().isApprox(point.mean - Eigen::Vector3f(6, 3, 9), 1e-6f) &&
+                quarter_turn.max().isApprox(point.mean + Eigen::Vector3f(6, 3, 9), 1e-6f),
+        "Quarter-turn Gaussian bounds must swap the X and Y extents");
+
+    point.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(pi / 4, Eigen::Vector3f::UnitZ()));
+    const Eigen::Vector3f expected_extent(2 * std::sqrt(2.5f), 2 * std::sqrt(2.5f), 6);
+    const auto oblique = point.bounding_box(2);
+    require(oblique.min().isApprox(point.mean - expected_extent, 1e-6f) && oblique.max().isApprox(point.mean + expected_extent, 1e-6f),
+        "Oblique Gaussian bounds must tightly enclose the ellipsoid, not its rotated local box");
+    const auto zero = point.bounding_box(0);
+    require(zero.min() == point.mean && zero.max() == point.mean, "Zero-sigma bounds must collapse to the Gaussian center");
+
+    point.scale.setConstant(2);
+    point.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(0.73f, Eigen::Vector3f(1, 2, 3).normalized()));
+    const auto sphere = point.bounding_box();
+    require(sphere.min().isApprox(point.mean - Eigen::Vector3f::Constant(6), 1e-6f) &&
+                sphere.max().isApprox(point.mean + Eigen::Vector3f::Constant(6), 1e-6f),
+        "Isotropic Gaussian bounds must not expand under rotation");
+}
+void compact_block_bounds() {
+    for (const auto normal : { splat::block::SplitNormal::None, splat::block::SplitNormal::Y }) {
+        splat::Splat input(40, 0);
+        for (size_t i = 0; i < input.size(); ++i) {
+            auto& point = input.gaussians[i];
+            point.mean = { i < 20 ? -20.0f : 20.0f, 0, 0 };
+            point.scale = { 0.1f, 0.2f, 0.05f };
+            point.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(std::acos(-1.0f) / 4, Eigen::Vector3f::UnitZ()));
+            point.opacity = 1;
+        }
+        // Each leaf keeps all twenty Gaussians, but its bounds exclude the largest one.
+        input.gaussians[0].scale = { 2, 1, 0.5f };
+        input.gaussians[20].scale = { 2, 1, 0.5f };
+        input.prepare_lod();
+        const auto blocks = splat::block::split(std::move(input), 0.5f, normal);
+        require(blocks.size() == 2, "Separated Gaussian clusters must form two blocks");
+        for (const auto& block : blocks) {
+            require(block.size() == 20, "Block splitting changed the cluster membership");
+            const auto& center = block.gaussians.front().mean;
+            const Eigen::Vector3f expected_extent(3 * std::sqrt(0.025f), 3 * std::sqrt(0.025f), 0.15f);
+            require(block.bounding_box.min().isApprox(center - expected_extent, 1e-6f) &&
+                        block.bounding_box.max().isApprox(center + expected_extent, 1e-6f),
+                "Compact block bounds must use the rotated extents of the retained ninety-five percent");
+            size_t outside = 0;
+            for (const auto& point : block.gaussians) {
+                outside += !block.bounding_box.contains(point.bounding_box());
+            }
+            require(outside == 1, "The largest Gaussian must remain in the block without expanding its compact bounds");
+        }
+    }
+}
 void voxel_geometry() {
     splat::Gaussian point;
     point.scale = { 1, 2, 3 };
@@ -194,6 +256,8 @@ void coplanar_mesh() {
 int main() {
     try {
         center_bounds();
+        gaussian_bounds();
+        compact_block_bounds();
         voxel_geometry();
         voxel_selection();
         sh_rotation();
