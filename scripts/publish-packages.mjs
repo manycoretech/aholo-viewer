@@ -2,6 +2,7 @@ import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolveCatalogs, applyCatalogs } from '@internal/utils/catalogs.js';
+import { getReleaseConfig } from './release-config.mjs';
 
 const packages = JSON.parse(
     child_process.execSync('pnpm list --filter=@manycore/* -r --depth -1 --json', { stdio: 'pipe' }).toString('utf-8'),
@@ -41,12 +42,15 @@ const packages = JSON.parse(
     );
 }
 
+// Classify synchronized package versions before publishing any package.
+const releaseConfigs = new Map(packages.map(p => [p.name, getReleaseConfig(p.version)]));
 const publishedPackages = [];
 
 const catalogs = resolveCatalogs();
 
 for (const p of packages) {
     const cwd = p.path;
+    const { distTag, prerelease } = releaseConfigs.get(p.name);
     const packageJson = JSON.parse(fs.readFileSync(path.resolve(cwd, 'package.json'), 'utf-8'));
     const hiddenBuildCommand = packageJson.scripts?.['.build'];
     let published = false;
@@ -76,7 +80,10 @@ for (const p of packages) {
         applyCatalogs(clonedPackageJson, ['dependencies', 'peerDependencies', 'optionalDependencies'], catalogs);
 
         fs.writeFileSync(path.resolve(cwd, 'package.json'), JSON.stringify(clonedPackageJson, undefined, 2), 'utf-8');
-        child_process.execSync('npm publish --access public', { stdio: 'inherit', cwd });
+        const publishCommand = prerelease
+            ? `npm publish --access public --tag ${distTag}`
+            : 'npm publish --access public';
+        child_process.execSync(publishCommand, { stdio: 'inherit', cwd });
         // restore package.json
         fs.writeFileSync(path.resolve(cwd, 'package.json'), JSON.stringify(packageJson, undefined, 2), 'utf-8');
         publishedPackages.push({

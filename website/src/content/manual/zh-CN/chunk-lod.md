@@ -1,6 +1,6 @@
 ---
-title: Chunk Lod
-description: Chunk Lod 说明
+title: Chunk LOD
+description: Chunk LOD 数据格式、调度配置与运行时接入。
 order: 8
 ---
 
@@ -75,9 +75,76 @@ interface LodMeta {
     - `tree[i].bound`: 分块的包围盒，此包围盒同样采用近似的分布计算，排除离群点
     - `tree[i].lods`: 分块的lod数据
         - `tree[i].lods[j].file`: 数据文件索引
-        - `tree[i].lods[j].start`: 起始高斯偏移
+        - `tree[i].lods[j].offset`: 起始高斯偏移
         - `tree[i].lods[j].count`: 高斯数量
 
-## `Lod`调度器
+## `LodSplat` 调度器
 
-`@manycore/aholo-viewer`提供完整的`chunk-lod`调度器，接口参考[`LodSplat`](api:SplatUtils.LodSplat)，使用样例可以参考[splatting-lod-stream](../../examples/splatting-lod-stream/)
+`@manycore/aholo-viewer` 通过 [`SplatUtils.LodSplat`](api:SplatUtils.LodSplat) 提供流式调度。完整示例见 [Splatting LOD 流式加载](../../examples/splatting-lod-stream/)。
+
+调度器先保证可见分块的粗粒度覆盖，再依据屏幕投影面积、与画面中心的关系和剩余点数预算分配细节。`level 0` 最精细，数值越大越粗。相机移动时限制新的细化，停稳后继续提升细节；已经显示的精细层级不会仅因移动限制而被降级。
+
+### 配置
+
+构造函数的第二个参数和 `setConfig()` 都接受 `Partial<SplatUtils.LodConfig>`。下表为 SDK 默认值；流式示例将 `maxBudget` 设为 `6_000_000`，面板以百万点为单位显示。
+
+| 参数                         | 默认值      | 说明                                                                                                    |
+| ---------------------------- | ----------- | ------------------------------------------------------------------------------------------------------- |
+| `minLevel`                   | `0`         | 允许选择的最精细层级。                                                                                  |
+| `movingMinLevel`             | `2`         | 相机移动时允许新细化到的最精细层级，实际下限取 `max(minLevel, movingMinLevel)`。                        |
+| `maxBudget`                  | `3_000_000` | LOD 目标高斯点数预算。                                                                                  |
+| `hysteresisTicks`            | `4`         | 目标层级的稳定等待时间，每个 tick 固定为 `1000 / 60` ms；默认约 `66.7` ms，与调用 `tick()` 的频率无关。 |
+| `schedulerParallelCounts`    | `4`         | 同时进行的 LOD 资源加载数量上限。                                                                       |
+| `schedulerExistingTaskLimit` | `64`        | 限制单批场景更新量，并在已有较多就绪任务时暂停细节请求。                                                |
+| `schedulerMinDuration`       | `160`       | 调度与常规提交的最小间隔，单位 ms；已缓存的粗粒度覆盖可立即补入。                                       |
+| `mergeNodeEnabled`           | `true`      | 合并可共用资源连续区间的相邻节点，减少 `Splat` 对象数。                                                 |
+| `frustumCullingEnabled`      | `true`      | 卸载视锥外分块；关闭后保留这些分块的粗粒度覆盖。                                                        |
+| `debuggerEnabled`            | `false`     | 按当前 LOD 层级显示调试颜色。                                                                           |
+
+层级参数会被限制在 `0` 到 `meta.levels - 1`。`maxBudget` 是点数分配目标：如果最低覆盖本身超过预算，调度器优先保证覆盖；资源缓存和层级切换也会额外占用内存及显存。
+
+### 接入与帧循环
+
+在示例的 `RenderRuntime` 中，加载 `meta` 后可以按以下方式接入。使用默认资源加载器时，先将 `meta.files` 中的相对路径解析为相对于 `lod-meta.json` 的完整 URL；自定义加载器也可负责路径解析。
+
+```typescript
+import { createViewerContext, SplatUtils } from '@manycore/aholo-viewer';
+
+const { viewer, scene } = renderer;
+const lod = new SplatUtils.LodSplat(
+    meta,
+    { minLevel: 0, movingMinLevel: 2, maxBudget: 6_000_000 },
+    createViewerContext(viewer),
+);
+scene.add(lod.container);
+lod.tick(viewer.getCamera());
+lod.start();
+
+renderer.frame(({ delta }) => {
+    const updated = control.update(delta);
+    lod.tick(viewer.getCamera());
+    return updated;
+});
+
+return () => lod.destroy();
+```
+
+- `tick(camera, viewport?)` 更新相机与视口信息。传入 `createViewerContext(viewer)` 后，默认使用 Viewer 的绘图缓冲区尺寸；也可显式传入以渲染像素为单位的 `{ width, height }`。视口参与采样密度限制，没有视口信息时仅按相对权重和点数预算分配。
+- `start()` 启动自动调度。若应用自行控制帧循环，可每帧先调用 `tick()`，再调用 `flush()`，无需启动自动循环。`stop()` 只停止自动循环，保留当前显示及已准备好的资源。
+- `onFinishSchedule()` 等待当前调度收敛。调用前至少执行一次 `tick()`，等待期间保持自动循环或持续调用 `flush()`，并继续渲染以完成排序。资源加载或替换失败时 Promise 会拒绝，应在异常路径释放实例。
+- 构造函数的第四个参数为可选资源加载器，签名为 `(url, signal?) => Promise<SplatLoader.SplatData>`。将 `signal` 传给 `fetch()`，可响应过期请求和实例销毁触发的取消；自定义缓存应在异步读取和解析后检查取消状态。
+- 离开页面或替换场景时调用 `destroy()`，停止调度、取消请求并释放 LOD 资源。
+
+### 体素遮挡降级
+
+`meta.voxels` 与构造函数第五个参数 `parseVoxel` 配合启用体素遮挡降级。仅在元数据中提供体素路径不会自动加载体素；回调负责解析相对路径、加载描述文件与二进制，并响应传入的 `AbortSignal`。
+
+回调返回的数据包含 `gridBounds`、`voxelResolution`、`leafSize`、`treeDepth`、`nodeCount`、`leafDataCount` 和 `buffer: Uint32Array`。`buffer` 中节点数据在前、叶位图在后，`leafSize` 必须为 `4`，坐标必须与 LOD 容器的局部坐标一致。文件格式见[物理碰撞](./physics-collision.md)。
+
+被遮挡分块保留较粗层级，减少细节加载。缺少体素数据、加载失败或查询异常时，调度器继续采用常规 LOD 分配。
+
+### 旧配置迁移
+
+- 删除 `backgroundPenalty` 和 `distanceStep`。新调度器不再使用背景权重和距离分段，改用 `minLevel`、`movingMinLevel`、`maxBudget` 以及视口尺寸控制细节。
+- 更早的 `outsidePenalty`、`behindPenalty`、`behindTolerance`、`behindDistanceTolerance` 和 `debuggerType` 也已移除。视锥外卸载由 `frustumCullingEnabled` 控制，层级调试颜色由 `debuggerEnabled` 控制。
+- `hysteresisTicks` 按固定 60 Hz 时间单位解释，不再累计 `tick()` 调用次数；调整调用频率不会改变稳定等待时间。

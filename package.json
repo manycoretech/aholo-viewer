@@ -42,6 +42,7 @@
     "lint-staged": "^17.6.0",
     "oxfmt": "^0.73.0",
     "oxlint": "^1.88.0",
+    "semver": "7.8.5",
     "typedoc": "^0.28.20",
     "typescript": "catalog:"
   }

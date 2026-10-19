@@ -1848,19 +1848,14 @@ async function loadWalkLodMeta(metaUrl: string, signal: AbortSignal): Promise<Wa
 
 const WALK_OUTDOOR_LOD_CONFIG = {
     minLevel: 0,
+    movingMinLevel: 2,
     maxBudget: WALK_OUTDOOR_LOD_MAX_BUDGET,
-    backgroundPenalty: 1,
-    outsidePenalty: 1,
-    behindPenalty: 1,
-    behindTolerance: -0.2,
-    behindDistanceTolerance: 2,
     hysteresisTicks: 4,
     schedulerParallelCounts: 4,
     schedulerExistingTaskLimit: 64,
     schedulerMinDuration: 160,
     debuggerEnabled: false,
-    debuggerType: 0 as const,
-};
+} satisfies Partial<SplatUtils.LodConfig>;
 
 function createWalkOutdoorLodResourceLoader(
     indexedDB: RuntimeIndexedDBStorage,

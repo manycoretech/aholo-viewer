@@ -1,14 +1,26 @@
 # ChangeLOG
 
-## DEV
+## 1.10.0
 
 1. Features
     - support loading and merging multiple splat files from ZIP archives through `SplatLoader.parseSplatData()`; `SplatPackType.Sog` remains limited to a single SOG asset.
     - add `extras.includeOtherFormats` to include other independent splat formats from ZIP archives; defaults to `false`, loading only the requested format.
-2. Changes
+    - support optional voxel-based occlusion downgrading in `SplatUtils.LodSplat` through `LodMeta.voxels` and a `parseVoxel` constructor callback.
+    - add `LodConfig.movingMinLevel` to limit new LOD refinement while the camera is moving; defaults to `2`, with `0` representing the finest level.
+    - expose `LodSplat.flush()` and add `LodSplat.stop()` for application-managed frame loops, and support an optional render-pixel viewport in `LodSplat.tick(camera, viewport)`.
+2. Fixes
+    - release LOD GPU resources on destruction and failed resource preparation while preserving textures still shared by active splats.
+    - propagate LOD resource loading and replacement failures through `LodSplat.onFinishSchedule()`.
+3. Changes
     - reorganize splat-loader utilities and centralize ZIP extraction and resource path resolution for SOG, LCC, and LCC2 assets.
-3. Breaking Changes
+    - allocate LOD detail by projected screen area and splat budget, with a viewport-based sampling limit when a viewport is available.
+    - prioritize coarse scene coverage, pace detail updates and node merging, and validate pending LOD replacements before retiring displayed splats.
+    - pass an optional `AbortSignal` to custom LOD resource loaders, cancel unused requests, and retain idle resources within a point-count budget.
+    - measure `LodConfig.hysteresisTicks` as elapsed time in nominal 60 Hz ticks, independent of how often `LodSplat.tick()` is called.
+    - reduce redundant splat repacking and texture reallocations during LOD updates.
+4. Breaking Changes
     - change low-level `SplatLoader.SogFile`, `SplatLoader.LccFile`, and `SplatLoader.Lcc2File` readers to consume metadata streams, with a file context for archive resources; use `SplatLoader.parseSplatData()` to load ZIP archives.
+    - remove `LodConfig.backgroundPenalty` and `LodConfig.distanceStep`; use `minLevel`, `movingMinLevel`, and `maxBudget` to control LOD detail under the new allocation strategy.
 
 ## 1.9.0
 

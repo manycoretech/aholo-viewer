@@ -91,6 +91,8 @@ jobs:
             IFS='|' read -r package_dir tag_prefix make_latest <<< "$release"
             package_name="$(node -p "require('./${package_dir}/package.json').name")"
             package_version="$(node -p "require('./${package_dir}/package.json').version")"
+            release_config="$(node scripts/release-config.mjs "$package_version" "$make_latest")"
+            IFS='|' read -r dist_tag prerelease make_latest <<< "$release_config"
             tag_name="${tag_prefix}@${package_version}"
             release_name="${tag_prefix} ${package_version}"
 
@@ -99,7 +101,7 @@ jobs:
               continue
             fi
 
-            echo "Creating GitHub release ${tag_name} for ${package_name}@${package_version}."
+            echo "Creating GitHub release ${tag_name} for ${package_name}@${package_version} (${dist_tag})."
             release_notes_file="$(mktemp)"
             node scripts/read-package-changelog.mjs "$package_name" "$package_version" > "$release_notes_file"
 
@@ -120,5 +122,6 @@ jobs:
               -f target_commitish="$GITHUB_SHA" \
               -f name="$release_name" \
               -F body=@"$release_notes_file" \
+              -F prerelease="$prerelease" \
               -f make_latest="$make_latest" >/dev/null
           done

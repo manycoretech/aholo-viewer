@@ -63,8 +63,8 @@ export default async function runner({ renderer, loading, configPanel, indexedDB
             meta,
             {
                 minLevel: meta.levels - 1,
+                movingMinLevel: 2,
                 maxBudget: 6_000_000,
-                backgroundPenalty: 1,
                 // Keep both eyes covered instead of selecting chunks for only one eye's frustum.
                 frustumCullingEnabled: false,
             },

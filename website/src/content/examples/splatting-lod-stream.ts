@@ -8,16 +8,13 @@ import {
 } from '@manycore/aholo-viewer';
 import type { RenderRuntime, RuntimeConfigPanel, RuntimeIndexedDBStorage } from '../../client/render-runtime.js';
 
-const LodConfig: Omit<
-    SplatUtils.LodConfig,
-    'debuggerEnabled' | 'debuggerType' | 'distanceStep' | 'mergeNodeEnabled' | 'frustumCullingEnabled'
-> & {
+const LodConfig: Omit<SplatUtils.LodConfig, 'debuggerEnabled' | 'mergeNodeEnabled' | 'frustumCullingEnabled'> & {
     highPrecisionEnabled: boolean;
     maxBudgetMillions: number;
 } = {
     minLevel: 0,
+    movingMinLevel: 2,
     maxBudget: 6000000,
-    backgroundPenalty: 0.5,
     hysteresisTicks: 4,
     schedulerParallelCounts: 4,
     schedulerExistingTaskLimit: 64,
@@ -88,7 +85,7 @@ export default async function runner({ renderer, control, loading, configPanel, 
         throwIfAborted(signal);
     }
 
-    initConfigPanel(splat, configPanel, viewer);
+    initConfigPanel(splat, configPanel, viewer, meta.levels - 1);
 
     renderer.frame(({ delta }) => {
         const updated = control.update(delta);
@@ -99,7 +96,12 @@ export default async function runner({ renderer, control, loading, configPanel, 
     return () => splat.destroy();
 }
 
-function initConfigPanel(splat: SplatUtils.LodSplat, configPanel: RuntimeConfigPanel, viewer: Viewer) {
+function initConfigPanel(
+    splat: SplatUtils.LodSplat,
+    configPanel: RuntimeConfigPanel,
+    viewer: Viewer,
+    maxLevel: number,
+) {
     const applyConfig = () => {
         if (LodConfig.highPrecisionEnabled) {
             setViewerConfig(viewer, {
@@ -135,7 +137,15 @@ function initConfigPanel(splat: SplatUtils.LodSplat, configPanel: RuntimeConfigP
     budget
         .addBinding(LodConfig, 'minLevel', {
             label: 'Min level',
-            max: 4,
+            max: maxLevel,
+            min: 0,
+            step: 1,
+        })
+        .on('change', applyConfig);
+    budget
+        .addBinding(LodConfig, 'movingMinLevel', {
+            label: 'Moving min level',
+            max: maxLevel,
             min: 0,
             step: 1,
         })
@@ -149,25 +159,16 @@ function initConfigPanel(splat: SplatUtils.LodSplat, configPanel: RuntimeConfigP
         })
         .on('change', applyConfig);
 
-    const visibility = panel.addFolder({ title: 'Visibility Weights', expanded: false });
-    visibility
-        .addBinding(LodConfig, 'backgroundPenalty', {
-            label: 'Background',
-            max: 1,
-            min: 0,
-            step: 0.05,
-        })
-        .on('change', applyConfig);
-    visibility
+    const scheduler = panel.addFolder({ title: 'Streaming Scheduler', expanded: false });
+    scheduler
         .addBinding(LodConfig, 'hysteresisTicks', {
-            label: 'Hysteresis',
+            label: 'Stability (60 Hz)',
             max: 12,
             min: 0,
             step: 1,
         })
         .on('change', applyConfig);
 
-    const scheduler = panel.addFolder({ title: 'Streaming Scheduler', expanded: false });
     scheduler
         .addBinding(LodConfig, 'schedulerParallelCounts', {
             label: 'Parallel',
@@ -178,7 +179,7 @@ function initConfigPanel(splat: SplatUtils.LodSplat, configPanel: RuntimeConfigP
         .on('change', applyConfig);
     scheduler
         .addBinding(LodConfig, 'schedulerExistingTaskLimit', {
-            label: 'Cached tasks',
+            label: 'Task limit',
             max: 256,
             min: 1,
             step: 1,
@@ -186,7 +187,7 @@ function initConfigPanel(splat: SplatUtils.LodSplat, configPanel: RuntimeConfigP
         .on('change', applyConfig);
     scheduler
         .addBinding(LodConfig, 'schedulerMinDuration', {
-            label: 'Min duration',
+            label: 'Interval (ms)',
             max: 500,
             min: 0,
             step: 20,

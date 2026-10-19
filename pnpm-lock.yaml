@@ -220,6 +220,9 @@ importers:
       oxlint:
         specifier: ^1.88.0
         version: 1.88.0
+      semver:
+        specifier: 7.8.5
+        version: 7.8.5
       typedoc:
         specifier: ^0.28.20
         version: 0.28.20(typescript@6.0.3)

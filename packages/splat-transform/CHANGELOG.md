@@ -1,6 +1,6 @@
 # Changelog
 
-## DEV
+## 2.0.0-rc.0
 
 - migrate processing to a standalone C++20 executable built with CMake and vcpkg
 - route native formats through IFile implementations and pipeline operations through BaseTask implementations
