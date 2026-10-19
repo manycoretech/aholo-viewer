@@ -180,7 +180,10 @@ set_target_properties(splat_transform_core PROPERTIES
     INTERFACE_COMPILE_FEATURES cxx_std_20
     INTERFACE_COMPILE_DEFINITIONS "$<$<PLATFORM_ID:Windows>:NOMINMAX;WIN32_LEAN_AND_MEAN;UNICODE;_UNICODE>"
 )
-target_compile_definitions(splat_transform_core PRIVATE "$<$<PLATFORM_ID:Linux>:BOOST_ASIO_HAS_IO_URING>")
+target_compile_definitions(splat_transform_core
+    PUBLIC "$<$<PLATFORM_ID:Windows>:_WIN32_WINNT=0x0A00;WINVER=0x0A00>"
+    PRIVATE "$<$<PLATFORM_ID:Linux>:BOOST_ASIO_HAS_IO_URING>"
+)
 
 add_executable(splat-transform)
 target_sources(splat-transform PRIVATE
@@ -297,6 +300,8 @@ endif()
 set_target_properties(${SPLAT_TRANSFORM_TARGETS} PROPERTIES
     COMPILE_FEATURES cxx_std_20
     CXX_EXTENSIONS OFF
+    # Native sources use C++20 without importing C++ modules.
+    CXX_SCAN_FOR_MODULES OFF
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
     COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:MSVC>:/Zc:__cplusplus;/utf-8>"
 )

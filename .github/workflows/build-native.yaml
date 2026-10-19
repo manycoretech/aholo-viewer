@@ -47,10 +47,10 @@ jobs:
 
       - name: Download DXC
         run: |
-          $archive = Join-Path $env:RUNNER_TEMP 'dxc_2025_07_14.zip'
+          $archive = Join-Path $env:RUNNER_TEMP 'dxc_2026_09_29.zip'
           $dxcRoot = Join-Path $env:RUNNER_TEMP 'aholo-dxc'
-          Invoke-WebRequest 'https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2505.1/dxc_2025_07_14.zip' -OutFile $archive
-          $expectedHash = '69dd74ee2bc8a7ac569fa71351209412f74ef901c58dc59d413277e3129ce78d31dbca0996c2910048bfd0575e7a10655d89d361b5a2ed2963c831385711380f'
+          Invoke-WebRequest 'https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2609/dxc_2026_09_29.zip' -OutFile $archive
+          $expectedHash = 'cec5e575dbf542a902eab64686fd31edc14b6d512e0735d0237fb0befec86746e8024bed21f409db5d9b86b61f0fb26470801a6fdd88f035fd0faaacbacc09f4'
           if ((Get-FileHash -LiteralPath $archive -Algorithm SHA512).Hash -ne $expectedHash) {
             throw 'DXC archive checksum mismatch'
           }

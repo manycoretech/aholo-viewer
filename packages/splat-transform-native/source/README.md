@@ -6,7 +6,7 @@ CLI11 generates help and validates command-line arguments. `-h` is an alias for 
 
 ## Build
 
-Install CMake 3.31+, a C++20 compiler, and vcpkg. Set `VCPKG_ROOT` to the bootstrapped vcpkg checkout. Linux CI uses Ubuntu 22.04 and Clang 21 through `/usr/bin/cc` and `/usr/bin/c++`. Linux Clang builds also require the matching compiler-rt development package. Windows presets let CMake select the generator and host architecture; use the preset matching the native build host, or pass cross-compilation settings explicitly. AppleClang builds enable `-fexperimental-library` for the logger translation unit because libc++ currently gates `<syncstream>` behind that flag.
+Install CMake 3.31+, a C++20 compiler, and vcpkg. Set `VCPKG_ROOT` to the bootstrapped vcpkg checkout. Linux CI uses Ubuntu 22.04 and Clang 21 through `/usr/bin/cc` and `/usr/bin/c++`. Linux Clang builds also require the matching compiler-rt development package. Windows builds target Windows 10 or later (`_WIN32_WINNT=0x0A00`, `WINVER=0x0A00`). Windows presets let CMake select the generator and host architecture; use the preset matching the native build host, or pass cross-compilation settings explicitly. AppleClang builds enable `-fexperimental-library` for the logger translation unit because libc++ currently gates `<syncstream>` behind that flag.
 
 CMake automatically generates missing or outdated shader headers during configuration. Install DXC using the [development setup](#dxc-and-shader-generation) below, or download matching CI shader headers to build without DXC. Run from this directory:
 
@@ -46,16 +46,16 @@ Vcpkg supplies static image/compression/archive/HTTP libraries, Eigen, nanoflann
 
 ### DXC and shader generation
 
-Shader generation requires CMake 3.31+ and a DXC build with SPIR-V support for the development host. CI uses Microsoft's [DXC v1.8.2505.1 release](https://github.com/microsoft/DirectXShaderCompiler/releases/tag/v1.8.2505.1); use that version where available to match CI.
+Shader generation requires CMake 3.31+ and a DXC build with SPIR-V support for the development host. CI uses Microsoft's [DXC v1.9.2609 release](https://github.com/microsoft/DirectXShaderCompiler/releases/tag/v1.9.2609); use that version where available to match CI.
 
 | Platform                    | DXC setup                                                                                                                                                                                                                                                           |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows x64 / ARM64         | Extract `dxc_2025_07_14.zip` from the release. Add the matching `bin/x64` or `bin/arm64` directory to `PATH`, keeping the DLLs beside `dxc.exe`.                                                                                                                    |
-| Linux x64                   | Extract `linux_dxc_2025_07_14.x86_64.tar.gz` from the release. Add its `bin` directory to `PATH` and preserve the adjacent `lib` directory.                                                                                                                         |
+| Windows x64 / ARM64         | Extract `dxc_2026_09_29.zip` from the release. Add the matching `bin/x64` or `bin/arm64` directory to `PATH`, keeping the DLLs beside `dxc.exe`.                                                                                                                    |
+| Linux x64                   | Extract `linux_dxc_2026_09_28.x86_x64.tar.gz` from the release. Add its `bin` directory to `PATH` and preserve the adjacent `lib` directory.                                                                                                                        |
 | macOS                       | Install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/doc/view/latest/mac/getting_started.html), then source its `setup-env.sh` or use `$VULKAN_SDK/bin/dxc` explicitly. The SDK includes a SPIR-V-enabled DXC; its version may differ from CI.                 |
 | Linux ARM64 / source builds | Use a native DXC with SPIR-V support, or follow the [upstream Unix build instructions](https://github.com/microsoft/DirectXShaderCompiler/blob/main/docs/BuildingAndTestingDXC.rst) with `ENABLE_SPIRV_CODEGEN=ON`. The pinned release's Linux archive is x64-only. |
 
-Check `dxc --version` and confirm that `dxc -help` lists `-spirv`. A DXC bundled with another toolchain may omit the SPIR-V backend. Compilation, input hashing, variant enumeration, and header generation run directly through CMake; no Python or Node.js installation is needed.
+Check `dxc --version` and verify that it can compile with `-spirv`. A DXC bundled with another toolchain may omit the SPIR-V backend even when its help lists `-spirv`. Compilation, input hashing, variant enumeration, and header generation run directly through CMake; no Python or Node.js installation is needed.
 
 Normal CMake configure and workflow commands generate the headers automatically when needed. Changes to `shaders/*.hlsl`, `shaders/*.hlsli`, `cmake/compile-shaders.cmake`, or `cmake/shader-inputs.cmake` also trigger reconfiguration and regeneration on the next build. To generate headers explicitly, run from this directory:
 
