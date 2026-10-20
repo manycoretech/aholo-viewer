@@ -1,8 +1,8 @@
 #include <iostream>
-#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
+#include <unordered_set>
 #include <utility/logger.h>
 #include <vector>
 
@@ -83,7 +83,7 @@ int main() {
             }
         }
         std::istringstream lines(capture.text().substr(text.size()));
-        std::set<std::string> messages;
+        std::unordered_set<std::string> messages;
         for (std::string line; std::getline(lines, line);) {
             messages.insert(std::move(line));
         }

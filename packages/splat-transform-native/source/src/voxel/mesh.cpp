@@ -1,12 +1,13 @@
 #include "grid.h"
 #include <algorithm>
 #include <io/file.h>
-#include <map>
 #include <set>
+#include <unordered_map>
+#include <utility/vector_hash.h>
 
 namespace splat_transform::voxel {
 namespace {
-Point global_point(int axis, int p, int u, int v) {
+Eigen::Vector3i global_point(int axis, int p, int u, int v) {
     if (axis == 0) {
         return { p, u, v };
     }
@@ -15,7 +16,7 @@ Point global_point(int axis, int p, int u, int v) {
     }
     return { u, v, p };
 }
-std::array<int, 2> local_point(int axis, Point point) {
+std::array<int, 2> local_point(int axis, Eigen::Vector3i point) {
     if (axis == 0) {
         return { point[1], point[2] };
     }
@@ -24,7 +25,7 @@ std::array<int, 2> local_point(int axis, Point point) {
     }
     return { point[0], point[1] };
 }
-std::array<int, 3> line_key(int axis, Point p) {
+Eigen::Vector3i line_key(int axis, Eigen::Vector3i p) {
     if (axis == 0) {
         return { axis, p[1], p[2] };
     }
@@ -35,21 +36,22 @@ std::array<int, 3> line_key(int axis, Point p) {
 }
 struct Rectangle {
     int bucket, plane, u0, v0, u1, v1;
-    std::array<Point, 4> corners() const {
+    std::array<Eigen::Vector3i, 4> corners() const {
         const int axis = bucket / 2;
         return { global_point(axis, plane, u0, v0), global_point(axis, plane, u1, v0), global_point(axis, plane, u1, v1), global_point(axis, plane, u0, v1) };
     }
 };
 } // namespace
 Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
-    std::map<std::array<int, 2>, std::set<std::array<int, 2>>> planes;
+    // Each plane is independent; cells remain sorted to seed greedy rectangles.
+    std::unordered_map<Eigen::Vector2i, std::set<std::array<int, 2>>, utility::VectorHash> planes;
     for (auto index : grid.active_blocks()) {
         const auto block = grid.block_point(index);
         auto bits = grid.mask(index);
         while (bits) {
             const int bit = std::countr_zero(bits);
             bits &= bits - 1;
-            Point p { block[0] * 4 + bit % 4, block[1] * 4 + bit / 4 % 4, block[2] * 4 + bit / 16 };
+            Eigen::Vector3i p { block[0] * 4 + bit % 4, block[1] * 4 + bit / 4 % 4, block[2] * 4 + bit / 16 };
             for (int axis = 0; axis < 3; ++axis) {
                 for (int side = 0; side < 2; ++side) {
                     auto neighbor = p;
@@ -91,7 +93,8 @@ Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float reso
             rectangles.push_back({ plane[0], plane[1], u, v, u + width, v + height });
         }
     }
-    std::map<Point, std::set<int>> line_points;
+    // Sorted coordinates are required by the perimeter's range queries below.
+    std::unordered_map<Eigen::Vector3i, std::set<int>, utility::VectorHash> line_points;
     for (const auto& rectangle : rectangles) {
         auto corners = rectangle.corners();
         for (int edge = 0; edge < 4; ++edge) {
@@ -104,8 +107,8 @@ Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float reso
         }
     }
     Mesh output;
-    std::map<Point, uint32_t> vertices;
-    auto vertex = [&](Point p) {
+    std::unordered_map<Eigen::Vector3i, uint32_t, utility::VectorHash> vertices;
+    auto vertex = [&](Eigen::Vector3i p) {
         auto found = vertices.find(p);
         if (found != vertices.end()) {
             return found->second;

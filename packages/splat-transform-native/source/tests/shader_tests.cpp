@@ -9,8 +9,8 @@
 #include <cstring>
 #include <gpu/compute.h>
 #include <iostream>
-#include <map>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -40,8 +40,8 @@ void require(bool condition, const char* message) {
 struct Module {
     std::vector<uint32_t> words;
     std::vector<Words> instructions;
-    std::map<uint32_t, Words> types;
-    std::map<uint32_t, uint32_t> constants;
+    std::unordered_map<uint32_t, Words> types;
+    std::unordered_map<uint32_t, uint32_t> constants;
 
     explicit Module(std::span<const uint8_t> bytes) : words(bytes.size() / 4) {
         require(bytes.size() % 4 == 0 && words.size() >= 5, "Invalid SPIR-V size");

@@ -2,11 +2,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_raii.hpp>
@@ -80,7 +80,7 @@ private:
     std::unique_ptr<VmaAllocator_T, decltype(&vmaDestroyAllocator)> allocator_ { nullptr, vmaDestroyAllocator };
     vk::raii::Queue queue_ { nullptr };
     vk::raii::CommandPool command_pool_ { nullptr };
-    std::map<std::string, std::unique_ptr<Kernel>> kernels_;
+    std::unordered_map<std::string, std::unique_ptr<Kernel>> kernels_;
     // Synchronous fence completion makes these allocations reusable by the next dispatch.
     std::vector<std::unique_ptr<Buffer>> storage_;
     std::vector<std::unique_ptr<Buffer>> uploads_;

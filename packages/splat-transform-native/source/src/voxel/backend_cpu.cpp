@@ -45,7 +45,7 @@ void parallel_chunks(size_t count, size_t grain, F&& function) {
 // Match the historical CPU worker's floor/ceil voxel window, including a
 // Gaussian whose center lies outside the grid but whose extent overlaps it.
 bool voxel_range(const gpu::Gaussian& gaussian, const Grid& grid, const Eigen::AlignedBox3f& bounds,
-    float resolution, Point& minimum, Point& maximum) {
+    float resolution, Eigen::Vector3i& minimum, Eigen::Vector3i& maximum) {
     const auto& g = gaussian.values;
     if (!(g[3] > ALPHA_THRESHOLD) || !std::all_of(g.begin(), g.begin() + 14, [](float value) { return std::isfinite(value); })) {
         return false;
@@ -75,14 +75,14 @@ public:
         if (data.gaussians.size() > std::numeric_limits<uint32_t>::max()) {
             throw std::runtime_error("CPU voxel Gaussian indices exceed 32 bits");
         }
-        Point dimensions;
+        Eigen::Vector3i dimensions;
         for (int a = 0; a < 3; ++a) {
             dimensions[a] = (grid.blocks[a] + BATCH_BLOCKS - 1) / BATCH_BLOCKS;
         }
         const size_t batch_count = size_t(dimensions[0]) * dimensions[1] * dimensions[2];
         std::vector<uint32_t> counts(batch_count);
         auto visit_batches = [&](size_t index, auto&& visit) {
-            Point minimum, maximum;
+            Eigen::Vector3i minimum, maximum;
             if (!voxel_range(data.gaussians[index], grid, bounds, resolution, minimum, maximum)) {
                 return;
             }
@@ -129,7 +129,7 @@ public:
         parallel_chunks(active.size(), 1, [&](size_t begin, size_t end) {
             for (size_t batch = begin; batch < end; ++batch) {
                 const auto key = active[batch];
-                const Point origin { int(key % dimensions[0]) * BATCH_VOXELS,
+                const Eigen::Vector3i origin { int(key % dimensions[0]) * BATCH_VOXELS,
                     int(key / dimensions[0] % dimensions[1]) * BATCH_VOXELS,
                     int(key / (size_t(dimensions[0]) * dimensions[1])) * BATCH_VOXELS };
                 std::array<float, BATCH_VOXELS * BATCH_VOXELS * BATCH_VOXELS> density {};
@@ -139,7 +139,7 @@ public:
                 for (size_t candidate = offsets[key]; candidate < offsets[key + 1]; ++candidate) {
                     const auto& gaussian = data.gaussians[indices[candidate]];
                     const auto& g = gaussian.values;
-                    Point minimum, maximum;
+                    Eigen::Vector3i minimum, maximum;
                     if (!voxel_range(gaussian, grid, bounds, resolution, minimum, maximum)) {
                         continue;
                     }
@@ -153,7 +153,7 @@ public:
                     for (int z = minimum[2]; z <= maximum[2]; ++z) {
                         for (int y = minimum[1]; y <= maximum[1]; ++y) {
                             for (int x = minimum[0]; x <= maximum[0]; ++x) {
-                                const Point local { x - origin[0], y - origin[1], z - origin[2] };
+                                const Eigen::Vector3i local { x - origin[0], y - origin[1], z - origin[2] };
                                 const int block = local[0] / 4 + local[1] / 4 * 4 + local[2] / 4 * 16;
                                 const uint64_t bit = uint64_t { 1 } << ((x & 3) + (y & 3) * 4 + (z & 3) * 16);
                                 if (result[block] & bit) {
@@ -181,7 +181,7 @@ public:
         // complete. Workers never mutate the shared unordered_map.
         for (size_t batch = 0; batch < active.size(); ++batch) {
             const auto key = active[batch];
-            const Point origin { int(key % dimensions[0]) * BATCH_BLOCKS,
+            const Eigen::Vector3i origin { int(key % dimensions[0]) * BATCH_BLOCKS,
                 int(key / dimensions[0] % dimensions[1]) * BATCH_BLOCKS,
                 int(key / (size_t(dimensions[0]) * dimensions[1])) * BATCH_BLOCKS };
             for (int block = 0; block < 64; ++block) {
@@ -192,7 +192,7 @@ public:
         }
         return grid;
     }
-    Grid dilate(const Grid& grid, Point radius) const override {
+    Grid dilate(const Grid& grid, Eigen::Vector3i radius) const override {
         Grid output = grid;
         for (int axis = 0; axis < 3; ++axis) {
             for (int distance = 0; distance < radius[axis]; ++distance) {

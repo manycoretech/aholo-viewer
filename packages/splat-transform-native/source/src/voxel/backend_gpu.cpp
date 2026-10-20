@@ -4,8 +4,8 @@
 namespace splat_transform::voxel {
 namespace {
 struct Batch {
-    Point origin;
-    Point dimensions;
+    Eigen::Vector3i origin;
+    Eigen::Vector3i dimensions;
     uint32_t offset;
     uint32_t count;
 };
@@ -14,7 +14,7 @@ struct Batches {
     std::vector<uint32_t> indices;
 };
 Batches build_batches(const PreparedData& data, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
-    Point count;
+    Eigen::Vector3i count;
     for (int a = 0; a < 3; ++a) {
         count[a] = (grid.blocks[a] + 3) / 4;
     }
@@ -31,8 +31,8 @@ Batches build_batches(const PreparedData& data, const Grid& grid, const Eigen::A
         // Keep deterministic accumulation order without copying each bin and
         // subsequently flattening all of those copies into another buffer.
         std::sort(start, start + candidates.counts[key]);
-        Point origin { int(key % count[0]) * 4, int(key / count[0] % count[1]) * 4, int(key / (uint64_t(count[0]) * count[1])) * 4 };
-        Point dimensions;
+        Eigen::Vector3i origin { int(key % count[0]) * 4, int(key / count[0] % count[1]) * 4, int(key / (uint64_t(count[0]) * count[1])) * 4 };
+        Eigen::Vector3i dimensions;
         for (int a = 0; a < 3; ++a) {
             dimensions[a] = std::min(4, grid.blocks[a] - origin[a]);
         }
@@ -71,7 +71,7 @@ public:
         }
         return output;
     }
-    Grid dilate(const Grid& grid, Point radius) const override {
+    Grid dilate(const Grid& grid, Eigen::Vector3i radius) const override {
         std::vector<uint32_t> packed;
         const auto active = grid.active_blocks();
         packed.reserve(active.size() * 3);

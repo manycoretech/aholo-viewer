@@ -4,7 +4,6 @@
 #include <bit>
 #include <cstdint>
 #include <filesystem>
-#include <map>
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <span>
@@ -12,12 +11,13 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace splat_transform::io {
 using Bytes = std::vector<uint8_t>;
 using Json = nlohmann::ordered_json;
-using Archive = std::map<std::string, Bytes>;
+using Archive = std::unordered_map<std::string, Bytes>;
 
 inline Json bounds_json(const Eigen::AlignedBox3f& bounds) {
     return { { "min", { bounds.min().x(), bounds.min().y(), bounds.min().z() } },

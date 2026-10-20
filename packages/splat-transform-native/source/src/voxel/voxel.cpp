@@ -2,7 +2,7 @@
 #include <cmath>
 #include <codec/codec.h>
 #include <deque>
-#include <map>
+#include <unordered_map>
 #include <utility/logger.h>
 #include <voxel/voxel.h>
 
@@ -20,7 +20,7 @@ public:
     uint64_t count;
     explicit OctreeOverflow(uint64_t count) : std::runtime_error("Voxel octree exceeds 24-bit offsets"), count(count) {}
 };
-uint64_t morton(Point p) {
+uint64_t morton(Eigen::Vector3i p) {
     uint64_t value = 0;
     for (unsigned bit = 0; bit < 21; ++bit) {
         for (unsigned a = 0; a < 3; ++a) {
@@ -35,7 +35,7 @@ Octree build_octree(const Grid& grid) {
         uint8_t children = 0;
         bool solid = false;
     };
-    using Level = std::map<uint64_t, Node>;
+    using Level = std::unordered_map<uint64_t, Node>;
     Octree output;
     std::vector<Level> levels(1);
     for (auto index : grid.active_blocks()) {
@@ -58,7 +58,7 @@ Octree build_octree(const Grid& grid) {
             parent.solid = parent.mask == 255;
         }
         levels.push_back(std::move(parents));
-    } while (levels.back().size() != 1 || levels.back().begin()->first != 0);
+    } while (levels.back().size() != 1 || !levels.back().contains(0));
     output.depth = uint32_t(levels.size() - 1);
     struct Reference {
         size_t level;

@@ -21,7 +21,7 @@ void save_json(const std::filesystem::path& path, const io::Json& json) {
 }
 void filter_neighborhoods() {
     std::mt19937_64 random(0x8193);
-    for (const voxel::Point dimensions : { voxel::Point { 4, 4, 4 }, voxel::Point { 8, 12, 16 }, voxel::Point { 12, 8, 4 } }) {
+    for (const Eigen::Vector3i dimensions : { Eigen::Vector3i { 4, 4, 4 }, Eigen::Vector3i { 8, 12, 16 }, Eigen::Vector3i { 12, 8, 4 } }) {
         for (bool inverted : { false, true }) {
             voxel::Grid grid(dimensions);
             for (uint32_t index = 0; index < grid.block_count(); ++index) {
@@ -35,7 +35,7 @@ void filter_neighborhoods() {
             for (int z = 0; z < dimensions[2]; ++z) {
                 for (int y = 0; y < dimensions[1]; ++y) {
                     for (int x = 0; x < dimensions[0]; ++x) {
-                        const voxel::Point p { x, y, z };
+                        const Eigen::Vector3i p { x, y, z };
                         const auto bits = grid.mask(grid.block_index({ x / 4, y / 4, z / 4 }));
                         int neighbors = 0;
                         for (int axis = 0; axis < 3; ++axis) {
@@ -53,7 +53,7 @@ void filter_neighborhoods() {
         }
     }
     voxel::Grid shell({ 12, 12, 12 });
-    const voxel::Point center { 4, 4, 4 };
+    const Eigen::Vector3i center { 4, 4, 4 };
     for (int axis = 0; axis < 3; ++axis) {
         auto p = center;
         --p[axis];

@@ -8,7 +8,7 @@
 #include <utility/logger.h>
 
 namespace splat_transform::voxel {
-Grid::Grid(Point dimensions) : size(dimensions) {
+Grid::Grid(Eigen::Vector3i dimensions) : size(dimensions) {
     for (size_t axis = 0; axis < 3; ++axis) {
         if (size[axis] <= 0 || size[axis] % 4) {
             throw std::runtime_error("Voxel grid dimensions must be positive multiples of four");
@@ -19,10 +19,10 @@ Grid::Grid(Point dimensions) : size(dimensions) {
         throw std::runtime_error("Voxel grid exceeds the 31-bit block limit");
     }
 }
-uint32_t Grid::block_index(Point p) const { return p[0] + p[1] * blocks[0] + uint64_t(p[2]) * blocks[0] * blocks[1]; }
-Point Grid::block_point(uint32_t index) const { return { int(index % blocks[0]), int((index / blocks[0]) % blocks[1]), int(index / (uint64_t(blocks[0]) * blocks[1])) }; }
+uint32_t Grid::block_index(Eigen::Vector3i p) const { return p[0] + p[1] * blocks[0] + uint64_t(p[2]) * blocks[0] * blocks[1]; }
+Eigen::Vector3i Grid::block_point(uint32_t index) const { return { int(index % blocks[0]), int((index / blocks[0]) % blocks[1]), int(index / (uint64_t(blocks[0]) * blocks[1])) }; }
 uint64_t Grid::block_count() const { return uint64_t(blocks[0]) * blocks[1] * blocks[2]; }
-bool Grid::contains(Point p) const { return p[0] >= 0 && p[1] >= 0 && p[2] >= 0 && p[0] < size[0] && p[1] < size[1] && p[2] < size[2]; }
+bool Grid::contains(Eigen::Vector3i p) const { return p[0] >= 0 && p[1] >= 0 && p[2] >= 0 && p[0] < size[0] && p[1] < size[1] && p[2] < size[2]; }
 uint64_t Grid::mask(uint32_t index) const {
     const auto found = masks.find(index);
     return found == masks.end() ? default_mask : found->second;
@@ -35,13 +35,13 @@ void Grid::set_mask(uint32_t index, uint64_t value) {
     }
 }
 void Grid::or_mask(uint32_t index, uint64_t value) { set_mask(index, mask(index) | value); }
-bool Grid::get(Point p) const {
+bool Grid::get(Eigen::Vector3i p) const {
     if (!contains(p)) {
         return false;
     }
     return (mask(block_index({ p[0] / 4, p[1] / 4, p[2] / 4 })) >> ((p[0] & 3) + 4 * (p[1] & 3) + 16 * (p[2] & 3))) & 1;
 }
-void Grid::set(Point p) {
+void Grid::set(Eigen::Vector3i p) {
     if (contains(p)) {
         or_mask(block_index({ p[0] / 4, p[1] / 4, p[2] / 4 }), uint64_t { 1 } << ((p[0] & 3) + 4 * (p[1] & 3) + 16 * (p[2] & 3)));
     }
@@ -54,7 +54,7 @@ Grid Grid::inverted() const {
     }
     return output;
 }
-Grid Grid::crop(Point minimum, Point maximum, bool invert) const {
+Grid Grid::crop(Eigen::Vector3i minimum, Eigen::Vector3i maximum, bool invert) const {
     Grid output({ (maximum[0] - minimum[0]) * 4, (maximum[1] - minimum[1]) * 4, (maximum[2] - minimum[2]) * 4 });
     output.default_mask = invert ? ~default_mask : default_mask;
     for (auto [index, bits] : masks) {
@@ -70,8 +70,8 @@ Grid Grid::crop(Point minimum, Point maximum, bool invert) const {
     }
     return output;
 }
-std::optional<std::array<Point, 2>> Grid::extent(bool navigable) const {
-    Point minimum = blocks, maximum { -1, -1, -1 };
+std::optional<std::array<Eigen::Vector3i, 2>> Grid::extent(bool navigable) const {
+    Eigen::Vector3i minimum = blocks, maximum { -1, -1, -1 };
     auto visit = [&](uint32_t index, uint64_t bits) {
         if (!(navigable ? bits != FULL_BLOCK : bits != 0)) {
             return;
@@ -94,7 +94,7 @@ std::optional<std::array<Point, 2>> Grid::extent(bool navigable) const {
     if (maximum[0] < 0) {
         return std::nullopt;
     }
-    return std::array<Point, 2> { minimum, maximum };
+    return std::array<Eigen::Vector3i, 2> { minimum, maximum };
 }
 uint64_t Grid::voxel_count() const {
     int64_t total = int64_t(block_count()) * std::popcount(default_mask);
@@ -136,10 +136,10 @@ Grid unite(const Grid& left, const Grid& right) {
     }
     return output;
 }
-Grid flood(const Grid& allowed, const std::vector<Point>& seeds, bool boundary) {
+Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool boundary) {
     Grid visited(allowed.size);
     std::deque<std::pair<uint32_t, uint64_t>> queue;
-    auto enqueue = [&](Point p, uint64_t bits) {
+    auto enqueue = [&](Eigen::Vector3i p, uint64_t bits) {
         for (size_t a = 0; a < 3; ++a) {
             if (p[a] < 0 || p[a] >= allowed.blocks[a]) {
                 return;
@@ -161,7 +161,7 @@ Grid flood(const Grid& allowed, const std::vector<Point>& seeds, bool boundary) 
             const int u = (axis + 1) % 3, v = (axis + 2) % 3;
             for (int j = 0; j < allowed.blocks[v]; ++j) {
                 for (int i = 0; i < allowed.blocks[u]; ++i) {
-                    Point p {};
+                    Eigen::Vector3i p = Eigen::Vector3i::Zero();
                     p[u] = i;
                     p[v] = j;
                     enqueue(p, face_mask(axis, 0));
@@ -204,7 +204,7 @@ Grid flood(const Grid& allowed, const std::vector<Point>& seeds, bool boundary) 
     }
     return visited;
 }
-std::optional<Point> nearest_cell(const Grid& allowed, Point seed, int radius) {
+std::optional<Eigen::Vector3i> nearest_cell(const Grid& allowed, Eigen::Vector3i seed, int radius) {
     if (allowed.get(seed)) {
         return seed;
     }
@@ -215,7 +215,7 @@ std::optional<Point> nearest_cell(const Grid& allowed, Point seed, int radius) {
                     if (std::abs(x) != r && std::abs(y) != r && std::abs(z) != r) {
                         continue;
                     }
-                    Point p { seed[0] + x, seed[1] + y, seed[2] + z };
+                    Eigen::Vector3i p { seed[0] + x, seed[1] + y, seed[2] + z };
                     if (allowed.get(p)) {
                         return p;
                     }
@@ -281,7 +281,7 @@ void crop_grid(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, bool n
 void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const Navigation& options, const Backend& backend) {
     auto& logger = utility::logger();
     auto seed_cell = [&] {
-        Point p {};
+        Eigen::Vector3i p = Eigen::Vector3i::Zero();
         for (int a = 0; a < 3; ++a) {
             p[a] = int(std::floor(((*options.seed)[a] - bounds.min()[a]) / resolution));
         }

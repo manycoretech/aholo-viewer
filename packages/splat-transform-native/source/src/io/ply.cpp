@@ -5,8 +5,8 @@
 #include <io/file.h>
 #include <io/ply.h>
 #include <limits>
-#include <map>
 #include <sstream>
+#include <unordered_map>
 #include <utility/thread_pool.h>
 
 namespace splat_transform::io {
@@ -202,7 +202,7 @@ splat::Splat read_ply(const Header& header, Reader& reader, unsigned max_sh_degr
         throw std::runtime_error("Unsupported PLY ShCoefficients coefficient count");
     }
     splat::Splat result(count, std::min(max_sh_degree, static_cast<unsigned>(degree_it - splat::SH_COUNTS.begin())));
-    std::vector<std::map<std::string, float>> chunks;
+    std::vector<std::unordered_map<std::string, float>> chunks;
     for (const auto& element : elements) {
         std::vector<int> bindings;
         for (const auto& property : element.properties) {
@@ -228,7 +228,7 @@ splat::Splat read_ply(const Header& header, Reader& reader, unsigned max_sh_degr
         }
         for (size_t i = 0; i < element.count; ++i) {
             std::array<uint32_t, 4> packed {};
-            std::map<std::string, float> chunk;
+            std::unordered_map<std::string, float> chunk;
             for (size_t p = 0; p < element.properties.size(); ++p) {
                 const auto& property = element.properties[p];
                 if (compressed && element.name == "vertex") {

@@ -96,7 +96,7 @@ Eigen::AlignedBox3f align_bounds(Eigen::AlignedBox3f bounds, float resolution) {
     return bounds;
 }
 Grid make_grid(const Eigen::AlignedBox3f& bounds, float resolution) {
-    Point dimensions;
+    Eigen::Vector3i dimensions;
     for (int a = 0; a < 3; ++a) {
         dimensions[a] = std::max(4, int(std::llround((bounds.max()[a] - bounds.min()[a]) / resolution)));
     }
@@ -188,21 +188,21 @@ void filter_cluster(PreparedData& prepared, const io::Json& options, const Eigen
         prepared.select({});
         return;
     }
-    Point seed_cell;
+    Eigen::Vector3i seed_cell;
     for (int a = 0; a < 3; ++a) {
         seed_cell[a] = std::clamp(int(std::floor((seed[a] - bounds.min()[a]) / resolution)), 0, occupied.size[a] - 1);
     }
     // Find the same Chebyshev shell and z/y/x tie ordering without scanning empty volume.
     if (!occupied.get(seed_cell)) {
         std::array<int, 4> best { INT_MAX, INT_MAX, INT_MAX, INT_MAX };
-        Point nearest = seed_cell;
+        Eigen::Vector3i nearest = seed_cell;
         for (auto index : occupied.active_blocks()) {
             const auto p = occupied.block_point(index);
             auto bits = occupied.mask(index);
             while (bits) {
                 const int bit = std::countr_zero(bits);
                 bits &= bits - 1;
-                Point cell { p[0] * 4 + bit % 4, p[1] * 4 + bit / 4 % 4, p[2] * 4 + bit / 16 };
+                Eigen::Vector3i cell { p[0] * 4 + bit % 4, p[1] * 4 + bit / 4 % 4, p[2] * 4 + bit / 16 };
                 std::array<int, 4> order { std::max({ std::abs(cell[0] - seed_cell[0]), std::abs(cell[1] - seed_cell[1]), std::abs(cell[2] - seed_cell[2]) }), cell[2], cell[1], cell[0] };
                 if (order < best) {
                     best = order;
@@ -223,7 +223,7 @@ void filter_cluster(PreparedData& prepared, const io::Json& options, const Eigen
         for (uint32_t i = 0; i < count; ++i) {
             const auto& gaussian = prepared.gaussians[i];
             const auto& g = gaussian.values;
-            Point center;
+            Eigen::Vector3i center;
             for (int a = 0; a < 3; ++a) {
                 center[a] = int(std::floor((g[a] - bounds.min()[a]) / resolution));
             }
@@ -233,7 +233,7 @@ void filter_cluster(PreparedData& prepared, const io::Json& options, const Eigen
             }
             const float maximum_extent = std::max({ g[11], g[12], g[13] });
             const float hits_needed = maximum_extent > resolution ? std::max(1.0f, std::ceil(8 * float(g[11]) * g[12] * g[13] / (resolution * resolution * resolution) * 0.1f)) : 1;
-            Point minimum, maximum;
+            Eigen::Vector3i minimum, maximum;
             for (int a = 0; a < 3; ++a) {
                 minimum[a] = std::max(0, int(std::floor((float(g[a]) - g[11 + a] - bounds.min()[a]) / (4 * resolution))));
                 maximum[a] = std::min(component.blocks[a] - 1, int(std::floor((float(g[a]) + g[11 + a] - bounds.min()[a]) / (4 * resolution))));

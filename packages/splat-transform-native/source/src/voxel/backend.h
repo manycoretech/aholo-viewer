@@ -14,7 +14,7 @@ public:
     virtual std::string_view name() const noexcept = 0;
     virtual bool requires_gpu() const noexcept = 0;
     virtual Grid voxelize(const PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff) const = 0;
-    virtual Grid dilate(const Grid& grid, Point radius) const = 0;
+    virtual Grid dilate(const Grid& grid, Eigen::Vector3i radius) const = 0;
 };
 
 const Backend& cpu_backend();

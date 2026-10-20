@@ -26,7 +26,7 @@ voxel::Grid reference(const voxel::PreparedData& data, const Eigen::AlignedBox3f
     for (int z = 0; z < output.size[2]; ++z) {
         for (int y = 0; y < output.size[1]; ++y) {
             for (int x = 0; x < output.size[0]; ++x) {
-                const voxel::Point cell { x, y, z };
+                const Eigen::Vector3i cell { x, y, z };
                 const Eigen::Vector3d center = bounds.min().cast<double>() + (Eigen::Vector3d(x, y, z).array() + 0.5).matrix() * resolution;
                 float density = 0;
                 bool touched = false;

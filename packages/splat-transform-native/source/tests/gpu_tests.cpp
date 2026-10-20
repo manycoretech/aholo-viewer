@@ -26,7 +26,7 @@ splat::Splat feature_splats(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dy
     }
     return result;
 }
-voxel::Grid reference_dilation(const voxel::Grid& grid, voxel::Point radius) {
+voxel::Grid reference_dilation(const voxel::Grid& grid, Eigen::Vector3i radius) {
     voxel::Grid result(grid.size);
     for (int z = 0; z < grid.size[2]; ++z) {
         for (int y = 0; y < grid.size[1]; ++y) {
@@ -308,8 +308,8 @@ int main(int argc, char** argv) {
                 // More than 128 MiB of dense grid, with occupancy crossing a
                 // tile seam and the outer grid faces. Build an independent
                 // sparse oracle instead of scanning a billion cells on CPU.
-                const voxel::Point size { 1024, 1024, 1028 };
-                const std::array points { voxel::Point { 0, 0, 0 }, voxel::Point { 1023, 1023, 1027 }, voxel::Point { 511, 511, 515 } };
+                const Eigen::Vector3i size { 1024, 1024, 1028 };
+                const std::array points { Eigen::Vector3i { 0, 0, 0 }, Eigen::Vector3i { 1023, 1023, 1027 }, Eigen::Vector3i { 511, 511, 515 } };
                 voxel::Grid input(size), expected(size);
                 for (const auto point : points) {
                     input.set(point);

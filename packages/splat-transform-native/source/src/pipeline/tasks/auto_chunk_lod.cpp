@@ -1,8 +1,8 @@
 #include "../lod_support.h"
 #include <iomanip>
-#include <map>
 #include <pipeline/tasks/auto_chunk_lod.h>
-#include <set>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility/logger.h>
 namespace splat_transform::pipeline {
 using io::Json;
@@ -31,14 +31,14 @@ std::vector<SingleFile> chunk_lod(splat::Splat source, const Json& config) {
         size_t offset;
         size_t count;
     };
-    std::map<uint32_t, Layout> layout;
+    std::unordered_map<uint32_t, Layout> layout;
     std::vector<SingleFile> files;
     for (size_t level = levels.size(); level-- > 0;) {
         if (!levels[level].value("merged", false)) {
             continue;
         }
         std::vector<uint32_t> refs;
-        std::set<uint32_t> seen;
+        std::unordered_set<uint32_t> seen;
         for (const auto& block : blocked.blocks) {
             const auto ref = block.references[level];
             if (!layout.contains(ref) && seen.insert(ref).second) {
@@ -66,7 +66,7 @@ std::vector<SingleFile> chunk_lod(splat::Splat source, const Json& config) {
         files.push_back({ "chunk_" + std::to_string(files.size()) + "." + type, std::make_shared<splat::Splat>(std::move(blocked.splats[ref])) });
     }
     Json tree = Json::array();
-    std::set<size_t> permanent;
+    std::unordered_set<size_t> permanent;
     for (const auto& block : blocked.blocks) {
         Json lods = Json::array();
         for (size_t level = 0; level < levels.size(); ++level) {

@@ -1,7 +1,9 @@
 #include "../lod_support.h"
 #include <numeric>
 #include <pipeline/tasks/skeleton_lod.h>
+#include <unordered_map>
 #include <utility/logger.h>
+#include <utility/vector_hash.h>
 
 namespace splat_transform::pipeline {
 using io::Json;
@@ -12,10 +14,10 @@ splat::Splat skeleton(const splat::Splat& data, const Json& config) {
         return splat::Splat(0, 0);
     }
     auto group = [&](std::span<const uint32_t> indices, const Eigen::Vector3f& origin, const Eigen::Vector3f& scale) {
-        std::map<std::array<int64_t, 3>, size_t> lookup;
+        std::unordered_map<Eigen::Vector<int64_t, 3>, size_t, utility::VectorHash> lookup;
         std::vector<std::vector<uint32_t>> groups;
         for (auto index : indices) {
-            std::array<int64_t, 3> key;
+            Eigen::Vector<int64_t, 3> key;
             for (size_t c = 0; c < 3; ++c) {
                 key[c] = static_cast<int64_t>((data.gaussians[index].attribute(c) - origin[c]) * scale[c]);
             }
