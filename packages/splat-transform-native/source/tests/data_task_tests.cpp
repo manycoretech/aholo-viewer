@@ -111,7 +111,8 @@ void modify_contracts(const std::filesystem::path& directory) {
             task("Modify", config, context);
             require(get(context, "source") == source && get(context, "alias") == source && get(context, "result") == source, "Modify lost in-place alias semantics");
             equal_data(*source, expected);
-            require(source->size() == 3 && source->block_counts == std::vector<size_t> { 4 }, "Legacy Modify deletion/block behavior changed");
+            require(source->size() == 3 && source->block_offsets == std::vector<size_t> { 0 } && source->block_counts == std::vector<size_t> { 3 },
+                "Modify did not update single-block metadata after deletion");
         }
         auto source = cloud(4, degree);
         pipeline::TaskContext context;
@@ -131,6 +132,66 @@ void modify_contracts(const std::filesystem::path& directory) {
             rejects([&] { context.input({ { "input", "bad" } }); });
         }
     }
+}
+
+void modify_block_contracts(const std::filesystem::path& directory) {
+    std::vector<splat::Splat> parts;
+    for (const auto [count, base] : { std::pair<size_t, float> { 3, 0.0f }, { 2, 10.0f }, { 3, 20.0f }, { 2, 30.0f } }) {
+        parts.push_back(*cloud(count, 1, base));
+    }
+    auto source = std::make_shared<splat::Splat>(splat::combine(std::move(parts)));
+    const auto original = *source;
+    pipeline::TaskContext context;
+    put_resource(context, "source", source);
+    put_resource(context, "alias", source);
+
+    const auto delete_first = directory / "delete-first.json";
+    const auto delete_second = directory / "delete-second.json";
+    const auto delete_all = directory / "delete-all.json";
+    save_json(delete_first, { { "deletedIndices", { 1 } } });
+    save_json(delete_second, { { "deletedIndices", { 2 } } });
+    save_json(delete_all, { { "deletedIndices", { 255 } } });
+    const auto apply = [&](const Json& paths) {
+        task("Modify", { { "input", "source" }, { "output", "result" }, { "modifyPaths", paths } }, context);
+        require(get(context, "source") == source && get(context, "alias") == source && get(context, "result") == source,
+            "Repeated Modify lost in-place alias semantics");
+    };
+
+    // Delete from multiple blocks, including an entire middle block; leave the last block unpatched.
+    apply(Json::array({ io::path_utf8(delete_second), io::path_utf8(delete_all), io::path_utf8(delete_first) }));
+    require(source->block_offsets == std::vector<size_t> { 0, 2, 2, 4 } && source->block_counts == std::vector<size_t> { 2, 0, 2, 2 },
+        "Modify did not rebuild block ranges after deletion");
+    equal_data(*source, original.select(std::array<uint32_t, 6> { 0, 2, 6, 7, 8, 9 }));
+
+    const Json translation = Json::array({ 1, 0, 0, 100, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 });
+    const auto empty_block = directory / "empty-block-transform.json";
+    const auto group_transform = directory / "group-transform.json";
+    save_json(empty_block, { { "transform", translation } });
+    save_json(group_transform, { { "indicesTransform", Json::array({ { { "indices", { 1 } }, { "transform", translation } } }) } });
+
+    // Patch local index 1 in the shifted third block and delete from the shifted last block.
+    apply(Json::array({ "", io::path_utf8(empty_block), io::path_utf8(group_transform), io::path_utf8(delete_first) }));
+    require(source->block_offsets == std::vector<size_t> { 0, 2, 2, 4 } && source->block_counts == std::vector<size_t> { 2, 0, 2, 1 },
+        "Repeated Modify did not retain empty blocks and update counts");
+    auto expected = original.select(std::array<uint32_t, 5> { 0, 2, 6, 7, 9 });
+    expected.gaussians[3].mean.x() += 100;
+    equal_data(*source, expected);
+
+    // Local indices in a previously modified block refer to its current, compacted contents.
+    apply(Json::array({ io::path_utf8(delete_second) }));
+    require(source->block_offsets == std::vector<size_t> { 0, 1, 1, 3 } && source->block_counts == std::vector<size_t> { 1, 0, 2, 1 },
+        "Repeated deletion did not shift unpatched blocks");
+    expected = original.select(std::array<uint32_t, 4> { 0, 6, 7, 9 });
+    expected.gaussians[2].mean.x() += 100;
+    equal_data(*source, expected);
+
+    const auto clear = Json::array({ io::path_utf8(delete_all), io::path_utf8(delete_all), io::path_utf8(delete_all), io::path_utf8(delete_all) });
+    apply(clear);
+    require(source->size() == 0 && source->block_offsets == std::vector<size_t> { 0, 0, 0, 0 } && source->block_counts == std::vector<size_t> { 0, 0, 0, 0 },
+        "Deleting all Gaussians did not retain empty block slots");
+    apply(clear);
+    require(source->size() == 0 && source->block_offsets == std::vector<size_t> { 0, 0, 0, 0 } && source->block_counts == std::vector<size_t> { 0, 0, 0, 0 },
+        "Modifying empty blocks changed their layout");
 }
 
 void select_contracts(const std::filesystem::path& directory) {
@@ -572,6 +633,7 @@ int main() {
         }
     } cleanup { directory };
     try {
+        modify_block_contracts(directory);
         modify_contracts(directory);
         select_contracts(directory);
         replace_contracts();

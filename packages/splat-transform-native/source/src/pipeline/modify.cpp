@@ -1,5 +1,6 @@
 #include "data_support.h"
 #include <Eigen/Dense>
+#include <algorithm>
 #include <cmath>
 #include <numeric>
 #include <optional>
@@ -156,6 +157,13 @@ void modify(splat::Splat& data, const io::Json& config) {
         }
         auto offsets = data.block_offsets;
         auto counts = data.block_counts;
+        // Rebase each block onto the compacted sequence, retaining empty block slots.
+        for (size_t block = 0; block < counts.size(); ++block) {
+            const auto first = std::lower_bound(remaining.begin(), remaining.end(), offsets[block]);
+            const auto last = std::lower_bound(first, remaining.end(), offsets[block] + counts[block]);
+            offsets[block] = static_cast<size_t>(first - remaining.begin());
+            counts[block] = static_cast<size_t>(last - first);
+        }
         logger.info("delete ", data.size() - remaining.size(), " splat");
         data = std::move(data).select(remaining);
         data.block_offsets = std::move(offsets);
