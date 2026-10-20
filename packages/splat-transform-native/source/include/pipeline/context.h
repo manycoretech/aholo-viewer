@@ -1,6 +1,8 @@
 #pragma once
+#include <cstdint>
 #include <io/file.h>
-#include <set>
+#include <unordered_map>
+#include <unordered_set>
 #include <variant>
 
 namespace splat_transform::pipeline {
@@ -29,11 +31,11 @@ private:
         size_t source;
     };
     void update_lod_metadata();
-    std::map<std::string, Entry> resources_;
-    std::set<std::string> releases_;
+    std::unordered_map<std::string, Entry> resources_;
+    std::unordered_set<std::string> releases_;
     size_t next_source_ = 0;
-    std::map<std::vector<std::filesystem::path>, size_t> read_sources_;
-    std::map<std::filesystem::path, size_t> voxel_outputs_;
-    std::map<std::filesystem::path, size_t> lod_outputs_;
+    std::unordered_map<uint64_t, size_t> read_sources_;
+    std::unordered_map<std::filesystem::path, size_t> voxel_outputs_;
+    std::unordered_map<std::filesystem::path, size_t> lod_outputs_;
 };
 } // namespace splat_transform::pipeline

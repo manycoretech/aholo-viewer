@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <codec/codec.h>
@@ -13,6 +14,9 @@ void require(bool condition, const char* message) {
     if (!condition) {
         throw std::runtime_error(message);
     }
+}
+bool same_paths(const Json& actual, const Json& expected) {
+    return actual.is_array() && expected.is_array() && std::is_permutation(actual.begin(), actual.end(), expected.begin(), expected.end());
 }
 template<typename F>
 void rejects(F&& action) {
@@ -475,18 +479,30 @@ void lod_voxel_contracts(const std::filesystem::path& directory) {
     };
     voxel("simple", directory / "voxels/full");
     voxel("simple", directory / "voxels/./full");
-    require(io::read_json(first / "lod-meta.json").at("voxels") == Json::array({ "../../voxels/full/voxel-meta.json" }),
+    require(same_paths(io::read_json(first / "lod-meta.json").at("voxels"), Json::array({ "../../voxels/full/voxel-meta.json" })),
         "Simplified input, late voxel output, or duplicate output association failed");
     const auto second = directory / "copies/deep/lod";
     task("Write", { { "input", "lod" }, { "output", io::path_utf8(second) } }, context);
-    require(io::read_json(second / "lod-meta.json").at("voxels") == Json::array({ "../../../voxels/full/voxel-meta.json" }),
+    require(same_paths(io::read_json(second / "lod-meta.json").at("voxels"), Json::array({ "../../../voxels/full/voxel-meta.json" })),
         "Repeated Write reused a relative path from another output directory");
     const auto& files = std::get<std::vector<pipeline::SingleFile>>(context.input({ { "input", "lod" } }));
     require(!Json::parse(std::get<std::string>(files[0].content)).contains("voxels"), "Write mutated the in-memory LOD metadata");
     task("ExtractLodLevel", { { "input", "lod" }, { "output", "level" }, { "level", 0 } }, context, { "lod" });
     voxel("level", first / "collision");
-    require(io::read_json(first / "lod-meta.json").at("voxels") == Json::array({ "collision/voxel-meta.json", "../../voxels/full/voxel-meta.json" }),
+    const Json expected = Json::array({ "collision/voxel-meta.json", "../../voxels/full/voxel-meta.json" });
+    require(same_paths(io::read_json(first / "lod-meta.json").at("voxels"), expected),
         "Extracted LOD level lost its source after releasing the bundle");
+    const auto metadata_path = first / "lod-meta.json";
+    auto metadata = io::read_json(metadata_path);
+    std::reverse(metadata["voxels"].begin(), metadata["voxels"].end());
+    save_json(metadata_path, metadata);
+    const auto unchanged = io::read_bytes(metadata_path);
+    voxel("level", first / "collision");
+    require(io::read_bytes(metadata_path) == unchanged, "Unchanged voxel paths rewrote metadata because of array order");
+    metadata["voxels"][1] = metadata["voxels"][0];
+    save_json(metadata_path, metadata);
+    voxel("level", first / "collision");
+    require(same_paths(io::read_json(metadata_path).at("voxels"), expected), "Duplicate voxel paths prevented metadata repair");
     task("Read", { { "inputs", { io::path_utf8(directory / "./voxel-source.esz") } }, { "output", "read-again" } }, context);
     voxel("read-again", directory / "voxels/read-again");
     require(io::read_json(first / "lod-meta.json").at("voxels").size() == 3, "Reading the same normalized input lost voxel associations");
@@ -499,6 +515,49 @@ void lod_voxel_contracts(const std::filesystem::path& directory) {
     voxel("simple", directory / "voxels/read-again");
     require(!io::read_json(first / "lod-meta.json").contains("voxels") && !io::read_json(second / "lod-meta.json").contains("voxels"),
         "LOD metadata retained references after all associated outputs were overwritten");
+}
+void read_source_order_contracts(const std::filesystem::path& directory) {
+    const auto first = directory / "source-order-a.esz", second = directory / "source-order-b.esz";
+    io::write_splat(first, *cloud(2, 0));
+    io::write_splat(second, *cloud(1, 0, 100));
+    pipeline::TaskContext context;
+    const Json inputs = Json::array({ io::path_utf8(first), io::path_utf8(second) });
+    task("Read", { { "inputs", inputs }, { "output", "ordered" } }, context);
+    const auto meta_path = directory / "source-order-lod.json";
+    save_json(meta_path, Json::object());
+    context.record_lod_metadata({ { "input", "ordered" } }, meta_path);
+    const auto voxel = [&](const char* input, const char* name) {
+        const auto output = directory / name;
+        std::filesystem::create_directories(output);
+        save_json(output / "voxel-meta.json", { { "version", "1.2" } });
+        context.record_voxel({ { "input", input }, { "output", io::path_utf8(output) } });
+    };
+
+    task("Read", { { "inputs", { inputs[1], inputs[0] } }, { "output", "reversed" } }, context);
+    const auto& ordered = *get(context, "ordered");
+    const auto& reversed = *get(context, "reversed");
+    require(ordered.block_counts == std::vector<size_t> { 2, 1 } && reversed.block_counts == std::vector<size_t> { 1, 2 },
+        "Read did not retain input-block order");
+    equal_point(ordered.gaussians[0], reversed.gaussians[1]);
+    equal_point(ordered.gaussians[1], reversed.gaussians[2]);
+    equal_point(ordered.gaussians[2], reversed.gaussians[0]);
+    voxel("reversed", "source-order-reversed");
+    require(!io::read_json(meta_path).contains("voxels"), "Reversed Read inputs shared a source");
+
+    task("Read", { { "inputs", { inputs[0], inputs[1], inputs[0] } }, { "output", "repeated" } }, context);
+    voxel("repeated", "source-order-repeated");
+    require(!io::read_json(meta_path).contains("voxels"), "Repeated Read inputs were ignored in source identity");
+
+    // Source identity must survive resource release and normalized path spellings.
+    context.begin_task({ "ordered" });
+    context.finish_task();
+    task("Read", { { "inputs", inputs }, { "output", "same" } }, context);
+    voxel("same", "source-order-same");
+    const Json expected = Json::array({ "source-order-same/voxel-meta.json" });
+    require(same_paths(io::read_json(meta_path).at("voxels"), expected), "Identical ordered Read inputs lost their source");
+    task("Read", { { "inputs", { io::path_utf8(directory / "." / first.filename()), io::path_utf8(directory / "." / second.filename()) } }, { "output", "normalized" } }, context);
+    voxel("normalized", "source-order-same");
+    require(same_paths(io::read_json(meta_path).at("voxels"), expected), "Normalized ordered Read inputs lost their source");
 }
 } // namespace
 
@@ -520,6 +579,7 @@ int main() {
         shared_lod_contracts(directory);
         preserve_order_contract(directory);
         lod_voxel_contracts(directory);
+        read_source_order_contracts(directory);
         std::cout << "Pipeline data tasks preserve attributes, ownership, indices, and LOD intervals\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

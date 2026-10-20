@@ -1,7 +1,27 @@
 #include <algorithm>
+#include <memory>
+#include <new>
 #include <pipeline/context.h>
+#include <string_view>
+#include <xxhash.h>
 
 namespace splat_transform::pipeline {
+namespace {
+bool same_voxel_paths(const io::Json& previous, const io::Json& current) {
+    if (!previous.is_array() || previous.size() != current.size()) {
+        return false;
+    }
+    std::unordered_set<std::string_view> remaining;
+    remaining.reserve(current.size());
+    for (const auto& path : current) {
+        remaining.insert(path.get_ref<const std::string&>());
+    }
+    // Erasing matched paths also rejects duplicates in existing metadata.
+    return std::ranges::all_of(previous, [&](const io::Json& path) {
+        return path.is_string() && remaining.erase(path.get_ref<const std::string&>()) == 1;
+    });
+}
+} // namespace
 const Resource& TaskContext::input(const io::Json& config) const {
     return resources_.at(config.at("input").get<std::string>()).data;
 }
@@ -32,12 +52,20 @@ void TaskContext::set(const io::Json& config, Resource resource) {
     if (config.contains("input")) {
         source = resources_.at(config.at("input").get<std::string>()).source;
     } else if (config.contains("inputs")) {
-        std::vector<std::filesystem::path> paths;
-        for (const auto& input : config.at("inputs")) {
-            paths.push_back(std::filesystem::absolute(io::utf8_path(input.get<std::string>())).lexically_normal());
+        auto hash = std::unique_ptr<XXH3_state_t, decltype(&XXH3_freeState)>(XXH3_createState(), &XXH3_freeState);
+        if (!hash) {
+            throw std::bad_alloc();
         }
-        std::ranges::sort(paths);
-        const auto [entry, inserted] = read_sources_.try_emplace(std::move(paths), next_source_);
+        XXH3_64bits_reset(hash.get());
+        // Length prefixes preserve path boundaries, input order, and repeated inputs.
+        for (const auto& input : config.at("inputs")) {
+            const auto path = io::path_utf8(std::filesystem::absolute(io::utf8_path(input.get<std::string>())).lexically_normal());
+            XXH64_canonical_t length;
+            XXH64_canonicalFromHash(&length, path.size());
+            XXH3_64bits_update(hash.get(), &length, sizeof(length));
+            XXH3_64bits_update(hash.get(), path.data(), path.size());
+        }
+        const auto [entry, inserted] = read_sources_.try_emplace(XXH3_64bits_digest(hash.get()), next_source_);
         source = entry->second;
         if (inserted) {
             ++next_source_;
@@ -92,7 +120,7 @@ void TaskContext::update_lod_metadata() {
                 continue;
             }
         } else {
-            if (meta.contains("voxels") && meta.at("voxels") == voxels) {
+            if (meta.contains("voxels") && same_voxel_paths(meta.at("voxels"), voxels)) {
                 continue;
             }
             meta["voxels"] = std::move(voxels);

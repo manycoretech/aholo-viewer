@@ -7,6 +7,7 @@
     "nanoflann",
     "nlohmann-json",
     { "name": "curl", "default-features": false, "features": ["ssl"] },
+    "xxhash",
     "zlib",
     "zstd",
     { "name": "libzip", "default-features": false },

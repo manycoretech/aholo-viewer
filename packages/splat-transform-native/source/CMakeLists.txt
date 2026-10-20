@@ -25,6 +25,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(CURL REQUIRED)
 find_package(WebP CONFIG REQUIRED)
 find_package(libavif CONFIG REQUIRED)
+find_package(xxHash CONFIG REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(zstd CONFIG REQUIRED)
 find_package(libzip CONFIG REQUIRED)
@@ -164,7 +165,7 @@ set_source_files_properties(src/utility/logger.cpp PROPERTIES
 )
 target_link_libraries(splat_transform_core
     PUBLIC Eigen3::Eigen nlohmann_json::nlohmann_json Threads::Threads
-    PRIVATE nanoflann::nanoflann WebP::webp avif ZLIB::ZLIB zstd::libzstd
+    PRIVATE nanoflann::nanoflann WebP::webp avif xxHash::xxhash ZLIB::ZLIB zstd::libzstd
         libzip::zip Vulkan::Headers GPUOpen::VulkanMemoryAllocator ${CMAKE_DL_LIBS} CURL::libcurl Boost::asio
 )
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

@@ -462,8 +462,11 @@ int main(int argc, char** argv) {
         pipeline::run({ { "version", 1 }, { "gpu", selected }, { "tasks", Json::array({ { { "type", "Read" }, { "config", { { "inputs", { path("source.esz") } }, { "output", "source" } } } }, { { "type", "AutoChunkLod" }, { "config", { { "input", "source" }, { "output", "lod" }, { "type", "esz" }, { "levels", Json::array({ { { "precision", 1 }, { "scaleBoost", 1 } } }) } } } }, { { "type", "Write" }, { "config", { { "input", "lod" }, { "output", path("scene/lod") } } } }, { { "type", "ExtractLodLevel" }, { "config", { { "input", "lod" }, { "output", "level" }, { "level", 0 } } } }, { { "type", "Voxel" }, { "config", { { "input", "level" }, { "output", path("scene/collision") }, { "filterCluster", false }, { "voxelResolution", 0.1 } } }, { "release", { "level" } } }, { { "type", "Voxel" }, { "config", { { "input", "source" }, { "output", path("scene/lod/voxel") }, { "filterCluster", false }, { "voxelResolution", 0.1 } } }, { "release", { "source" } } }, { { "type", "Write" }, { "config", { { "input", "lod" }, { "output", path("mirror/lod") } } }, { "release", { "lod" } } } }) } });
         const auto first = io::read_json(directory / "scene/lod/lod-meta.json");
         const auto second = io::read_json(directory / "mirror/lod/lod-meta.json");
-        if (first.at("voxels") != Json::array({ "../collision/voxel-meta.json", "voxel/voxel-meta.json" }) ||
-            second.at("voxels") != Json::array({ "../../scene/collision/voxel-meta.json", "../../scene/lod/voxel/voxel-meta.json" })) {
+        const auto same_paths = [](const Json& actual, const Json& expected) {
+            return actual.is_array() && expected.is_array() && std::is_permutation(actual.begin(), actual.end(), expected.begin(), expected.end());
+        };
+        if (!same_paths(first.at("voxels"), Json::array({ "../collision/voxel-meta.json", "voxel/voxel-meta.json" })) ||
+            !same_paths(second.at("voxels"), Json::array({ "../../scene/collision/voxel-meta.json", "../../scene/lod/voxel/voxel-meta.json" }))) {
             throw std::runtime_error("GPU voxel output association or relative paths differ");
         }
         for (const auto& name : first.at("voxels")) {
