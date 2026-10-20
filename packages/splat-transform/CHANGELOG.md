@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.1
 
 - resolve the Voxel backend before processing and select CPU for the entire task when Vulkan device initialization fails; keep the selected backend for filtering, generation, and navigation without per-operation CPU retries
 - document all pipeline tasks, output replacement, LOD defaults, voxel encodings, compression, and JavaScript cancellation; recommend ESZ for chunk LOD

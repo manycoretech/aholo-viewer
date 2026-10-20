@@ -93,6 +93,7 @@ interface LodMeta {
 | `minLevel`                   | `0`         | 允许选择的最精细层级。                                                                                  |
 | `movingMinLevel`             | `2`         | 相机移动时允许新细化到的最精细层级，实际下限取 `max(minLevel, movingMinLevel)`。                        |
 | `maxBudget`                  | `3_000_000` | LOD 目标高斯点数预算。                                                                                  |
+| `pixelLimitEnabled`          | `true`      | 达到每个高斯约一个加权渲染像素时停止细化；关闭后仍受层级和点数预算约束。                                |
 | `hysteresisTicks`            | `4`         | 目标层级的稳定等待时间，每个 tick 固定为 `1000 / 60` ms；默认约 `66.7` ms，与调用 `tick()` 的频率无关。 |
 | `schedulerParallelCounts`    | `4`         | 同时进行的 LOD 资源加载数量上限。                                                                       |
 | `schedulerExistingTaskLimit` | `64`        | 限制单批场景更新量，并在已有较多就绪任务时暂停细节请求。                                                |
@@ -102,6 +103,8 @@ interface LodMeta {
 | `debuggerEnabled`            | `false`     | 按当前 LOD 层级显示调试颜色。                                                                           |
 
 层级参数会被限制在 `0` 到 `meta.levels - 1`。`maxBudget` 是点数分配目标：如果最低覆盖本身超过预算，调度器优先保证覆盖；资源缓存和层级切换也会额外占用内存及显存。
+
+在较小视口中，即使点数预算还有余量，默认像素密度限制也可能停止细化。需要继续提高细节时可调用 `lod.setConfig({ pixelLimitEnabled: false })`，代价是加载和显示更多高斯。流式示例的 `Pixel limit` 开关可用于比较效果。
 
 ### 接入与帧循环
 
@@ -113,7 +116,7 @@ import { createViewerContext, SplatUtils } from '@manycore/aholo-viewer';
 const { viewer, scene } = renderer;
 const lod = new SplatUtils.LodSplat(
     meta,
-    { minLevel: 0, movingMinLevel: 2, maxBudget: 6_000_000 },
+    { minLevel: 0, movingMinLevel: 2, maxBudget: 6_000_000, pixelLimitEnabled: true },
     createViewerContext(viewer),
 );
 scene.add(lod.container);
@@ -129,7 +132,7 @@ renderer.frame(({ delta }) => {
 return () => lod.destroy();
 ```
 
-- `tick(camera, viewport?)` 更新相机与视口信息。传入 `createViewerContext(viewer)` 后，默认使用 Viewer 的绘图缓冲区尺寸；也可显式传入以渲染像素为单位的 `{ width, height }`。视口参与采样密度限制，没有视口信息时仅按相对权重和点数预算分配。
+- `tick(camera, viewport?)` 更新相机与视口信息。传入 `createViewerContext(viewer)` 后，默认使用 Viewer 的绘图缓冲区尺寸；也可显式传入以渲染像素为单位的 `{ width, height }`。`pixelLimitEnabled` 开启时，视口参与采样密度限制；关闭或没有视口信息时，仅按相对权重和点数预算分配。
 - `start()` 启动自动调度。若应用自行控制帧循环，可每帧先调用 `tick()`，再调用 `flush()`，无需启动自动循环。`stop()` 只停止自动循环，保留当前显示及已准备好的资源。
 - `onFinishSchedule()` 等待当前调度收敛。调用前至少执行一次 `tick()`，等待期间保持自动循环或持续调用 `flush()`，并继续渲染以完成排序。资源加载或替换失败时 Promise 会拒绝，应在异常路径释放实例。
 - 构造函数的第四个参数为可选资源加载器，签名为 `(url, signal?) => Promise<SplatLoader.SplatData>`。将 `signal` 传给 `fetch()`，可响应过期请求和实例销毁触发的取消；自定义缓存应在异步读取和解析后检查取消状态。

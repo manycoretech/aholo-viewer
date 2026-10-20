@@ -9,8 +9,9 @@ export default async function runner({ renderer, control, loading, indexedDB, si
         pipeline: {
             Splatting: {
                 enabled: true,
-                toneMapping: {
+                composite: {
                     enabled: true,
+                    highPrecisionEnabled: true,
                     toneMapping: ToneMapping.Neutral,
                 },
             },

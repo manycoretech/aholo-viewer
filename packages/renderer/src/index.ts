@@ -250,7 +250,6 @@ export interface ISplattingPluginConfig {
         precalculateEnabled?: boolean;
         cameraRelativeEnabled?: boolean;
         cameraRelativeUpdateDistanceThreshold?: number;
-        sortedLayoutEnabled?: boolean;
     };
     /**
      * gaussian raster
@@ -279,18 +278,22 @@ export interface ISplattingPluginConfig {
         depthBias?: number;
     };
     /**
-     * composite before output
+     * Offscreen composition and tone mapping before output.
      */
     composite?: {
+        /**
+         * Enable offscreen composition and tone mapping.
+         * @default `false`
+         */
         enabled?: boolean;
+        /**
+         * Use a 16-bit floating-point intermediate color buffer.
+         * @default `false`
+         */
         highPrecisionEnabled?: boolean;
-    };
-    /**
-     * tone mapping functions
-     */
-    toneMapping?: {
-        enabled?: boolean;
+        /** @default `ToneMapping.Linear` */
         toneMapping?: ToneMapping;
+        /** @default `1` */
         exposure?: number;
     };
     /**

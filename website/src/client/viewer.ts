@@ -108,7 +108,6 @@ interface ViewerParams {
     packHighPrecisionEnabled: boolean;
     precalculateEnabled: boolean;
     cameraRelativeEnabled: boolean;
-    sortedLayoutEnabled: boolean;
     autoFreeResourceOnGpuPacked: boolean;
     renderAttachHighPrecisionEnabled: boolean;
     normalizedFalloff: boolean;
@@ -123,19 +122,17 @@ interface ViewerParams {
     sortCameraDistance: number;
     sortCameraCoorient: number;
     sortHighPrecisionEnabled: boolean;
-    toneMappingEnabled: boolean;
+    compositeEnabled: boolean;
     toneMapping: ToneMappingValue;
     exposure: number;
     highlightEnabled: boolean;
     highlightSize: number;
     highlightColor: string;
     lodMinLevel: number;
+    lodMovingMinLevel: number;
     lodMaxBudget: number;
-    lodBackgroundPenalty: number;
-    lodOutsidePenalty: number;
-    lodBehindPenalty: number;
-    lodBehindTolerance: number;
-    lodBehindDistanceTolerance: number;
+    lodPixelLimitEnabled: boolean;
+    lodFrustumCullingEnabled: boolean;
     lodHysteresisTicks: number;
     lodSchedulerParallelCounts: number;
     lodSchedulerExistingTaskLimit: number;
@@ -172,8 +169,8 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             packHighPrecisionEnabled: true,
             precalculateEnabled: true,
             cameraRelativeEnabled: false,
-            sortedLayoutEnabled: false,
             autoFreeResourceOnGpuPacked: true,
+            compositeEnabled: true,
             renderAttachHighPrecisionEnabled: true,
             normalizedFalloff: true,
             preBlurAmount: 0.3,
@@ -193,8 +190,8 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             packHighPrecisionEnabled: true,
             precalculateEnabled: true,
             cameraRelativeEnabled: false,
-            sortedLayoutEnabled: false,
             autoFreeResourceOnGpuPacked: true,
+            compositeEnabled: false,
             renderAttachHighPrecisionEnabled: false,
             normalizedFalloff: false,
             preBlurAmount: 0.3,
@@ -214,8 +211,8 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             packHighPrecisionEnabled: false,
             precalculateEnabled: true,
             cameraRelativeEnabled: true,
-            sortedLayoutEnabled: false,
             autoFreeResourceOnGpuPacked: false,
+            compositeEnabled: false,
             renderAttachHighPrecisionEnabled: false,
             normalizedFalloff: false,
             preBlurAmount: 0.3,
@@ -235,8 +232,8 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             packHighPrecisionEnabled: false,
             precalculateEnabled: true,
             cameraRelativeEnabled: false,
-            sortedLayoutEnabled: false,
             autoFreeResourceOnGpuPacked: true,
+            compositeEnabled: false,
             renderAttachHighPrecisionEnabled: false,
             normalizedFalloff: false,
             preBlurAmount: 0.3,
@@ -256,8 +253,8 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             packHighPrecisionEnabled: false,
             precalculateEnabled: false,
             cameraRelativeEnabled: false,
-            sortedLayoutEnabled: true,
             autoFreeResourceOnGpuPacked: true,
+            compositeEnabled: false,
             renderAttachHighPrecisionEnabled: false,
             normalizedFalloff: false,
             preBlurAmount: 0.3,
@@ -277,8 +274,8 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             packHighPrecisionEnabled: false,
             precalculateEnabled: false,
             cameraRelativeEnabled: false,
-            sortedLayoutEnabled: true,
             autoFreeResourceOnGpuPacked: true,
+            compositeEnabled: false,
             renderAttachHighPrecisionEnabled: false,
             normalizedFalloff: false,
             preBlurAmount: 0.3,
@@ -854,7 +851,6 @@ function createDefaultParams(): ViewerParams {
         packHighPrecisionEnabled: false,
         precalculateEnabled: true,
         cameraRelativeEnabled: true,
-        sortedLayoutEnabled: false,
         autoFreeResourceOnGpuPacked: false,
         renderAttachHighPrecisionEnabled: false,
         normalizedFalloff: false,
@@ -869,19 +865,17 @@ function createDefaultParams(): ViewerParams {
         sortCameraDistance: 1,
         sortCameraCoorient: 0.99,
         sortHighPrecisionEnabled: false,
-        toneMappingEnabled: false,
+        compositeEnabled: false,
         toneMapping: ToneMapping.Linear,
         exposure: 1,
         highlightEnabled: false,
         highlightSize: 2,
         highlightColor: '#0000ff',
         lodMinLevel: 0,
+        lodMovingMinLevel: 2,
         lodMaxBudget: 3_000_000,
-        lodBackgroundPenalty: 0.5,
-        lodOutsidePenalty: 0.4,
-        lodBehindPenalty: 0.1,
-        lodBehindTolerance: -0.2,
-        lodBehindDistanceTolerance: 2,
+        lodPixelLimitEnabled: true,
+        lodFrustumCullingEnabled: true,
         lodHysteresisTicks: 4,
         lodSchedulerParallelCounts: 4,
         lodSchedulerExistingTaskLimit: 64,
@@ -1003,7 +997,6 @@ function setupConfigPanel(
         'change',
         handleSplattingParamChange,
     );
-    pack.addBinding(params, 'sortedLayoutEnabled', { label: 'Sorted layout' }).on('change', handleSplattingParamChange);
     raster
         .addBinding(params, 'normalizedFalloff', { label: 'Normalized falloff' })
         .on('change', handleSplattingParamChange);
@@ -1049,13 +1042,11 @@ function setupConfigPanel(
         'change',
         handleSplattingParamChange,
     );
+    composite.addBinding(params, 'compositeEnabled', { label: 'Enabled' }).on('change', handleSplattingParamChange);
     composite
         .addBinding(params, 'renderAttachHighPrecisionEnabled', { label: 'High precision attach' })
         .on('change', handleSplattingParamChange);
-
-    const toneMapping = pane.addFolder({ title: 'Tone Mapping', expanded: false });
-    toneMapping.addBinding(params, 'toneMappingEnabled', { label: 'Enabled' }).on('change', onChange);
-    toneMapping
+    composite
         .addBinding(params, 'toneMapping', {
             label: 'Curve',
             options: {
@@ -1067,9 +1058,7 @@ function setupConfigPanel(
             },
         })
         .on('change', onChange);
-    toneMapping
-        .addBinding(params, 'exposure', { label: 'Exposure', min: 0.1, max: 4, step: 0.1 })
-        .on('change', onChange);
+    composite.addBinding(params, 'exposure', { label: 'Exposure', min: 0.1, max: 4, step: 0.1 }).on('change', onChange);
 
     const highlight = pane.addFolder({ title: 'Highlight Kernel', expanded: false });
     highlight.addBinding(params, 'highlightEnabled', { label: 'Enabled' }).on('change', onChange);
@@ -1078,30 +1067,16 @@ function setupConfigPanel(
 
     const lod = pane.addFolder({ title: 'LOD Config', expanded: false });
     lod.addBinding(params, 'lodMinLevel', { label: 'Min level', min: 0, max: 4, step: 1 }).on('change', onChange);
+    lod.addBinding(params, 'lodMovingMinLevel', { label: 'Moving min level', min: 0, max: 4, step: 1 }).on(
+        'change',
+        onChange,
+    );
     lod.addBinding(params, 'lodMaxBudget', { label: 'Max budget', min: 1_000_000, max: 40_000_000, step: 100_000 }).on(
         'change',
         onChange,
     );
-    lod.addBinding(params, 'lodBackgroundPenalty', { label: 'Background penalty', min: 0, max: 1, step: 0.1 }).on(
-        'change',
-        onChange,
-    );
-    lod.addBinding(params, 'lodOutsidePenalty', { label: 'Outside penalty', min: 0, max: 1, step: 0.1 }).on(
-        'change',
-        onChange,
-    );
-    lod.addBinding(params, 'lodBehindPenalty', { label: 'Behind penalty', min: 0, max: 1, step: 0.1 }).on(
-        'change',
-        onChange,
-    );
-    lod.addBinding(params, 'lodBehindTolerance', { label: 'Behind tolerance', min: -1, max: 1, step: 0.1 }).on(
-        'change',
-        onChange,
-    );
-    lod.addBinding(params, 'lodBehindDistanceTolerance', { label: 'Behind distance', min: 0, max: 10, step: 1 }).on(
-        'change',
-        onChange,
-    );
+    lod.addBinding(params, 'lodPixelLimitEnabled', { label: 'Pixel limit' }).on('change', onChange);
+    lod.addBinding(params, 'lodFrustumCullingEnabled', { label: 'Frustum culling' }).on('change', onChange);
     lod.addBinding(params, 'lodHysteresisTicks', { label: 'Hysteresis', min: 1, max: 10, step: 1 }).on(
         'change',
         onChange,
@@ -1148,7 +1123,6 @@ function applyViewerConfig(viewer: Viewer, params: ViewerParams) {
                     highPrecisionEnabled: params.packHighPrecisionEnabled,
                     precalculateEnabled: params.precalculateEnabled,
                     cameraRelativeEnabled: params.cameraRelativeEnabled,
-                    sortedLayoutEnabled: params.sortedLayoutEnabled,
                 },
                 raster: {
                     normalizedFalloff: params.normalizedFalloff,
@@ -1168,11 +1142,8 @@ function applyViewerConfig(viewer: Viewer, params: ViewerParams) {
                     sortCameraCoorient: params.sortCameraCoorient,
                 },
                 composite: {
-                    enabled: params.renderAttachHighPrecisionEnabled,
+                    enabled: params.compositeEnabled,
                     highPrecisionEnabled: params.renderAttachHighPrecisionEnabled,
-                },
-                toneMapping: {
-                    enabled: params.toneMappingEnabled,
                     toneMapping: params.toneMapping,
                     exposure: params.exposure,
                 },
@@ -1187,15 +1158,13 @@ function applyViewerConfig(viewer: Viewer, params: ViewerParams) {
     });
 }
 
-function getLodConfig(params: ViewerParams) {
+function getLodConfig(params: ViewerParams): Partial<SplatUtils.LodConfig> {
     return {
         minLevel: params.lodMinLevel,
+        movingMinLevel: params.lodMovingMinLevel,
         maxBudget: params.lodMaxBudget,
-        backgroundPenalty: params.lodBackgroundPenalty,
-        outsidePenalty: params.lodOutsidePenalty,
-        behindPenalty: params.lodBehindPenalty,
-        behindTolerance: params.lodBehindTolerance,
-        behindDistanceTolerance: params.lodBehindDistanceTolerance,
+        pixelLimitEnabled: params.lodPixelLimitEnabled,
+        frustumCullingEnabled: params.lodFrustumCullingEnabled,
         hysteresisTicks: params.lodHysteresisTicks,
         schedulerParallelCounts: params.lodSchedulerParallelCounts,
         schedulerExistingTaskLimit: params.lodSchedulerExistingTaskLimit,

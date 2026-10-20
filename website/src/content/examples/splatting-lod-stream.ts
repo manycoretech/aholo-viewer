@@ -15,6 +15,7 @@ const LodConfig: Omit<SplatUtils.LodConfig, 'debuggerEnabled' | 'mergeNodeEnable
     minLevel: 0,
     movingMinLevel: 2,
     maxBudget: 6000000,
+    pixelLimitEnabled: true,
     hysteresisTicks: 4,
     schedulerParallelCounts: 4,
     schedulerExistingTaskLimit: 64,
@@ -32,8 +33,9 @@ export default async function runner({ renderer, control, loading, configPanel, 
                 pack: {
                     precalculateEnabled: false,
                 },
-                toneMapping: {
+                composite: {
                     enabled: true,
+                    highPrecisionEnabled: true,
                     toneMapping: ToneMapping.Neutral,
                 },
             },
@@ -134,6 +136,7 @@ function initConfigPanel(
     const panel = configPanel.createPane({ title: 'Splatting LOD Stream' });
     panel.addBinding(LodConfig, 'highPrecisionEnabled', { label: 'High precision' }).on('change', applyConfig);
     const budget = panel.addFolder({ title: 'LOD Budget', expanded: true });
+    budget.addBinding(LodConfig, 'pixelLimitEnabled', { label: 'Pixel limit' }).on('change', applyConfig);
     budget
         .addBinding(LodConfig, 'minLevel', {
             label: 'Min level',

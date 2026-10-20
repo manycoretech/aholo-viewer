@@ -1,5 +1,19 @@
 # ChangeLOG
 
+## 1.11.0
+
+1. Features
+    - add `SplatState.DisableSH` to disable view-dependent spherical-harmonic color contributions for individual splats while retaining their base color.
+    - add `SplatUtils.LodConfig.pixelLimitEnabled`, enabled by default, to control the viewport-based sampling limit; disabling it allows further refinement within the existing level and point-budget constraints.
+2. Fixes
+    - preserve TypedArray `byteOffset` and `byteLength` when converting between splat samplers and `SourceTexture`.
+    - decode image-backed splat data textures with `createImageBitmap`, with color-space conversion and alpha premultiplication disabled to preserve encoded data.
+3. Breaking Changes
+    - remove `Splatting.pack.sortedLayoutEnabled`; delete it from renderer configuration and presets.
+    - remove the upstream `Splatting.sort.frustumCullingEnabled` and `Splatting.sort.frustumCullingClipScale` settings. `SplatUtils.LodConfig.frustumCullingEnabled` remains available for chunk unloading.
+    - move `Splatting.toneMapping.toneMapping` and `Splatting.toneMapping.exposure` to `Splatting.composite.toneMapping` and `Splatting.composite.exposure`.
+    - remove `Splatting.toneMapping.enabled`; `Splatting.composite.enabled` now controls both offscreen composition and tone mapping. Set `composite.highPrecisionEnabled: true` explicitly to retain the floating-point intermediate buffer previously used by tone mapping. For composition without a nonlinear tone curve, use `ToneMapping.Linear` with `exposure: 1`.
+
 ## 1.10.0
 
 1. Features

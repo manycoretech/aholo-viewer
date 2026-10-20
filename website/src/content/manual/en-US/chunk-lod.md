@@ -93,6 +93,7 @@ The second constructor argument and `setConfig()` both accept `Partial<SplatUtil
 | `minLevel`                   | `0`         | Finest level the scheduler may select.                                                                                                                    |
 | `movingMinLevel`             | `2`         | Finest level allowed for new refinement while the camera moves. The effective limit is `max(minLevel, movingMinLevel)`.                                   |
 | `maxBudget`                  | `3_000_000` | Target Gaussian point budget for LOD selection.                                                                                                           |
+| `pixelLimitEnabled`          | `true`      | Stops refinement at about one weighted render pixel per Gaussian. Disabling it retains the level and point-budget constraints.                            |
 | `hysteresisTicks`            | `4`         | Stability delay for a target level. Each tick is fixed at `1000 / 60` ms, so the default is about `66.7` ms, independent of how often `tick()` is called. |
 | `schedulerParallelCounts`    | `4`         | Maximum number of concurrent LOD resource loads.                                                                                                          |
 | `schedulerExistingTaskLimit` | `64`        | Limits scene updates per batch and pauses detail requests when enough prepared work is waiting.                                                           |
@@ -102,6 +103,8 @@ The second constructor argument and `setConfig()` both accept `Partial<SplatUtil
 | `debuggerEnabled`            | `false`     | Colors splats by their current LOD level.                                                                                                                 |
 
 Level parameters are clamped to `0` through `meta.levels - 1`. `maxBudget` is an allocation target: if minimum coverage exceeds it, the scheduler prioritizes coverage. Resource caches and level transitions also consume additional system and GPU memory.
+
+In a small viewport, the default sampling limit can stop refinement even when the point budget has room. Call `lod.setConfig({ pixelLimitEnabled: false })` to allow more detail at the cost of loading and displaying more Gaussians. Use the streaming example's `Pixel limit` control to compare the results.
 
 ### Integration and Frame Loop
 
@@ -113,7 +116,7 @@ import { createViewerContext, SplatUtils } from '@manycore/aholo-viewer';
 const { viewer, scene } = renderer;
 const lod = new SplatUtils.LodSplat(
     meta,
-    { minLevel: 0, movingMinLevel: 2, maxBudget: 6_000_000 },
+    { minLevel: 0, movingMinLevel: 2, maxBudget: 6_000_000, pixelLimitEnabled: true },
     createViewerContext(viewer),
 );
 scene.add(lod.container);
@@ -129,7 +132,7 @@ renderer.frame(({ delta }) => {
 return () => lod.destroy();
 ```
 
-- `tick(camera, viewport?)` updates camera and viewport information. When a viewer context is supplied, it defaults to the viewer's drawing buffer size. You can also pass `{ width, height }` in render pixels. The viewport limits sampling density; without viewport information, only relative weights and the point budget apply.
+- `tick(camera, viewport?)` updates camera and viewport information. When a viewer context is supplied, it defaults to the viewer's drawing buffer size. You can also pass `{ width, height }` in render pixels. The viewport limits sampling density when `pixelLimitEnabled` is on; when disabled or no viewport information is available, only relative weights and the point budget apply.
 - `start()` starts automatic scheduling. If the application owns the frame loop, call `tick()` followed by `flush()` each frame without starting the automatic loop. `stop()` only stops automatic scheduling and retains displayed and prepared resources.
 - `onFinishSchedule()` waits for the current schedule to converge. Call `tick()` at least once beforehand, keep automatic scheduling or `flush()` running while waiting, and continue rendering so sorting can complete. The Promise rejects on resource loading or replacement failures; release the instance on error.
 - The optional fourth constructor argument is a resource loader with the signature `(url, signal?) => Promise<SplatLoader.SplatData>`. Forward `signal` to `fetch()` to handle cancellation of obsolete requests or instance destruction. Custom caches should check cancellation after asynchronous reads and parsing.

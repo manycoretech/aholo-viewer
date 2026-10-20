@@ -51,7 +51,8 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel) {
         blurAmount: 0,
         focalAdjustment: 2,
         detailCullingThreshold: 1,
-        toneMappingEnabled: false,
+        compositeEnabled: false,
+        compositeHighPrecisionEnabled: true,
         toneMapping: ToneMapping.Neutral,
         exposure: 1,
     };
@@ -70,8 +71,9 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel) {
                         focalAdjustment: params.focalAdjustment,
                         detailCullingThreshold: params.detailCullingThreshold,
                     },
-                    toneMapping: {
-                        enabled: params.toneMappingEnabled,
+                    composite: {
+                        enabled: params.compositeEnabled,
+                        highPrecisionEnabled: params.compositeHighPrecisionEnabled,
                         toneMapping: params.toneMapping,
                         exposure: params.exposure,
                     },
@@ -99,9 +101,12 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel) {
         applyConfig,
     );
 
-    const toneMapping = pane.addFolder({ title: 'Tone Mapping', expanded: false });
-    toneMapping.addBinding(params, 'toneMappingEnabled', { label: 'Enabled' }).on('change', applyConfig);
-    toneMapping
+    const composite = pane.addFolder({ title: 'Composite', expanded: false });
+    composite.addBinding(params, 'compositeEnabled', { label: 'Enabled' }).on('change', applyConfig);
+    composite
+        .addBinding(params, 'compositeHighPrecisionEnabled', { label: 'High precision' })
+        .on('change', applyConfig);
+    composite
         .addBinding(params, 'toneMapping', {
             label: 'Curve',
             options: {
@@ -113,7 +118,7 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel) {
             },
         })
         .on('change', applyConfig);
-    toneMapping
+    composite
         .addBinding(params, 'exposure', { label: 'Exposure', max: 2, min: 0.1, step: 0.1 })
         .on('change', applyConfig);
 }
