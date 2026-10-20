@@ -1,6 +1,5 @@
 #include "voxelize.h"
 #include <algorithm>
-#include <utility/logger.h>
 
 namespace splat_transform::voxel {
 namespace {
@@ -73,28 +72,20 @@ public:
         return output;
     }
     Grid dilate(const Grid& grid, Point radius) const override {
-        const uint64_t cells = grid.block_count() * 64;
-        if (cells <= 256ull * 1024 * 1024) {
-            try {
-                std::vector<uint32_t> packed;
-                const auto active = grid.active_blocks();
-                packed.reserve(active.size() * 3);
-                for (auto index : active) {
-                    const auto bits = grid.mask(index);
-                    packed.insert(packed.end(), { index, uint32_t(bits), uint32_t(bits >> 32) });
-                }
-                const auto masks = gpu::dilate_blocks(packed, { uint32_t(grid.size[0]), uint32_t(grid.size[1]), uint32_t(grid.size[2]) },
-                    { uint32_t(radius[0]), uint32_t(radius[1]), uint32_t(radius[2]) });
-                Grid output(grid.size);
-                for (uint32_t index = 0; index < grid.block_count(); ++index) {
-                    output.set_mask(index, uint64_t(masks[index * 2]) | (uint64_t(masks[index * 2 + 1]) << 32));
-                }
-                return output;
-            } catch (const std::exception& error) {
-                utility::logger().warn("Vulkan dilation failed; using CPU: ", error.what());
-            }
+        std::vector<uint32_t> packed;
+        const auto active = grid.active_blocks();
+        packed.reserve(active.size() * 3);
+        for (auto index : active) {
+            const auto bits = grid.mask(index);
+            packed.insert(packed.end(), { index, uint32_t(bits), uint32_t(bits >> 32) });
         }
-        return cpu_backend().dilate(grid, radius);
+        const auto masks = gpu::dilate_blocks(packed, { uint32_t(grid.size[0]), uint32_t(grid.size[1]), uint32_t(grid.size[2]) },
+            { uint32_t(radius[0]), uint32_t(radius[1]), uint32_t(radius[2]) });
+        Grid output(grid.size);
+        for (uint32_t index = 0; index < grid.block_count(); ++index) {
+            output.set_mask(index, uint64_t(masks[index * 2]) | (uint64_t(masks[index * 2 + 1]) << 32));
+        }
+        return output;
     }
 };
 } // namespace

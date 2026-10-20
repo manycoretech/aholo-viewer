@@ -21,6 +21,8 @@ Follow the [Manual](https://aholojs.dev/en-US/manual/getting-started/).
 
 For npm package usage, see [`packages/renderer/README.md`](./packages/renderer/README.md).
 
+For asset conversion, ESZ chunk LOD, and voxel colliders, see [`packages/splat-transform/README.md`](./packages/splat-transform/README.md) and the [splat-transform manual](https://aholojs.dev/en-US/manual/splat-transform/).
+
 For AI-assisted integration, use [`docs/ai/skills/use-aholo-viewer/SKILL.md`](./docs/ai/skills/use-aholo-viewer/SKILL.md).
 
 ## Build Requirements
@@ -43,6 +45,8 @@ aholo-viewer/
   AGENTS.md             Agent-facing project guide
   website/              Astro website: home, manual, examples, API docs, playground
   packages/renderer/    Renderer TypeScript source package
+  packages/splat-transform/  Processing CLI and Node subprocess API
+  packages/splat-transform-native/  C++ engine and platform executables
   scripts/              Shared build and documentation scripts
   docs/                 Architecture and AI collaboration notes
   external/             Required upstream and workspace dependency sources

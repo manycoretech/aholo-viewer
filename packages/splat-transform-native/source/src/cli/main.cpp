@@ -1,6 +1,6 @@
 #include "version.h"
 #include <CLI/CLI.hpp>
-#include <gpu/compute.h>
+#include <gpu/context.h>
 #include <iostream>
 #include <pipeline/runner.h>
 #include <string>

@@ -115,13 +115,15 @@ gzip uses 1 MiB raw DEFLATE jobs with the preceding 32 KiB dictionary and combin
 
 ## Voxel backends
 
-`Voxel.config.backend` accepts `"gpu"` (default) or `"cpu"`. The selection also controls cluster-filter voxelization and navigation dilation. A CPU-only pipeline does not initialize Vulkan, even when floor fill, exterior fill, or capsule navigation is enabled. Unknown backend names are rejected.
+`Voxel.config.backend` accepts `"gpu"` (default) or `"cpu"`. `resolve_backend` initializes the selected Vulkan device before processing and returns the CPU backend if initialization throws. That one backend instance is then used for cluster filtering, voxel generation, and navigation dilation. Explicit CPU processing never initializes Vulkan. After resolution, compute errors propagate and empty GPU results stay empty; there are no per-operation CPU retries. GPU dilation uses the Vulkan layer's device-limited batching. Unknown backend names, invalid configuration, and CPU failures still report errors.
 
-The internal `Backend` interface is the common adapter for voxel generation, dilation, backend names, and GPU requirements. `backend_cpu.cpp` and `backend_gpu.cpp` each contain their complete voxelization and dilation implementation; `backend.cpp` resolves the JSON option. The pipeline, cluster filter, and navigation call that interface. Shared geometry preparation, bounds, and filtering stay in `voxelize.cpp`.
+The internal `Backend` interface is the common adapter for voxel generation, dilation, backend names, and GPU requirements. `backend_cpu.cpp` and `backend_gpu.cpp` contain the implementations; `backend.cpp` owns initialization fallback. `requires_gpu` only inspects the request so the pipeline can set its top-level GPU index before `resolve_backend` acquires the internal Vulkan context. That acquisition initializes the selected device or reuses its existing context; `gpu::DeviceGuard` releases shared ownership when the pipeline scope ends. Shared geometry preparation, bounds, and filtering stay in `voxelize.cpp`.
 
 CPU generation follows the historical TypeScript worker's 16 x 16 x 16 voxel batches, closest-point Gaussian evaluation, 1/255 contribution cutoff, and Beer-Lambert density accumulation. Small inputs use the same accumulated-density algorithm. CPU and GPU can differ at boundaries: GPU retains sub-threshold contributions and stops density accumulation at 7; CPU stops once the requested opacity is reached.
 
 CPU candidate generation counts and scatters into one shared packed index buffer. Evaluation sorts each batch's indices into input order, dynamically assigns batches to the process-wide pool, and keeps density scratch local to each job. At most one job per pool worker is queued per phase; sparse output masks are merged after jobs finish. Geometry is shared with filtering without copying source colors or SH coefficients. The old per-task `cpuWorkerCount` option is not used.
+
+`voxel_fallback_contracts` checks backend resolution and complete pipelines with Vulkan drivers disabled, including a single fallback warning per task and output equivalence to explicit CPU execution. The existing CPU-only contracts continue to reject GPU initialization. Opt-in GPU tests verify successful GPU selection, empty-result preservation, and propagation of later voxelization and dilation failures.
 
 ## Layout and ownership
 
@@ -129,7 +131,7 @@ CPU candidate generation counts and scatters into one shared packed index buffer
 - include/io and src/io: IFile and concrete PLY, SPZ, SPLAT, SOG, ESZ, KSPLAT, LCC, and LCC2 readers/writers; format registration, ZIP resources, and HTTP assets.
 - include/codec and src/codec: image and compression libraries. Large payloads use parallel zstd or gzip compression.
 - include/spatial and src/spatial: clustering and SH transforms over native splats.
-- include/gpu, src/gpu, and shaders: Vulkan-Hpp RAII objects, VMA buffers, GPU clustering, candidate generation, voxel evaluation, and dilation.
+- include/gpu, src/gpu, and shaders: `include/gpu/context.h` declares device management. `context.cpp` owns device enumeration/selection, shared context lifetime, Vulkan-Hpp RAII objects, VMA buffers, and compute dispatch resources. `compute.cpp` implements GPU clustering, candidate generation, voxel evaluation, and dilation; the internal `vulkan_context.h` connects the two.
 - include/pipeline and src/pipeline: BaseTask, concrete task implementations, task registration, and TaskContext resource ownership.
 - include/voxel and src/voxel: CPU/GPU voxel generation, navigation topology, sparse octrees, and collision meshes.
 - include/utility and src/utility: shared thread pool and logger.

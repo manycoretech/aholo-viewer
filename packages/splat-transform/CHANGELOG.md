@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- resolve the Voxel backend before processing and select CPU for the entire task when Vulkan device initialization fails; keep the selected backend for filtering, generation, and navigation without per-operation CPU retries
+- document all pipeline tasks, output replacement, LOD defaults, voxel encodings, compression, and JavaScript cancellation; recommend ESZ for chunk LOD
+
 ## 2.0.0
 
 - migrate processing to a standalone C++20 executable built with CMake and vcpkg
@@ -17,7 +22,8 @@
 - parallelize SOG archive member generation and reuse one zstd-native pool across compression contexts
 - preserve the legacy nonnegative-w quaternion convention and zero-quaternion handling before format quantization
 - read FlexLod score files from their actual byte range, fixing pooled Buffer offsets for short files
-- remove CPU voxel generation and its automatic fallback; retain Vulkan GPU generation
+- support explicit CPU voxel generation, cluster filtering, and navigation dilation through the shared CPU pool; remove the former per-task `cpuWorkerCount` option
+- report GPU voxelization and cluster-filter failures without automatic CPU retry in this release; retain navigation dilation fallback
 - accelerate large gzip and zstd payloads with bounded parallel compression
 - support unpacked SOG metadata and local textures through the native file reader
 - retain all sections when reading multi-section KSPLAT files

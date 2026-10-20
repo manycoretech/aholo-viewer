@@ -49,7 +49,7 @@ export interface ExtractLodLevelConfig extends Record<string, unknown> {
 export interface VoxelConfig extends Record<string, unknown> {
     input: string;
     output: string;
-    /** Defaults to gpu. CPU uses the process-wide pool and does not require Vulkan. */
+    /** Defaults to gpu; initialization failure selects CPU for the complete task. Explicit CPU does not initialize Vulkan. */
     backend?: 'cpu' | 'gpu';
     voxelResolution?: number;
     opacityCutoff?: number;

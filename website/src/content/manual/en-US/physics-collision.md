@@ -8,7 +8,7 @@ order: 6
 
 A reconstructed 3DGS scene is a Gaussian point cloud without solid boundaries for walking or collision. The physics collision module turns that space into **queryable collision data**. Voxels or meshes describe floors, walls, occluders, and walkable regions for walk mode, camera avoidance, area limits, and spatial interaction.
 
-Voxel colliders are produced from 3DGS assets by the `Voxel` task in `splat-transform`. The sections below describe the file format and runtime queries. An optional `collision.glb` mesh may also be provided.
+Voxel colliders are produced from 3DGS assets by the `Voxel` task in `splat-transform`. See the [Voxel task](./splat-transform.md#voxel) for generation parameters, CPU/GPU selection, and fallback rules. Set `collisionMesh: "smooth"` or `"faces"` to also generate a `collision.glb` mesh.
 
 ## Overview
 
@@ -30,11 +30,11 @@ The octree subdivides a uniform voxel grid and stores only non-empty regions to 
 
 **Node types** (each `uint32` in `nodes`)
 
-| Type              | Meaning                                                                                                              |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **Interior node** | High 8 bits: `childMask` (which octants exist); low 24 bits: index of the first child; sibling indices use popcount. |
-| **Solid leaf**    | Value `0xFF000000` (`SOLID_LEAF_MARKER`): the entire 4×4×4 block is solid.                                           |
-| **Mixed leaf**    | `childMask == 0`; low 24 bits point to a 64-bit mask in `leafData` for per-voxel occupancy.                          |
+| Type              | Meaning                                                                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Interior node** | High 8 bits: `childMask` (which octants exist); low 24 bits: index of the first child; sibling indices use popcount.                                   |
+| **Solid node**    | Value `0xFF000000` (`SOLID_LEAF_MARKER`): the complete region covered by this node is solid; traversal can stop before reaching the finest leaf block. |
+| **Mixed leaf**    | `childMask == 0`; the low 24 bits contain a 64-bit leaf-mask index `n`, addressing `leafData[2*n]` and `leafData[2*n+1]`.                              |
 
 **`leafData`**
 
@@ -53,11 +53,63 @@ The octree subdivides a uniform voxel grid and stores only non-empty regions to 
 
 **Ray marching**: **3D DDA** steps through voxels inside the grid bounds; each cell repeats the occupancy query above.
 
-**Output files**
+## Output Files and Encoding
 
-- `voxel-meta.json`: grid bounds, voxel size, `treeDepth`, `nodeCount`, `leafDataCount`, etc.
-- `voxel.bin`: binary blob with `nodes` then `leafData` (both as `uint32` arrays).
-- Optional `collision.glb` mesh.
+Defaults are `nodeEncoding: "raw"` and `compression: "none"`. Encoding and compression are independent: compact node data can also use gzip or zstd compression.
+
+| File              | Description                                                           |
+| ----------------- | --------------------------------------------------------------------- |
+| `voxel-meta.json` | Metadata and the current binary filename.                             |
+| `voxel.bin`       | `compression: "none"`.                                                |
+| `voxel.bin.gz`    | `compression: "gzip"`.                                                |
+| `voxel.bin.zst`   | `compression: "zstd"`.                                                |
+| `collision.glb`   | Written when `collisionMesh` is enabled and produces a nonempty mesh. |
+
+### Metadata
+
+```typescript
+interface VoxelMetadata {
+    version: '1.2';
+    gridBounds: { min: [number, number, number]; max: [number, number, number] };
+    sceneBounds: { min: [number, number, number]; max: [number, number, number] };
+    voxelResolution: number;
+    leafSize: 4;
+    treeDepth: number;
+    numInteriorNodes: number;
+    numMixedLeaves: number;
+    nodeCount: number;
+    leafDataCount: number;
+    files: string[];
+    nodeEncoding: 'raw' | 'compact';
+    compression: 'none' | 'gzip' | 'zstd';
+}
+```
+
+Paths in `files` are relative to the directory containing `voxel-meta.json`. `nodeCount` counts decoded uint32 nodes; `leafDataCount` counts uint32 leaf values and equals `numMixedLeaves * 2`. Generation can increase voxel edge length when grid or octree indices exceed capacity. Queries must use the effective `voxelResolution` and `gridBounds` from metadata.
+
+### raw Encoding
+
+After decompression, little-endian uint32 values are stored consecutively: `nodeCount` nodes followed by `leafDataCount` leaf values. The byte length must equal `4 * (nodeCount + leafDataCount)`. Each mixed-leaf mask stores its low 32 bits before its high 32 bits.
+
+### compact Encoding
+
+compact is a storage encoding and cannot be read directly as raw `nodes + leafData`. After decompression, it contains:
+
+1. A 32-byte header with eight little-endian uint32 values: magic `0x31424356` (`VCB1`), encoding version `1`, node count, interior-node count, mixed-leaf count, leaf uint32 count, tag byte count, and child-mask byte count.
+2. Two bits per node tag, least-significant bits first: `0` for mixed leaves, `1` for solid nodes, `2` for interior nodes, and reserved `3`. Tag storage uses `ceil(nodeCount / 4)` bytes.
+3. One child-mask byte per interior node, in node order.
+4. Zero padding to four-byte alignment, followed by little-endian uint32 leaf data.
+
+Reconstruct raw nodes in breadth-first order: the first-child index starts at `1` and advances by `popcount(childMask)` for each interior node; mixed-leaf indices increase from `0`; solid nodes become `0xFF000000`. Validate the header, tags, counts, and file length during decoding.
+
+### Loading Sequence
+
+1. Read metadata and resolve `files[0]` relative to its URL.
+2. Decompress according to `compression`. Do not decompress twice if HTTP `Content-Encoding` already handled it transparently.
+3. Read raw data or decode compact data into raw nodes and leaf values according to `nodeEncoding`.
+4. Pass the decoded arrays and metadata to runtime queries. Chunk LOD's `parseVoxel` expects a `Uint32Array` containing nodes followed by leaf data; see [Voxel Occlusion Downgrading](./chunk-lod.md#voxel-occlusion-downgrading).
+
+Generation overwrites matching voxel files without clearing the directory. Switching compression or disabling mesh output can leave older files; use the current configuration and metadata to identify the output.
 
 ## Raycast & Collision Queries
 

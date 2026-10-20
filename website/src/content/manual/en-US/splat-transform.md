@@ -1,490 +1,468 @@
 ---
 title: splat-transform
-description: Usage guide for splat-transform.
+description: splat-transform usage, task parameters, and output formats.
 order: 5
 ---
 
 ## Background
 
-`splat-transform` is a 3DGS processing tool for Aholo Viewer. Use it for format conversion, data simplification, LOD generation, and voxel collider generation.
+`splat-transform` processes 3DGS assets for Aholo Viewer, including format conversion, data selection and modification, LOD generation, and voxel colliders. The npm CLI translates commands into JSON pipelines executed by a standalone C++ process.
 
 ## Environment Requirements
 
-- The npm CLI and JavaScript API require Node.js >= 22.22.1. The standalone C++ executable does not require Node.js.
+- Node.js >= 22.22.1 for the npm CLI and JavaScript API. The standalone executable does not require Node.js.
 - Windows: Windows 22H2+, x86_64 or ARM64.
-- Linux: x86_64 or ARM64, Ubuntu 22.04 / glibc >= 2.35. The C++ runtime is linked statically.
+- Linux: x86_64 or ARM64, Ubuntu 22.04 / glibc >= 2.35; the C++ runtime is linked statically.
 - macOS: macOS 13+, Apple silicon ARM64.
-- GPU features require a user-installed Vulkan 1.1+ loader and compatible driver. macOS also requires a working MoltenVK installation. Packages do not include a Vulkan runtime.
+- GPU acceleration requires a Vulkan 1.1+ loader and compatible driver. macOS also requires MoltenVK. Packages do not include a Vulkan runtime or drivers.
 
-### GPU-Required Features
+SOG output with SH coefficients uses GPU clustering; SH0 SOG encoding runs on CPU. Other format conversion and LOD processing do not require Vulkan. See [Voxel](#voxel) for backend selection and fallback behavior.
 
-- SOG generation with SH coefficients. SH0 SOG encoding runs on CPU.
-- Voxel generation requires Vulkan with the default `backend: "gpu"`. Set `backend: "cpu"` to run voxel generation, cluster filtering, and navigation dilation on CPU without Vulkan.
-
-CPU format conversion and LOD processing do not require Vulkan. Run `splat-transform list:gpu` to list current Vulkan devices. The former Dawn backend could include D3D12 devices, so check saved GPU indices again.
+Run `splat-transform list:gpu` to list Vulkan devices. The former Dawn backend could include D3D12 devices, so check saved GPU indices when migrating.
 
 ## Format Notes
 
 ### Input Formats
 
-- `ply`
-- `sog`
-- `ksplat`
-- `splat`
-- `spz`
-- `lcc`
-- `lcc2`
-- `esz`
-- `compressed.ply`, the supersplat compressed ply format
-- `meta.json`, unpacked sog metadata
+| Format                  | Description                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------- |
+| `ply`, `compressed.ply` | Standard PLY and SuperSplat compressed PLY.                                                        |
+| `splat`, `ksplat`       | SPLAT and KSPLAT, including multi-section KSPLAT files.                                            |
+| `spz`, `uspz`           | SPZ and SPZ without gzip compression.                                                              |
+| `sog`, `meta.json`      | A SOG archive or unpacked SOG metadata.                                                            |
+| `esz`                   | ESZ v2 with low- or high-precision layouts.                                                        |
+| `lcc`, `lcc2`           | Pass the metadata file; LCC2 reads LOD0 and environment splats.                                    |
+| `zip`                   | A ZIP containing LCC, LCC2, or SOG resources; not a generic batch input for arbitrary splat files. |
+
+Unpacked SOG/LCC/LCC2 companion resources resolve relative to their metadata file. ZIP resources resolve relative to the metadata path inside the archive, including nested directories. Other pipeline paths resolve relative to the process working directory.
 
 ### Output Formats
 
-- `ply`
-- `spz`
-- `uspz`, an spz file without gzip compression
-- `splat`
-- `sog`
-- `esz`
+| Format                  | Description                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
+| `ply`, `splat`          | Standard PLY and SPLAT.                                                                  |
+| `spz`, `uspz`           | SPZ v3/v4 and SPZ v3 without gzip compression; configure the version in [Write](#write). |
+| `sog`                   | SOG; SH coefficients require GPU clustering.                                             |
+| `esz`                   | ESZ v2; `highPrecision` selects the layout. Recommended for chunk LOD.                   |
+| LOD / split directories | Created by `AutoChunkLod` or `SplitSplatTask`, then saved with `Write`.                  |
+| Voxel directories       | Written directly by `Voxel`, with metadata, binary data, and an optional collision GLB.  |
 
-### modify Format
-
-```javascript
-{
-  isRowMatrix: boolean; // Whether transforms use row matrices. Defaults to true.
-  transform: number[]; // Model-level transform.
-  deletedIndices: number[]; // Deleted indices in bitmap form.
-  indicesTransform: Array<{ indices: number[]; transform: number[] }>; // Local transform list.
-}
-```
-
-## Usage
-
-### Installation
+## Installation and CLI
 
 ```bash
 npm install @manycore/aholo-splat-transform -g
-```
-
-### CLI Mode
-
-```bash
-splat-transform create <input> <output> # Convert 3DGS formats.
-splat-transform lod:auto --ratio <ratio> <input> <output> # Simplify 3DGS data to the specified ratio [0-1].
-splat-transform lod:auto-chunk --type <type:ply,spz,splat,sog,esz> --max-chunk-counts <count> <input> <output> # Generate schedulable multi-level LOD data. --max-chunk-counts controls the maximum chunk size.
-```
-
-### Pipeline Mode (Recommended)
-
-```bash
+splat-transform create input.ply output.esz
+splat-transform lod:loading --ratio 0.1 input.ply loading.ply
+splat-transform lod:flex --score scores.bin --ratio 0.3 input.ply selected.esz
+splat-transform lod:auto --ratio 0.3 input.ply simplified.esz
+splat-transform lod:auto-chunk --type esz --max-chunk-counts 400000 input.ply lod-output
+splat-transform split --type esz --max-chunk-counts 400000 input.ply split-output
+splat-transform list:gpu
 splat-transform pipeline.json
 ```
 
-The standalone executable also accepts `pipeline.json`, or `-` to read JSON from stdin. The Node CLI converts commands such as `create` and `lod:auto` into the same pipeline. Input and output paths are relative to the process working directory; SOG/LCC/LCC2 resources are relative to their metadata file.
+| Command          | Tasks and options                                                                        |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| `create`         | `Read → Modify → Write` for format conversion.                                           |
+| `lod:loading`    | `SkeletonLod`; optional `--ratio`.                                                       |
+| `lod:flex`       | `FlexLod`; required `--score`, optional `--ratio`.                                       |
+| `lod:auto`       | `AutoLod`; optional `--ratio` and `--split-normal`.                                      |
+| `lod:auto-chunk` | `AutoChunkLod`; required `--type`, optional `--max-chunk-counts` and `--split-normal`.   |
+| `split`          | `SplitSplatTask`; required `--type`, optional `--max-chunk-counts` and `--split-normal`. |
+| `list:gpu`       | Lists Vulkan device indices and names.                                                   |
 
-Version 2.0 removes in-memory processing APIs such as `SplatData`, custom task injection, and internal module imports. The JavaScript API retains `run(config, { cwd, signal })` and `enumerateAdapters()`. Processing runs in a child process.
+`--type` / `-t` accepts `ply`, `spz`, `splat`, `sog`, or `esz`. `--split-normal` accepts case-insensitive `None`, `X`, `Y`, or `Z`, or the corresponding numbers `0`, `1`, `2`, or `3`. A reference axis keeps blocks unsplit along that axis; for example, `Y` preserves the vertical extent. Use a pipeline for additional parameters. Inspect individual command help with commands such as `splat-transform lod:flex --help`.
 
-#### Pipeline Descriptor (pipeline.json)
+Both the npm CLI and the standalone executable accept a pipeline file or `-` for stdin. The standalone executable exposes pipeline execution, `--list-gpu`, `--help`, and `--version`; the command aliases above belong to the npm CLI.
+
+```powershell
+Get-Content -Raw pipeline.json | splat-transform -
+```
+
+## Pipeline Structure and Resource Lifetime
 
 ```json
 {
     "version": 1,
+    "gpu": 0,
     "tasks": [
+        { "id": "read", "type": "Read", "config": { "inputs": ["input.ply"], "output": "source" } },
         {
-            "id": "0",
-            "type": "Read",
-            "config": { "inputs": ["a.ply"], "output": "cache0" }
-        },
-        {
-            "id": "1",
+            "id": "lod",
             "type": "AutoChunkLod",
-            "config": { "input": "cache0", "output": "cache0", "type": "spz" }
+            "config": { "input": "source", "output": "lod", "type": "esz" },
+            "release": ["source"]
         },
-        {
-            "id": "2",
-            "type": "Write",
-            "config": { "input": "cache0", "output": "a-lod" }
-        }
+        { "id": "write", "type": "Write", "config": { "input": "lod", "output": "lod-output" }, "release": ["lod"] }
     ]
 }
 ```
 
-#### Task
+| Field             | Type / default    | Description                                                                       |
+| ----------------- | ----------------- | --------------------------------------------------------------------------------- |
+| `version`         | `1`               | Pipeline version, independent of the SPZ output version.                          |
+| `gpu`             | `number` / `0`    | Device index from `list:gpu` or `enumerateAdapters()`, used when GPU work starts. |
+| `tasks`           | `PipelineTask[]`  | Executed in array order. A failed task stops subsequent execution.                |
+| `tasks[].id`      | `string`          | Task log identifier, required by the TypeScript interface.                        |
+| `tasks[].type`    | `string`          | A case-sensitive task name listed below.                                          |
+| `tasks[].config`  | `object`          | Parameters for that task.                                                         |
+| `tasks[].release` | `string[]` / `[]` | Resource keys removed after the current task succeeds.                            |
 
-<table>
-  <tr>
-    <th>Name</th>
-    <th>Purpose</th>
-    <th>Parameter</th>
-    <th>Type</th>
-    <th>Required (Default)</th>
-    <th>Description</th>
-  </tr>
-  <tr>
-    <td rowspan="3">Read</td>
-    <td rowspan="3">Reads multiple Gaussian files and merges them into one <code>SplatData</code> object.</td>
-    <td>inputs</td>
-    <td>string[]</td>
-    <td>Y</td>
-    <td>Input file paths.</td>
-  </tr>
-  <tr>
-    <td>output</td>
-    <td>string</td>
-    <td>Y</td>
-    <td>Resource key to write.</td>
-  </tr>
-  <tr>
-    <td>maxShDegree</td>
-    <td>number<br/>0..=3</td>
-    <td>N(3)</td>
-    <td>Maximum spherical harmonics degree.</td>
-  </tr>
-  <tr>
-    <td rowspan="4">Write</td>
-    <td rowspan="4">Writes a <code>SplatData</code> object to disk in the specified format.</td>
-    <td>input</td>
-    <td>string</td>
-    <td>Y</td>
-    <td>Resource key to read.</td>
-  </tr>
-  <tr>
-    <td>output</td>
-    <td>string</td>
-    <td>Y</td>
-    <td>Output resource path.</td>
-  </tr>
-  <tr>
-    <td>compressLevel</td>
-    <td>number<br/>0..=9</td>
-    <td>N(6)</td>
-    <td>gzip compression level.</td>
-  </tr>
-  <tr>
-    <td>enableMortonSort</td>
-    <td>boolean</td>
-    <td>N(true)</td>
-    <td>Enables Morton sorting.</td>
-  </tr>
-  <tr>
-    <td rowspan="5">Modify</td>
-    <td rowspan="5">Modifies an in-memory splat resource in place.</td>
-    <td>input</td>
-    <td>string</td>
-    <td>Y</td>
-    <td>Resource key to read.</td>
-  </tr>
-  <tr>
-    <td>output</td>
-    <td>string</td>
-    <td>Y</td>
-    <td>Resource key to write.</td>
-  </tr>
-  <tr>
-    <td>modifyPaths</td>
-    <td>string[]</td>
-    <td>N([])</td>
-    <td>modify JSON file paths. See <a href="#modify-format">modify Format</a>.</td>
-  </tr>
-  <tr>
-    <td>rgba</td>
-    <td>[number, number, number, number]</td>
-    <td>N(unchanged)</td>
-    <td>Internal RGBA values; must be finite and fit in float, without clamping or color-space conversion.</td>
-  </tr>
-  <tr>
-    <td>maxShDegree</td>
-    <td>0 | 1 | 2 | 3</td>
-    <td>N(no truncation)</td>
-    <td>Truncates to min(current degree, requested degree); never creates higher SH bands.</td>
-  </tr>
-  <tr>
-    <td rowspan="4">AutoLod</td>
-    <td rowspan="4">Generates fused Gaussian output.</td>
-    <td>input</td>
-    <td>string</td>
-    <td>Y</td>
-    <td>Resource key to read.</td>
-  </tr>
-  <tr>
-    <td>output</td>
-    <td>string</td>
-    <td>Y</td>
-    <td>Resource key to write.</td>
-  </tr>
-  <tr>
-    <td>counts</td>
-    <td>number</td>
-    <td>N(Infinity)</td>
-    <td>Maximum retained count.</td>
-  </tr>
-  <tr>
-    <td>ratio</td>
-    <td>number<br/>0..=1</td>
-    <td>N(0.3)</td>
-    <td>Maximum retained ratio.</td>
-  </tr>
-  <tr>
-    <td rowspan="6">AutoChunkLod</td>
-    <td rowspan="6">Generates chunked fused Gaussian output for use with the LOD scheduler module.</td>
-    <td>input</td>
-    <td>string</td>
-    <td>Y</td>
-    <td>Resource key to read.</td>
-  </tr>
-  <tr>
-    <td>output</td>
-    <td>string</td>
-    <td>Y</td>
-    <td>Resource key to write.</td>
-  </tr>
-  <tr>
-    <td>type</td>
-    <td>string</td>
-    <td>Y</td>
-    <td>Chunk file type. See <a href="#output-formats">Output Formats</a>.</td>
-  </tr>
-  <tr>
-    <td>forceSpzFormatThreshold</td>
-    <td>number</td>
-    <td>N(0)</td>
-    <td>Because low-count sog chunks can compress poorly, chunks below this threshold are forced to spz. A practical starting value is 200000.</td>
-  </tr>
-  <tr>
-    <td>maxChunkCounts</td>
-    <td>number</td>
-    <td>N(400000)</td>
-    <td>Maximum number of Gaussian points per chunk.</td>
-  </tr>
-  <tr>
-    <td>levels</td>
-    <td>
-      <pre>
-        <code>
-Array<{
-  precision: number,
-  scaleBoost: number
-}>
-        </code>
-      </pre>
-    </td>
-    <td>
-      N
-      <pre>
-        <code>
+`Read.output` and processing-task `input` / `output` fields refer to in-memory resource keys for the current run. `Read.inputs`, `Write.output`, and `Voxel.output` are filesystem paths. Relative paths use the process working directory, not the directory containing the pipeline file.
+
+Reusing an output key replaces that resource. `Modify` mutates its input; a different output key remains an alias. Use `Select` or `ExtractLodLevel` to create an independent copy before modifying shared data. `Write` reads the in-memory resource but writes or replaces files on disk. Release a resource only after its final consumer, and do not release an output key needed by subsequent tasks.
+
+Information, progress, and timing logs go to stdout; warnings and errors go to stderr. The standalone executable exits with `0` on success, `1` for pipeline/I/O failures, and `2` for command-line argument errors. Failures do not roll back earlier filesystem output.
+
+## Task Reference
+
+Except for path fields in `Read`, `Write`, and `Voxel`, task `input` and `output` fields are required in-memory resource keys.
+
+### Read
+
+Reads and combines multiple inputs while retaining input-block order for `Modify.modifyPaths`.
+
+| Parameter     | Type / default           | Description                                                |
+| ------------- | ------------------------ | ---------------------------------------------------------- |
+| `inputs`      | `string[]`, required     | Input file paths.                                          |
+| `output`      | `string`, required       | Output resource key.                                       |
+| `maxShDegree` | `0 \| 1 \| 2 \| 3` / `3` | Maximum retained SH degree; does not create missing bands. |
+
+### Write
+
+Writes a single splat to a file or a LOD / split bundle to a directory. The output extension or bundle filenames determine the format.
+
+| Parameter          | Type / default                                | Description                                                                                             |
+| ------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `input`            | `string`, required                            | Input resource key.                                                                                     |
+| `output`           | `string`, required                            | Single-file path or bundle output directory.                                                            |
+| `enableMortonSort` | `boolean` / `true`                            | Applies Morton ordering for output; disabled for bundle files that must preserve interval order.        |
+| `version`          | `3 \| 4` / `3`                                | Applies to `.spz` only; `.uspz` always writes uncompressed v3.                                          |
+| `compressLevel`    | `number`                                      | SPZ v3 uses gzip, default `6`, typically `0–9`; SPZ v4 uses zstd, default `7`, with zstd's level range. |
+| `highPrecision`    | `boolean` / `false`                           | ESZ only: `false` selects low precision, `true` selects high precision.                                 |
+| `parallelCounts`   | `number` / `max(1, CPU hardware threads − 1)` | Maximum concurrent bundle file writes, also capped by the shared CPU pool.                              |
+
+**Directory replacement: writing a bundle recursively removes an existing output directory before recreating it. Use a dedicated output directory.** Filesystem roots and the current working directory are rejected. Single-file output overwrites an existing file.
+
+Write the same LOD bundle to two directories with `highPrecision: false` and `true`. Writes do not consume or modify the in-memory resource and preserve LOD file/offset/count intervals.
+
+### Modify
+
+| Parameter         | Type / default                                 | Description                                                                                              |
+| ----------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `input`, `output` | `string`, required                             | Input and output keys; the output aliases the modified input.                                            |
+| `modifyPaths`     | `string[]` / `[]`                              | Patch JSON files in input-block order; an empty string skips that block.                                 |
+| `rgba`            | `[number, number, number, number]` / unchanged | Internal float RGBA values; must be finite and fit in float, without clamping or color-space conversion. |
+| `maxShDegree`     | `0 \| 1 \| 2 \| 3` / unchanged                 | Truncates to the smaller of the current and requested degree.                                            |
+
+Validates `rgba` / `maxShDegree`, applies patch transforms and deletions, then sets RGBA and truncates SH on the remaining points. Patch files use this structure:
+
+```typescript
+interface ModifyPatch {
+    isRowMatrix?: boolean; // Defaults to true; matrices contain 16 numbers.
+    transform?: number[]; // Input-block transform, defaults to identity.
+    deletedIndices?: number[]; // Byte bitmap: point i uses bit (i & 7) in byte[i >> 3].
+    indicesTransform?: Array<{ indices: number[]; transform: number[] }>;
+}
+```
+
+Patch indices are local to the corresponding input block. `deletedIndices` is a bitmap, not a list of point indices.
+
+### Select
+
+| Parameter         | Type               | Description                                                                                                                              |
+| ----------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `input`, `output` | `string`, required | Copies into an independent single-block splat resource.                                                                                  |
+| `indices`         | `number[]`         | Specify exactly one of this field or `indicesPath`.                                                                                      |
+| `indicesPath`     | `string`           | `.json` accepts an array or `{ "indices": [...] }`; other files contain little-endian uint32 values, with zstd decompression for `.zst`. |
+
+Preserves first-occurrence order and removes duplicates, for example `[8,2,8,5] → [8,2,5]`. Copies complete attributes and SH without Morton sorting. Indices must be valid integers, and binary lengths must be multiples of four. Empty selection is valid; output-format support determines whether an empty result can be written.
+
+### ReplaceAppend
+
+| Parameter                  | Type                 | Description                                          |
+| -------------------------- | -------------------- | ---------------------------------------------------- |
+| `input`, `patch`, `output` | `string`, required   | Source, patch, and independent output resource keys. |
+| `sourceIndices`            | `number[]`, required | Unique source indices; may be empty.                 |
+
+For N source points, M patch points, and K indices, the patch prefix replaces the selected source points and the remainder is appended. The result contains N+M−K points and requires K≤M. Source and patch SH degrees and attribute layouts must match. Inputs and their aliases remain unchanged.
+
+### ExtractLodLevel
+
+| Parameter         | Type               | Description                                                                    |
+| ----------------- | ------------------ | ------------------------------------------------------------------------------ |
+| `input`, `output` | `string`, required | An in-memory LOD bundle from this pipeline and an independent output resource. |
+| `level`           | `number`, required | Zero-based level below the bundle's level count; there is no default level.    |
+
+Copies file/offset/count intervals in `tree` order, retaining repeated references, complete attributes, and independent SH storage. Does not restore a bundle from an on-disk `lod-meta.json` or regenerate LOD.
+
+### SkeletonLod
+
+Generates coarse SH0 data for loading previews.
+
+| Parameter         | Type / default     | Description                     |
+| ----------------- | ------------------ | ------------------------------- |
+| `input`, `output` | `string`, required | Input and output resource keys. |
+| `ratio`           | `number` / `0.1`   | Target retained ratio.          |
+| `counts`          | `number` / `85000` | Target point-count limit.       |
+
+The target count is `min(ceil(input count × ratio), counts)`. Actual output may contain fewer points. The CLI command is `lod:loading`.
+
+### FlexLod
+
+Selects points by external scores while retaining their original attributes.
+
+| Parameter         | Type / default         | Description                                                                                |
+| ----------------- | ---------------------- | ------------------------------------------------------------------------------------------ |
+| `input`, `output` | `string`, required     | Input and output resource keys.                                                            |
+| `scorePath`       | `string`, required     | Little-endian float32 binary file with at least one score per input point, in input order. |
+| `ratio`           | `number` / `0.3`       | Target retained ratio.                                                                     |
+| `counts`          | `number` / unlimited   | Limits the target count together with `ratio`.                                             |
+| `originalIndices` | `string` / not written | Optional output path for retained source indices as little-endian uint32.                  |
+
+Selects the highest-scoring `min(ceil(input count × ratio), counts)` points. Equal scores retain input order; the final selection is sorted by source index. The CLI command is `lod:flex --score scores.bin`.
+
+### AutoLod
+
+Fuses Gaussians to generate simplified data.
+
+| Parameter         | Type / default                     | Description                                         |
+| ----------------- | ---------------------------------- | --------------------------------------------------- |
+| `input`, `output` | `string`, required                 | Input and output resource keys.                     |
+| `ratio`           | `number` / `0.3`                   | Target retained ratio, normally `0–1`.              |
+| `counts`          | `number` / unlimited               | Limits the target count together with `ratio`.      |
+| `splitNormal`     | `None/X/Y/Z` or `0/1/2/3` / `None` | Block reference axis; strings are case-insensitive. |
+
+The target count is `min(ceil(input count × ratio), counts)`. Small-block stopping conditions and iteration limits can leave more points than requested. The CLI command is `lod:auto`.
+
+### AutoChunkLod
+
+Generates a multi-level bundle containing `lod-meta.json`; save it with `Write`. See [Chunk LOD](./chunk-lod.md) for runtime integration.
+
+| Parameter         | Type / default                     | Description                                                                         |
+| ----------------- | ---------------------------------- | ----------------------------------------------------------------------------------- |
+| `input`, `output` | `string`, required                 | Input and output bundle resource keys.                                              |
+| `type`            | `string`, required                 | Chunk format; `esz` is recommended.                                                 |
+| `maxChunkCounts`  | `number` / `400000`                | Controls initial block size and must be positive; merged level files can be larger. |
+| `splitNormal`     | `None/X/Y/Z` or `0/1/2/3` / `None` | Block reference axis.                                                               |
+| `levels`          | `ChunkLevel[]` / below             | A custom array replaces the complete default array.                                 |
+
+```json
 [
-  { precision: 1.0, scaleBoost: 1 },
-  { precision: 0.5, scaleBoost: 1 },
-  { precision: 0.25, scaleBoost: 1 },
-  { precision: 0.05, scaleBoost: 1.01 },
-  { precision: 0.01, scaleBoost: 1.02 },
+    { "precision": 1.0, "scaleBoost": 1 },
+    { "precision": 0.5, "scaleBoost": 1 },
+    { "precision": 0.25, "scaleBoost": 1 },
+    { "precision": 0.05, "scaleBoost": 1.01, "merged": true, "permanent": true },
+    { "precision": 0.01, "scaleBoost": 1.02, "merged": true, "permanent": true }
 ]
-        </code>
-      </pre>
-    </td>
-    <td>LOD level precision settings.</td>
-  </tr>
-  <tr>
-    <td rowspan="8">Voxel</td>
-    <td rowspan="8">Generates voxel colliders.</td>
-    <td>input</td>
-    <td>string</td>
-    <td>Y</td>
-    <td>Resource key to read.</td>
-  </tr>
-  <tr>
-    <td>output</td>
-    <td>string</td>
-    <td>Y</td>
-    <td>Output file path.</td>
-  </tr>
-  <tr>
-    <td>voxelResolution</td>
-    <td>number</td>
-    <td>N(0.05)</td>
-    <td>Voxel size.</td>
-  </tr>
-  <tr>
-    <td>opacityCutoff</td>
-    <td>number</td>
-    <td>N(0.1)</td>
-    <td>Voxel filtering threshold. Higher values cull voxels more aggressively. Increase it when the scene has many floating artifacts.</td>
-  </tr>
-  <tr>
-    <td>backend</td>
-    <td>
-      string
-      <ul>
-        <li>gpu</li>
-        <li>cpu</li>
-      </ul>
-    </td>
-    <td>N(gpu)</td>
-    <td>Defaults to Vulkan GPU; GPU errors are returned directly. cpu schedules voxel computation on the process-wide thread pool without Vulkan. Cluster filtering and navigation dilation use the same backend. The shared pool manages worker counts; the former cpuWorkerCount option is not used.</td>
-  </tr>
-  <tr>
-    <td>box</td>
-    <td>
-      <pre>
-        <code>
-{
-  minCorner: [number, number, number],
-  maxCorner: [number, number, number]
-}
-        </code>
-      </pre>
-    </td>
-    <td>
-      N
-      <pre>
-        <code>
-{
-  minCorner: [-100, -100, -100],
-  maxCorner: [100, 100, 100]
-}
-        </code>
-      </pre>
-    </td>
-    <td>Scene box limit. Outliers can severely affect voxelization performance and produce meaningless output, so this constrains the voxel generation range.</td>
-  </tr>
-  <tr>
-    <td>navCapsule</td>
-    <td>
-      <pre>
-        <code>
-{
-  height: number,
-  radius: number
-}
-        </code>
-      </pre>
-    </td>
-    <td>N(null)</td>
-    <td rowspan="2">
-Both fields are used for navigation simplification. <code>navCapsule</code> sets the navigation body height and radius, and <code>navSeed</code> sets the navigation start center.
+```
 
-When enabled, voxels are simplified by the reachable range of the navigation body. This can optimize voxel output, but the feature is still incomplete and may have side effects in some cases, so it is disabled by default.</td>
+| Level field  | Default  | Description                                                                                                                     |
+| ------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `precision`  | Required | Target retained ratio relative to the original data. Level 0 retains the source and should use `1`; subsequent levels decrease. |
+| `scaleBoost` | `1`      | Gaussian scale multiplier after simplification, used to reduce gaps in coarse levels.                                           |
+| `merged`     | `false`  | Combines blocks from this level not already assigned to output files, preserving interval order.                                |
+| `permanent`  | `false`  | Adds files referenced by this level to `permanentFiles` for runtime residency.                                                  |
 
-  </tr>
-  <tr>
-    <td>navSeed</td>
-    <td>
-      <pre>
-        <code>
-{
-  x: number,
-  y: number,
-  z: number
-}
-        </code>
-      </pre>
-    </td>
-    <td>N(null)</td>
-  </tr>
-</table>
+Omitting `merged` / `permanent` in a custom array means `false`; it does not inherit `true` from the last two default levels. Voxel output associated with the same source automatically adds relative `voxels` paths to LOD metadata, whether Voxel runs before or after the LOD writes.
 
-#### Data Selection and Shared LOD
+### SplitSplatTask
 
-The following tasks use in-memory resource keys for input/output. Each produces an independent single-block splat resource with complete attributes and SH, offsets [0], counts [result count], and updated bounds.
+Splits data without generating multiple LOD levels or `lod-meta.json`. The output bundle contains files such as `block_0.<type>` and is saved to a directory by `Write`.
 
-| Task            | config fields                                        | Behavior                                                                                                                                                  |
-| --------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Select          | input, output; exactly one of indices or indicesPath | Copies indices in first-occurrence order and removes duplicates, such as [8,2,8,5] → [8,2,5], without Morton sorting                                      |
-| ReplaceAppend   | input, patch, output, sourceIndices                  | Replaces unique source indices with the first K patch points and appends the remainder; result N+M−K, requiring K≤M and matching SH degrees/layouts       |
-| ExtractLodLevel | input, output, required zero-based level             | Copies the level's file/offset/count intervals from the current run's LOD bundle in tree order, preserving repeated references and independent SH storage |
+| Parameter         | Type / default                     | Description                               |
+| ----------------- | ---------------------------------- | ----------------------------------------- |
+| `input`, `output` | `string`, required                 | Input and output bundle resource keys.    |
+| `type`            | `string`, required                 | Block format; `esz` is recommended.       |
+| `maxChunkCounts`  | `number` / `400000`                | Controls block size and must be positive. |
+| `splitNormal`     | `None/X/Y/Z` or `0/1/2/3` / `None` | Block reference axis.                     |
 
-Select accepts a JSON array or an object with indices in .json files. Other files contain little-endian uint32 values; .zst files are decompressed first. JSON indices are validated before conversion, rejecting negative, fractional, boolean, and out-of-range values. Binary lengths must be multiples of four. Empty selection is valid; writing empty data depends on the output format. ReplaceAppend requires sourceIndices, which may be empty but cannot contain duplicates. Retained source, patch, and aliases are unchanged.
+### Voxel
 
-Modify validates rgba/maxShDegree first, applies existing patch transforms and deletion, then sets RGBA on the remaining points and truncates SH. A different output key still aliases the same object. For interaction data, call ExtractLodLevel(level:3) before Modify(rgba:[0,0,0,1], maxShDegree:0) to isolate the shared source.
+Writes a voxel directory directly from a splat resource; no subsequent `Write` is needed. See [Physics Collision](./physics-collision.md) for the file format.
 
-Write the same LOD bundle twice in one pipeline using highPrecision:false followed by highPrecision:true. Each Write reads the resource without consuming it and may parallelize internally. Release only after the final use. The bundle's preserve_order flags still prevent Morton sorting from invalidating intervals. ExtractLodLevel does not restore bundles from disk lod-meta.json files.
+| Parameter           | Type / default                               | Description                                                                                                            |
+| ------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `input`             | `string`, required                           | Input splat resource key.                                                                                              |
+| `output`            | `string`, required                           | Voxel output directory.                                                                                                |
+| `voxelResolution`   | `number` / `0.05`                            | Finite positive voxel edge length, in input-coordinate units.                                                          |
+| `opacityCutoff`     | `number` / `0.1`                             | Occupancy threshold in `0–1`; higher values remove more low-density regions.                                           |
+| `backend`           | `gpu \| cpu` / `gpu`                         | Compute backend; see fallback rules below.                                                                             |
+| `box`               | `{ minCorner: [x,y,z], maxCorner: [x,y,z] }` | Defaults to `[-100,-100,-100]` through `[100,100,100]`; limits the generated region.                                   |
+| `filterCluster`     | `boolean \| object` / `true`                 | Prefilters a primary connected region; `false` disables it. Object fields are listed below.                            |
+| `autoDenseBox`      | `boolean \| object` / `true`                 | Attempts to tighten bounds inflated by scale outliers.                                                                 |
+| `compression`       | `none \| gzip \| zstd` / `none`              | Binary compression; produces `.bin`, `.bin.gz`, or `.bin.zst`.                                                         |
+| `nodeEncoding`      | `raw \| compact` / `raw`                     | Octree node encoding; compact data must be decoded to the runtime node layout.                                         |
+| `collisionMesh`     | `boolean \| smooth \| faces` / `false`       | `true` means `smooth`; `faces` emits voxel surfaces, while `smooth` uses marching cubes and merges coplanar triangles. |
+| `floorFill`         | `boolean` / `false`                          | Fills upward from the bottom of the grid to the floor.                                                                 |
+| `floorFillDilation` | `number` / `0`                               | Nonnegative horizontal dilation distance for `floorFill`.                                                              |
+| `navExteriorRadius` | `number` / `0`                               | Nonnegative exterior-fill dilation distance; requires `navSeed`.                                                       |
+| `navSeed`           | `{ x, y, z }` / unset                        | Navigation seed in scene coordinates for exterior fill and capsule navigation.                                         |
+| `navCapsule`        | `{ height, radius }` / unset                 | Enables capsule navigation when `height > 0` and `navSeed` is set; `radius` must be nonnegative.                       |
 
-#### Examples
+GPU is preferred by default. Each Voxel task initializes the selected Vulkan device when resolving its backend. If initialization fails, it logs a warning and selects CPU for cluster filtering, main generation, and navigation. Explicit `backend: "cpu"` never attempts Vulkan initialization. Once selected, the backend stays fixed: GPU compute errors propagate, and empty results do not trigger CPU retries. Invalid parameters or files and CPU processing failures still report errors. The process-wide pool manages worker counts; the former `cpuWorkerCount` option is no longer used.
 
-Apply modifications to `a.ply` and `b.ply`, then write `c.spz`:
+`filterCluster` object fields:
+
+| Field             | Default                | Description                                                                                                                                    |
+| ----------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `voxelResolution` | `1`                    | Prefilter grid voxel edge length.                                                                                                              |
+| `opacityCutoff`   | `0.999`                | Prefilter occupancy threshold.                                                                                                                 |
+| `minContribution` | `0.1`                  | Minimum Gaussian contribution to the selected connected region.                                                                                |
+| `seed`            | `{ x: 0, y: 0, z: 0 }` | Connected-region seed. If omitted and too few points remain, other large connected regions are considered. Explicit seeds disable that search. |
+
+`autoDenseBox` object fields:
+
+| Field                    | Default | Description                                                                          |
+| ------------------------ | ------- | ------------------------------------------------------------------------------------ |
+| `targetCenterKeepRatio`  | `0.98`  | Target center retention when estimating dense bounds.                                |
+| `minimumCenterKeepRatio` | `0.95`  | Minimum center retention required to accept tighter bounds.                          |
+| `minimumAxisInflation`   | `1.5`   | Axis inflation threshold for Gaussian bounds relative to center bounds.              |
+| `minimumVolumeInflation` | `4`     | Volume inflation threshold; reaching either inflation threshold triggers an attempt. |
+
+When grid or octree indices exceed capacity, generation may retry with a larger voxel edge length. Use `voxel-meta.json.voxelResolution` as the effective value. `Voxel` creates its directory and overwrites matching files without clearing the directory; use metadata `files` after changing compression. No `collision.glb` is written when the generated mesh has no triangles.
+
+## Pipeline Examples
+
+### Merge and Modify
 
 ```json
 {
     "version": 1,
     "tasks": [
+        { "id": "read", "type": "Read", "config": { "inputs": ["a.ply", "b.ply"], "output": "source" } },
         {
-            "id": "0",
-            "type": "Read",
-            "config": { "inputs": ["a.ply", "b.ply"], "output": "cache0" }
-        },
-        {
-            "id": "1",
+            "id": "modify",
             "type": "Modify",
-            "config": { "input": "cache0", "output": "cache0", "modifyPaths": ["a.json", "b.json"] }
+            "config": { "input": "source", "output": "source", "modifyPaths": ["a.json", "b.json"] }
         },
         {
-            "id": "2",
+            "id": "write",
             "type": "Write",
-            "config": { "input": "cache0", "output": "c.spz" }
+            "config": { "input": "source", "output": "combined.esz" },
+            "release": ["source"]
         }
     ]
 }
 ```
 
-Apply a modification to `a.ply`, then generate auto chunk LOD output:
+### Shared LOD, Interaction Data, and Voxels
+
+Retain the source while creating a LOD bundle. Extract level 3 and modify only that copy. Low- and high-precision LOD outputs share the bundle. The final voxel task associates its output with metadata in both LOD directories.
 
 ```json
 {
     "version": 1,
     "tasks": [
+        { "id": "read", "type": "Read", "config": { "inputs": ["input.ply"], "output": "source" } },
+        { "id": "lod", "type": "AutoChunkLod", "config": { "input": "source", "output": "lod", "type": "esz" } },
         {
-            "id": "0",
-            "type": "Read",
-            "config": { "inputs": ["a.ply"], "output": "cache0" }
+            "id": "extract",
+            "type": "ExtractLodLevel",
+            "config": { "input": "lod", "output": "interaction", "level": 3 }
         },
         {
-            "id": "1",
+            "id": "modify",
             "type": "Modify",
-            "config": { "input": "cache0", "output": "cache0", "modifyPaths": ["a.json"] }
+            "config": { "input": "interaction", "output": "interaction", "rgba": [0, 0, 0, 1], "maxShDegree": 0 }
         },
         {
-            "id": "2",
-            "type": "AutoChunkLod",
-            "config": { "input": "cache0", "output": "cache0", "type": "spz" }
-        },
-        {
-            "id": "3",
+            "id": "interaction",
             "type": "Write",
-            "config": { "input": "cache0", "output": "a-lod" }
-        }
-    ]
-}
-```
-
-Generate voxel colliders:
-
-```json
-{
-    "version": 1,
-    "tasks": [
+            "config": { "input": "interaction", "output": "interaction.esz" },
+            "release": ["interaction"]
+        },
+        { "id": "low", "type": "Write", "config": { "input": "lod", "output": "lod-low", "highPrecision": false } },
         {
-            "id": "0",
-            "type": "Read",
-            "config": { "inputs": ["input.ply"], "output": "cache0" }
+            "id": "high",
+            "type": "Write",
+            "config": { "input": "lod", "output": "lod-high", "highPrecision": true },
+            "release": ["lod"]
         },
         {
-            "id": "1",
+            "id": "voxel",
             "type": "Voxel",
             "config": {
-                "input": "cache0",
+                "input": "source",
                 "output": "voxel-output",
+                "backend": "cpu",
                 "voxelResolution": 0.05,
-                "opacityCutoff": 0.1,
-                "navCapsule": { "height": 1.4, "radius": 0.2 },
-                "navSeed": { "x": 0, "y": 0, "z": 0 }
-            }
+                "compression": "gzip",
+                "nodeEncoding": "raw",
+                "collisionMesh": "smooth"
+            },
+            "release": ["source"]
         }
     ]
 }
 ```
 
-## Notes
+### Select and Replace
 
-- A reasonably powerful discrete GPU is recommended when generating `SOG` or generating `Voxel` data with `GPU`. Converting large datasets to `SOG` may require more than 10 GB of GPU memory.
-- When generating `chunk-lod` with `AutoChunkLod` or `lod:auto-chunk`, `spz` or `esz` output is recommended. After chunking and multi-level `lod` generation, some chunks can contain very little data. `sog` compresses these small chunks less effectively than `spz`. You can also use `forceSpzFormatThreshold` to force chunks below a chosen count to `spz`.
-- `chunk-lod` generation is resource-intensive, so use a relatively powerful machine. For large datasets, memory >= 32 GB and CPU cores >= 16, including hyper-threading, are recommended. If generation cannot complete directly, split the data into coarse chunks first, then generate and merge `lod-meta.json` files. Merging can be done with the `merge-lod` command from `@manycore/aholo-splat-dev-server@>=1.0.1`.
+```json
+{
+    "version": 1,
+    "tasks": [
+        { "id": "read", "type": "Read", "config": { "inputs": ["input.ply"], "output": "source" } },
+        { "id": "select", "type": "Select", "config": { "input": "source", "output": "patch", "indices": [0] } },
+        { "id": "modify", "type": "Modify", "config": { "input": "patch", "output": "patch", "rgba": [0, 0, 0, 1] } },
+        {
+            "id": "replace",
+            "type": "ReplaceAppend",
+            "config": { "input": "source", "patch": "patch", "output": "result", "sourceIndices": [0] },
+            "release": ["source", "patch"]
+        },
+        {
+            "id": "write",
+            "type": "Write",
+            "config": { "input": "result", "output": "result.esz" },
+            "release": ["result"]
+        }
+    ]
+}
+```
+
+This example requires at least one input point. The patch retains its SH degree because `ReplaceAppend` rejects mismatched source and patch degrees.
+
+## JavaScript API
+
+```javascript
+import { run, PipelineError } from '@manycore/aholo-splat-transform';
+
+const controller = new AbortController();
+// Call controller.abort() when the caller requests cancellation.
+try {
+    await run(
+        {
+            version: 1,
+            tasks: [
+                { id: 'read', type: 'Read', config: { inputs: ['input.ply'], output: 'source' } },
+                { id: 'write', type: 'Write', config: { input: 'source', output: 'output.esz' }, release: ['source'] },
+            ],
+        },
+        { cwd: process.cwd(), signal: controller.signal },
+    );
+} catch (error) {
+    if (error instanceof PipelineError) {
+        console.error('Pipeline failed:', error.exitCode, error.signal);
+    } else if (error instanceof Error && error.name === 'AbortError') {
+        console.error('Pipeline cancelled');
+    }
+    throw error;
+}
+```
+
+`run()` returns `Promise<void>`. `enumerateAdapters({ cwd, signal })` returns Vulkan devices with `index`, `name`, `backend: "vulkan"`, `vendorId`, `deviceId`, `apiVersion`, and `uuid`. Enumeration itself requires Vulkan.
+
+`PipelineError` represents a nonzero child exit or termination signal. Process-start failures and `AbortSignal` cancellation can reject with a regular Error / AbortError. SIGINT and SIGTERM are forwarded to the child. Use `resolveExecutable()` to locate the native executable or set `SPLAT_TRANSFORM_EXECUTABLE` to an absolute local build path. If a platform executable is missing, check that npm optional dependencies are enabled.
+
+The package exports `PipelineConfig`, `PipelineTask`, `TaskType`, `RunOptions`, `VulkanAdapter`, and `ModifyConfig`, `SelectConfig`, `ReplaceAppendConfig`, `ExtractLodLevelConfig`, and `VoxelConfig`. `PipelineTask.config` remains `Record<string, unknown>`; use the reference above for complete parameters.
+
+## Migration and Resource Guidance
+
+Version 2.0 removes in-memory APIs such as `SplatData`, `injectCustomTask`, and deep module imports. Data remains in the native child process and is processed through the CLI, version 1 pipelines, and `run()`.
+
+- Use `esz` for chunk LOD: set `type: "esz"` in a pipeline or pass `--type esz` to the CLI.
+- SOG clustering batches work according to the available Vulkan memory budget and device limits, streaming data as needed. There is no universal 10 GB requirement, but insufficient working-buffer memory still causes an error. Random clustering can produce different results across repeated SOG exports.
+- Large LOD and voxel jobs require sufficient system memory. Release resources after their final consumer, limit concurrent bundle writes, and tune chunk sizes and voxel resolution for the scene.
+- CPU and GPU voxel occupancy can differ near thresholds. Selecting CPU after device initialization fails allows generation without an available GPU, but does not guarantee bit-identical results across backends.

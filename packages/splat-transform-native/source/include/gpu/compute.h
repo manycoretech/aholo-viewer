@@ -4,18 +4,9 @@
 #include <memory>
 #include <span>
 #include <spatial/features.h>
-#include <string>
 #include <vector>
 
 namespace splat_transform::gpu {
-struct DeviceInfo {
-    uint32_t index;
-    std::string name;
-    uint32_t vendor_id;
-    uint32_t device_id;
-    uint32_t api_version;
-    std::string uuid;
-};
 struct Gaussian {
     std::array<float, 16> values {};
 };
@@ -35,9 +26,6 @@ struct CandidateBins {
     std::vector<uint32_t> indices;
 };
 
-std::vector<DeviceInfo> enumerate_devices();
-void select_device(uint32_t index);
-void release_device();
 class ClusterSession {
 public:
     ClusterSession(spatial::FeatureView points, size_t centroid_count);

@@ -1,4 +1,4 @@
-#include <gpu/compute.h>
+#include <gpu/context.h>
 #include <pipeline/runner.h>
 #include <pipeline/task.h>
 #include <utility/logger.h>
@@ -15,9 +15,7 @@ void run(const io::Json& pipeline) {
     auto& logger = utility::logger();
     auto pipeline_log = logger.scope("");
     auto total_time = logger.time("Total elapsed time");
-    struct DeviceGuard {
-        ~DeviceGuard() { gpu::release_device(); }
-    } device_guard;
+    gpu::DeviceGuard device_guard;
     TaskContext context;
     bool gpu_selected = false;
     for (size_t i = 0; i < tasks.size(); ++i) {

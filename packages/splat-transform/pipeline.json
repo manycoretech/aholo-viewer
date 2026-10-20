@@ -5,27 +5,29 @@
       "id": "0",
       "type": "Read",
       "config": {
-        "inputs": [""],
-        "output": "cache0"
+        "inputs": ["input.ply"],
+        "output": "source"
       }
     },
     {
       "id": "1",
       "type": "AutoChunkLod",
       "config": {
-        "input": "cache0",
-        "output": "cache0",
-        "type": "spz",
-        "maxChunkCounts": "400000"
-      }
+        "input": "source",
+        "output": "lod",
+        "type": "esz",
+        "maxChunkCounts": 400000
+      },
+      "release": ["source"]
     },
     {
       "id": "2",
       "type": "Write",
       "config": {
-        "input": "cache0",
-        "output": ""
-      }
+        "input": "lod",
+        "output": "lod-output"
+      },
+      "release": ["lod"]
     }
   ]
 }

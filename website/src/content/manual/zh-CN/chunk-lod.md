@@ -12,10 +12,10 @@ order: 8
 
 ## `chunk-lod`生成
 
-`@manycore/aholo-viewer`使用的`chunk-lod`数据主要可以通过[`@manycore/aholo-splat-transform`](./splat-transform.md)生成。我们`chunk-lod`生成主要经过以下几个步骤：
+`@manycore/aholo-viewer`使用的`chunk-lod`数据主要可以通过[`@manycore/aholo-splat-transform`](./splat-transform.md)生成，推荐使用 `esz` 输出。生成主要经过以下几个步骤：
 
 1. 块分割
-    > 块分割主要采用八叉树进行分割，默认单块最大大小为`400000`高斯，对于大型方案可以增加到`800000`或者更多以控制最终产生的`chunk`数量
+    > 块分割主要采用八叉树，`maxChunkCounts` 默认以 `400000` 个高斯控制初始分块规模。大型方案可以增加该值以减少块数；合并后的层级文件可能超过此规模。
 2. 高斯查找和融合
     > 在每个块内，每级别的`lod`使用上一级别的结果生成，每个级别通过循环查找和合并使其达到目标数量。
     >
@@ -27,7 +27,7 @@ order: 8
     >
     > 为了防止无法正常产出结果，我们会设定每个级别的最大迭代次数，当触及最大迭代次数时，即使未达到目标数量，我们依旧会直接跳出。
 3. 输出处理
-    > 输出时，会针对低级别的数据进行整体打包，一般低级别数据为原始数据的`1%`，数据量很少，打包后也能减少没必要块。完整处理后我们会输出`lod-meta.json`作为`chunk-lod`的描述文件。
+    > 默认将目标比例为 `5%` 和 `1%` 的粗层级设置为 `merged: true`、`permanent: true`，合并各层尚未安排输出的块，并将引用文件标记为常驻。自定义 `levels` 会替换整个默认数组，省略这两个字段时均为 `false`。最终输出 `lod-meta.json` 描述各块的文件区间；完整参数见 [AutoChunkLod](./splat-transform.md#autochunklod)。
 
 参考资料：
 

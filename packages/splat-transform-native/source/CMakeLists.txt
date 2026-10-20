@@ -55,6 +55,7 @@ set(SPLAT_TRANSFORM_SOURCE_FILES
     src/io/lcc2.cpp
     src/io/sog.cpp
     src/io/esz.cpp
+    src/gpu/context.cpp
     src/gpu/compute.cpp
     src/pipeline/runner.cpp
     src/pipeline/task.cpp
@@ -88,6 +89,7 @@ set(SPLAT_TRANSFORM_HEADER_FILES
     include/codec/codec.h
     include/codec/quantization.h
     include/gpu/compute.h
+    include/gpu/context.h
     include/io/esz.h
     include/io/file.h
     include/io/ksplat.h
@@ -127,6 +129,7 @@ set(SPLAT_TRANSFORM_HEADER_FILES
 )
 set(SPLAT_TRANSFORM_PRIVATE_HEADER_FILES
     src/codec/compression_stream.h
+    src/gpu/vulkan_context.h
     src/gpu/cluster_schedule.h
     src/io/zip_archive.h
     src/io/file_stream.h
@@ -227,6 +230,15 @@ if(BUILD_TESTING)
         ENVIRONMENT "VK_DRIVER_FILES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json;VK_ICD_FILENAMES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json"
         FAIL_REGULAR_EXPRESSION "Vulkan dilation failed;initialize GPU adapter"
     )
+    add_executable(splat_transform_voxel_fallback_tests)
+    target_sources(splat_transform_voxel_fallback_tests PRIVATE tests/voxel_fallback_tests.cpp)
+    target_include_directories(splat_transform_voxel_fallback_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(splat_transform_voxel_fallback_tests PRIVATE splat_transform_core)
+    add_test(NAME voxel_fallback_contracts COMMAND splat_transform_voxel_fallback_tests)
+    set_tests_properties(voxel_fallback_contracts PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "VK_DRIVER_FILES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json;VK_ICD_FILENAMES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json"
+    )
     add_executable(splat_transform_streaming_tests)
     target_sources(splat_transform_streaming_tests PRIVATE tests/streaming_tests.cpp)
     target_include_directories(splat_transform_streaming_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -289,6 +301,7 @@ if(BUILD_TESTING)
     endif()
     list(APPEND SPLAT_TRANSFORM_TARGETS
         splat_transform_voxel_cpu_tests
+        splat_transform_voxel_fallback_tests
         splat_transform_streaming_tests
         splat_transform_logging_tests
         splat_transform_abstraction_tests splat_transform_geometry_tests splat_transform_tests splat_transform_pipeline_tests

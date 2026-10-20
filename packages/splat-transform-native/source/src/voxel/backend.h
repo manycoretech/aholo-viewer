@@ -19,5 +19,7 @@ public:
 
 const Backend& cpu_backend();
 const Backend& gpu_backend();
+// Resolve once per voxel task so filtering, generation, and navigation share
+// the same backend. Unavailable GPU initialization selects CPU for all phases.
 const Backend& resolve_backend(const io::Json& config);
 } // namespace splat_transform::voxel

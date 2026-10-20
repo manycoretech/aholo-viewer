@@ -12,10 +12,10 @@ Rendering large-scale `3DGS` scenes requires far more system resources than most
 
 ## Generating `chunk-lod`
 
-`chunk-lod` data used by `@manycore/aholo-viewer` is usually generated with [`@manycore/aholo-splat-transform`](./splat-transform.md). The generation process mainly includes these steps:
+`chunk-lod` data used by `@manycore/aholo-viewer` is usually generated with [`@manycore/aholo-splat-transform`](./splat-transform.md). ESZ output is recommended. Generation mainly includes these steps:
 
 1. Chunk splitting
-    > Chunks are split primarily with an octree. The default maximum chunk size is `400000` Gaussians. For large scenes, increase it to `800000` or higher to control the final `chunk` count.
+    > Chunks are split primarily with an octree. `maxChunkCounts` defaults to `400000` Gaussians to control initial block size. Increase it for large scenes to reduce the block count; merged level files can exceed that size.
 2. Gaussian search and fusion
     > Inside each chunk, each `lod` level is generated from the previous level. Every level repeatedly searches and merges Gaussians until it reaches the target count.
     >
@@ -27,7 +27,7 @@ Rendering large-scale `3DGS` scenes requires far more system resources than most
     >
     > To avoid non-terminating processing, each level has a maximum iteration count. If that limit is reached, processing exits even if the target count has not been met.
 3. Output processing
-    > Low-level data is packed together during output. Low-level data is usually about `1%` of the original data, so the amount is small and packing also removes unnecessary chunks. The final output includes `lod-meta.json`, which describes the `chunk-lod` data.
+    > The default `5%` and `1%` coarse levels set `merged: true` and `permanent: true`, combining blocks not already assigned to output files and marking referenced files for residency. A custom `levels` array replaces all defaults; omitting either flag means `false`. The final `lod-meta.json` describes file intervals for each block. See [AutoChunkLod](./splat-transform.md#autochunklod) for complete parameters.
 
 References:
 
