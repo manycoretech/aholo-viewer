@@ -98,15 +98,18 @@ Get-Content -Raw pipeline.json | splat-transform -
 }
 ```
 
-| Field             | Type / default    | Description                                                                       |
-| ----------------- | ----------------- | --------------------------------------------------------------------------------- |
-| `version`         | `1`               | Pipeline version, independent of the SPZ output version.                          |
-| `gpu`             | `number` / `0`    | Device index from `list:gpu` or `enumerateAdapters()`, used when GPU work starts. |
-| `tasks`           | `PipelineTask[]`  | Executed in array order. A failed task stops subsequent execution.                |
-| `tasks[].id`      | `string`          | Task log identifier, required by the TypeScript interface.                        |
-| `tasks[].type`    | `string`          | A case-sensitive task name listed below.                                          |
-| `tasks[].config`  | `object`          | Parameters for that task.                                                         |
-| `tasks[].release` | `string[]` / `[]` | Resource keys removed after the current task succeeds.                            |
+| Field             | Type / default               | Description                                                                                    |
+| ----------------- | ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| `version`         | `1`                          | Pipeline version, independent of the SPZ output version.                                       |
+| `gpu`             | `number` / `0`               | Device index from `list:gpu` or `enumerateAdapters()`, used when GPU work starts.              |
+| `cpuWorkers`      | positive integer / automatic | Global CPU pool worker count; capped at hardware concurrency minus one, with a minimum of one. |
+| `tasks`           | `PipelineTask[]`             | Executed in array order. A failed task stops subsequent execution.                             |
+| `tasks[].id`      | `string`                     | Task log identifier, required by the TypeScript interface.                                     |
+| `tasks[].type`    | `string`                     | A case-sensitive task name listed below.                                                       |
+| `tasks[].config`  | `object`                     | Parameters for that task.                                                                      |
+| `tasks[].release` | `string[]` / `[]`            | Resource keys removed after the current task succeeds.                                         |
+
+`cpuWorkers` is optional and configured before tasks run. The pool is still created on first use and shared by LOD, clustering updates, file output, CPU voxel jobs, and gzip. Explicit values are capped at `max(1, std::thread::hardware_concurrency() - 1)`, using logical hardware threads; a reported concurrency of 28 allows at most 27 workers. Omitting the field preserves the existing default: half the next power of two of hardware concurrency, clamped to 1–16. Explicit configuration logs the effective count. Zero, negative, fractional, and non-integer values report an error. zstd uses a separate pool initialized with the same worker count.
 
 `Read.output` and processing-task `input` / `output` fields refer to in-memory resource keys for the current run. `Read.inputs`, `Write.output`, and `Voxel.output` are filesystem paths. Relative paths use the process working directory, not the directory containing the pipeline file.
 
@@ -132,15 +135,16 @@ Reads and combines multiple inputs while retaining input-block order for `Modify
 
 Writes a single splat to a file or a LOD / split bundle to a directory. The output extension or bundle filenames determine the format.
 
-| Parameter          | Type / default                                | Description                                                                                             |
-| ------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `input`            | `string`, required                            | Input resource key.                                                                                     |
-| `output`           | `string`, required                            | Single-file path or bundle output directory.                                                            |
-| `enableMortonSort` | `boolean` / `true`                            | Applies Morton ordering for output; disabled for bundle files that must preserve interval order.        |
-| `version`          | `3 \| 4` / `3`                                | Applies to `.spz` only; `.uspz` always writes uncompressed v3.                                          |
-| `compressLevel`    | `number`                                      | SPZ v3 uses gzip, default `6`, typically `0–9`; SPZ v4 uses zstd, default `7`, with zstd's level range. |
-| `highPrecision`    | `boolean` / `false`                           | ESZ only: `false` selects low precision, `true` selects high precision.                                 |
-| `parallelCounts`   | `number` / `max(1, CPU hardware threads − 1)` | Maximum concurrent bundle file writes, also capped by the shared CPU pool.                              |
+| Parameter          | Type / default      | Description                                                                                             |
+| ------------------ | ------------------- | ------------------------------------------------------------------------------------------------------- |
+| `input`            | `string`, required  | Input resource key.                                                                                     |
+| `output`           | `string`, required  | Single-file path or bundle output directory.                                                            |
+| `enableMortonSort` | `boolean` / `true`  | Applies Morton ordering for output; disabled for bundle files that must preserve interval order.        |
+| `version`          | `3 \| 4` / `3`      | Applies to `.spz` only; `.uspz` always writes uncompressed v3.                                          |
+| `compressLevel`    | `number`            | SPZ v3 uses gzip, default `6`, typically `0–9`; SPZ v4 uses zstd, default `7`, with zstd's level range. |
+| `highPrecision`    | `boolean` / `false` | ESZ only: `false` selects low precision, `true` selects high precision.                                 |
+
+Concurrent CPU bundle file writes are limited to the global CPU pool's worker count, configured through top-level pipeline `cpuWorkers`.
 
 **Directory replacement: writing a bundle recursively removes an existing output directory before recreating it. Use a dedicated output directory.** Filesystem roots and the current working directory are rejected. Single-file output overwrites an existing file.
 

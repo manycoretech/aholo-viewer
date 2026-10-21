@@ -465,7 +465,7 @@ void shared_lod_contracts(const std::filesystem::path& directory) {
     }
     task("Write", { { "input", "interactivePick" }, { "output", io::path_utf8(directory / "interactive.esz") }, { "highPrecision", false } }, context, { "interactivePick" });
     for (const auto output : { "low-lod", "high-lod", "repeated-high" }) {
-        task("Write", { { "input", "lod" }, { "output", io::path_utf8(directory / output) }, { "highPrecision", std::string_view(output) != "low-lod" }, { "parallelCounts", 2 }, { "enableMortonSort", true } }, context);
+        task("Write", { { "input", "lod" }, { "output", io::path_utf8(directory / output) }, { "highPrecision", std::string_view(output) != "low-lod" }, { "enableMortonSort", true } }, context);
         require(io::read_json(directory / output / "lod-meta.json") == meta, "Sequential Write changed LOD metadata");
         for (size_t i = 1; i < files.size(); ++i) {
             equal_data(*std::get<pipeline::SplatPtr>(files[i].content), originals[i - 1]);

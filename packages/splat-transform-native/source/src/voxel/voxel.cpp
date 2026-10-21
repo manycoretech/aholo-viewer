@@ -1,8 +1,8 @@
 #include "voxelize.h"
+#include <algorithm>
+#include <bit>
 #include <cmath>
 #include <codec/codec.h>
-#include <deque>
-#include <unordered_map>
 #include <utility/logger.h>
 #include <voxel/voxel.h>
 
@@ -21,76 +21,108 @@ public:
     explicit OctreeOverflow(uint64_t count) : std::runtime_error("Voxel octree exceeds 24-bit offsets"), count(count) {}
 };
 uint64_t morton(Eigen::Vector3i p) {
-    uint64_t value = 0;
-    for (unsigned bit = 0; bit < 21; ++bit) {
-        for (unsigned a = 0; a < 3; ++a) {
-            value |= uint64_t((p[a] >> bit) & 1) << (3 * bit + a);
-        }
-    }
-    return value;
+    const auto spread = [](uint32_t value) {
+        uint64_t bits = value & 0x1fffffu;
+        bits = (bits | (bits << 32)) & 0x1f00000000ffffull;
+        bits = (bits | (bits << 16)) & 0x1f0000ff0000ffull;
+        bits = (bits | (bits << 8)) & 0x100f00f00f00f00full;
+        bits = (bits | (bits << 4)) & 0x10c30c30c30c30c3ull;
+        return (bits | (bits << 2)) & 0x1249249249249249ull;
+    };
+    return spread(p[0]) | (spread(p[1]) << 1) | (spread(p[2]) << 2);
 }
 Octree build_octree(const Grid& grid) {
     struct Node {
+        uint64_t key;
         uint64_t mask = 0;
+        // Child range start; leaves use the original grid index to break ties.
+        uint32_t begin = 0;
         uint8_t children = 0;
         bool solid = false;
     };
-    using Level = std::unordered_map<uint64_t, Node>;
+    using Level = std::vector<Node>;
     Octree output;
     std::vector<Level> levels(1);
-    for (auto index : grid.active_blocks()) {
-        const auto mask = grid.mask(index);
-        levels.front()[morton(grid.block_point(index))] = { mask, 0, mask == FULL_BLOCK };
+    auto& leaves = levels.front();
+    const auto add_leaf = [&](uint32_t index, uint64_t mask) {
+        if (mask) {
+            leaves.push_back({ morton(grid.block_point(index)), mask, index, 0, mask == FULL_BLOCK });
+        }
+    };
+    if (grid.default_mask == 0) {
+        leaves.reserve(grid.masks.size());
+        for (const auto& [index, mask] : grid.masks) {
+            add_leaf(index, mask);
+        }
+    } else {
+        for (uint32_t index = 0; index < grid.block_count(); ++index) {
+            add_leaf(index, grid.mask(index));
+        }
     }
-    if (levels.front().empty()) {
+    if (leaves.empty()) {
         return output;
     }
+    std::sort(leaves.begin(), leaves.end(), [](const Node& left, const Node& right) {
+        return left.key != right.key ? left.key < right.key : left.begin > right.begin;
+    });
+    // Preserve the last linear-grid entry if coordinates alias in the existing
+    // 21-bit Morton encoding, as the previous sorted map insertion did.
+    leaves.erase(std::unique(leaves.begin(), leaves.end(), [](const Node& left, const Node& right) {
+        return left.key == right.key;
+    }),
+        leaves.end());
+    size_t node_count = leaves.size();
+    const auto mixed_count = std::ranges::count_if(leaves, [](const Node& node) { return !node.solid; });
     do {
+        const auto& children = levels.back();
         Level parents;
-        for (auto [key, node] : levels.back()) {
-            auto& parent = parents[key / 8];
-            parent.children |= 1 << (key % 8);
-            if (node.solid) {
-                parent.mask |= uint64_t { 1 } << (key % 8);
-            }
+        parents.reserve((children.size() + 3) / 4);
+        // Morton order keeps every parent's children in one contiguous range.
+        for (size_t begin = 0; begin < children.size();) {
+            Node parent { children[begin].key >> 3, 0, uint32_t(begin), 0, true };
+            do {
+                const auto& child = children[begin++];
+                parent.children |= uint8_t(1u << (child.key & 7));
+                parent.solid &= child.solid;
+            } while (begin < children.size() && (children[begin].key >> 3) == parent.key);
+            parent.solid &= parent.children == 0xff;
+            parents.push_back(parent);
         }
-        for (auto& [key, parent] : parents) {
-            parent.solid = parent.mask == 255;
-        }
+        node_count += parents.size();
         levels.push_back(std::move(parents));
-    } while (levels.back().size() != 1 || !levels.back().contains(0));
+    } while (levels.back().size() != 1 || levels.back().front().key != 0);
     output.depth = uint32_t(levels.size() - 1);
-    struct Reference {
-        size_t level;
-        uint64_t key;
-    };
-    std::deque<Reference> queue { { levels.size() - 1, 0 } };
-    while (!queue.empty()) {
-        const auto ref = queue.front();
-        queue.pop_front();
-        const auto node = levels[ref.level].at(ref.key);
-        if (node.solid) {
-            output.nodes.push_back(0xff000000u);
-        } else if (ref.level == 0) {
-            if (output.mixed > 0xffffff) {
-                throw OctreeOverflow(uint64_t(output.mixed) + 1);
-            }
-            output.nodes.push_back(output.mixed++);
-            output.leaves.push_back(uint32_t(node.mask));
-            output.leaves.push_back(uint32_t(node.mask >> 32));
-        } else {
-            const uint64_t first = output.nodes.size() + queue.size() + 1;
-            if (first > 0xffffff) {
-                throw OctreeOverflow(first + 1);
-            }
-            output.nodes.push_back((uint32_t(node.children) << 24) | uint32_t(first));
-            ++output.interiors;
-            for (int child = 0; child < 8; ++child) {
-                if (node.children & (1 << child)) {
-                    queue.push_back({ ref.level - 1, ref.key * 8 + child });
+    output.nodes.reserve(node_count);
+    output.leaves.reserve(size_t(mixed_count) * 2);
+    std::vector<uint32_t> wave { 0 }, next;
+    for (size_t level = levels.size(); level-- > 0;) {
+        next.clear();
+        uint64_t first = output.nodes.size() + wave.size();
+        for (const auto index : wave) {
+            const auto& node = levels[level][index];
+            if (node.solid) {
+                output.nodes.push_back(0xff000000u);
+            } else if (level == 0) {
+                if (output.mixed > 0xffffff) {
+                    throw OctreeOverflow(uint64_t(output.mixed) + 1);
                 }
+                output.nodes.push_back(output.mixed++);
+                output.leaves.push_back(uint32_t(node.mask));
+                output.leaves.push_back(uint32_t(node.mask >> 32));
+            } else {
+                if (first > 0xffffff) {
+                    throw OctreeOverflow(first + 1);
+                }
+                output.nodes.push_back((uint32_t(node.children) << 24) | uint32_t(first));
+                ++output.interiors;
+                const uint32_t count = std::popcount(node.children);
+                for (uint32_t child = 0; child < count; ++child) {
+                    next.push_back(node.begin + child);
+                }
+                first += count;
             }
         }
+        wave.swap(next);
     }
     return output;
 }

@@ -1,4 +1,3 @@
-#include "../lod_support.h"
 #include <pipeline/tasks/write.h>
 #include <utility/logger.h>
 #include <utility/thread_pool.h>
@@ -32,9 +31,8 @@ void write_resource(const Resource& resource, const Json& config) {
     }
     std::filesystem::create_directories(path);
     const auto& files = std::get<std::vector<SingleFile>>(resource);
-    const auto parallel = std::max(1, int(number(config, "parallelCounts", std::max(1, int(std::thread::hardware_concurrency()) - 1))));
     auto& pool = threading::default_pool();
-    const auto concurrency = std::min(size_t(parallel), pool.thread_count());
+    const auto concurrency = pool.thread_count();
     logger.info("writing bundle -> dir=\"", output, "\" files=", files.size());
     {
         auto quiet = logger.silence();

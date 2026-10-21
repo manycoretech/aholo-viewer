@@ -102,11 +102,14 @@ Get-Content -Raw pipeline.json | splat-transform -
 | ----------------- | ----------------- | ----------------------------------------------------------------------------- |
 | `version`         | `1`               | pipeline 版本，与 SPZ 输出版本无关。                                          |
 | `gpu`             | `number` / `0`    | `list:gpu` 或 `enumerateAdapters()` 返回的设备下标；实际 GPU 工作开始时使用。 |
+| `cpuWorkers`      | 正整数 / 自动选择 | 全局 CPU 线程池的工作线程数；超过硬件线程数减一时自动截断，至少为 1。         |
 | `tasks`           | `PipelineTask[]`  | 按数组顺序执行；任务失败时终止后续任务。                                      |
 | `tasks[].id`      | `string`          | 任务日志标识，TypeScript 接口要求提供。                                       |
 | `tasks[].type`    | `string`          | 下文列出的任务名称，区分大小写。                                              |
 | `tasks[].config`  | `object`          | 对应任务的参数。                                                              |
 | `tasks[].release` | `string[]` / `[]` | 当前任务成功完成后删除这些内存资源键。                                        |
+
+`cpuWorkers` 为可选字段，在执行任务前配置，线程池仍在首次使用时创建，供 LOD、聚类更新、文件写出、CPU 体素和 gzip 等任务共享。显式配置的上限为 `max(1, std::thread::hardware_concurrency() - 1)`；例如硬件线程数返回 28 时最多使用 27 个工作线程。省略时保持原有默认行为：硬件线程数向上取 2 的幂后除以 2，再限制到 1–16。显式配置会在日志中显示生效的线程数；0、负数、小数及非整数类型会报错。zstd 使用独立线程池，并以相同线程数初始化。
 
 `Read.output` 和处理任务的 `input` / `output` 是本次运行的内存资源键；`Read.inputs`、`Write.output`、`Voxel.output` 才是磁盘路径。相对路径以进程工作目录为基准，不以 pipeline 文件所在目录为基准。
 
@@ -132,15 +135,16 @@ Get-Content -Raw pipeline.json | splat-transform -
 
 将单个 splat 写入文件，或将 LOD / 分块 bundle 写入目录。格式由输出文件扩展名或 bundle 中的文件名决定。
 
-| 参数               | 类型 / 默认值                           | 说明                                                                                         |
-| ------------------ | --------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `input`            | `string`，必填                          | 输入资源键。                                                                                 |
-| `output`           | `string`，必填                          | 单文件路径或 bundle 输出目录。                                                               |
-| `enableMortonSort` | `boolean` / `true`                      | 写出前按 Morton 顺序排列；要求保留区间顺序的 bundle 文件会强制关闭。                         |
-| `version`          | `3 \| 4` / `3`                          | 仅用于 `.spz`；`.uspz` 固定输出未压缩的 v3。                                                 |
-| `compressLevel`    | `number`                                | SPZ v3 使用 gzip，默认 `6`，常用范围 `0–9`；SPZ v4 使用 zstd，默认 `7`，遵循 zstd 等级范围。 |
-| `highPrecision`    | `boolean` / `false`                     | 仅用于 ESZ：`false` 为低精度，`true` 为高精度布局。                                          |
-| `parallelCounts`   | `number` / `max(1, CPU 硬件线程数 − 1)` | bundle 同时写出的文件数上限，实际并发还受共享 CPU 线程池限制。                               |
+| 参数               | 类型 / 默认值       | 说明                                                                                         |
+| ------------------ | ------------------- | -------------------------------------------------------------------------------------------- |
+| `input`            | `string`，必填      | 输入资源键。                                                                                 |
+| `output`           | `string`，必填      | 单文件路径或 bundle 输出目录。                                                               |
+| `enableMortonSort` | `boolean` / `true`  | 写出前按 Morton 顺序排列；要求保留区间顺序的 bundle 文件会强制关闭。                         |
+| `version`          | `3 \| 4` / `3`      | 仅用于 `.spz`；`.uspz` 固定输出未压缩的 v3。                                                 |
+| `compressLevel`    | `number`            | SPZ v3 使用 gzip，默认 `6`，常用范围 `0–9`；SPZ v4 使用 zstd，默认 `7`，遵循 zstd 等级范围。 |
+| `highPrecision`    | `boolean` / `false` | 仅用于 ESZ：`false` 为低精度，`true` 为高精度布局。                                          |
+
+bundle 的 CPU 文件写出并发上限直接使用全局 CPU 线程池的线程数，可通过 pipeline 根级 `cpuWorkers` 统一设置。
 
 **目录覆盖：写出 bundle 时，已有输出目录会先被递归删除，再重新创建。请使用专用输出目录。** 根目录和当前工作目录会被拒绝。单文件输出会覆盖同名文件。
 

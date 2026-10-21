@@ -67,6 +67,8 @@ export interface PipelineConfig {
     version: 1;
     /** Index from enumerateAdapters(); indices belong to the Vulkan backend. */
     gpu?: number;
+    /** Positive worker count; capped at max(1, hardware_concurrency() - 1). Omit for automatic sizing. */
+    cpuWorkers?: number;
     tasks: PipelineTask[];
 }
 

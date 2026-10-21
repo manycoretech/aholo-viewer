@@ -16,6 +16,8 @@
 
 namespace splat_transform::threading {
 size_t default_thread_count() noexcept;
+// Called on the pipeline thread before any CPU work starts.
+void configure_default_pool(size_t thread_count) noexcept;
 class ThreadPool {
 public:
     ThreadPool(size_t thread_count = default_thread_count());

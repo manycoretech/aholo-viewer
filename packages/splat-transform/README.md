@@ -16,7 +16,7 @@ CPU operations start without Vulkan. SOG output with SH coefficients requires GP
 
 SOG clustering reuses GPU resources across iterations and uses the available Vulkan memory budget to keep as much point data resident as fits. Remaining data streams through reusable slots. Batch sizes follow memory capacity and device buffer/workgroup limits. Memory scheduling is automatic and preserves the existing pipeline JSON parameters; staging and driver memory are additional. See the native build instructions for budget details.
 
-LOD, clustering updates, bundle writing, SOG texture encoding, and gzip jobs reuse one CPU pool created on first use. SOG generates archive members in parallel and assembles the final ZIP with libzip. zstd compression contexts share a separate, bounded pool supplied by zstd. Large gzip and zstd outputs remain standard single-member/single-frame streams.
+LOD, clustering updates, bundle writing, SOG texture encoding, and gzip jobs reuse one CPU pool created on first use. Set optional top-level `cpuWorkers` in the pipeline to choose its worker count before tasks start. It must be a positive integer and is capped at `max(1, std::thread::hardware_concurrency() - 1)`, using logical hardware threads. Omitting it preserves the existing automatic policy: half the next power of two of hardware concurrency, clamped to 1–16. SOG generates archive members in parallel and assembles the final ZIP with libzip. zstd compression contexts share a separate pool supplied by zstd, initialized with the same worker count. Large gzip and zstd outputs remain standard single-member/single-frame streams.
 
 ## Install and run
 
@@ -60,7 +60,7 @@ Inputs: PLY, compressed PLY, SPLAT, KSPLAT, SPZ/USPZ, SOG and unpacked SOG metad
 ## Output and LOD options
 
 - `Write.version` selects SPZ v3 (default) or v4. `compressLevel` defaults to `6` for v3 gzip and `7` for v4 zstd. USPZ always writes uncompressed v3.
-- `Write.highPrecision` defaults to `false` for ESZ. `enableMortonSort` defaults to `true`, subject to bundle interval ordering. `parallelCounts` limits concurrent bundle writes and is capped by the shared CPU pool.
+- `Write.highPrecision` defaults to `false` for ESZ. `enableMortonSort` defaults to `true`, subject to bundle interval ordering. Concurrent bundle writes are limited to the shared CPU pool's worker count, configured through top-level `cpuWorkers`.
 - `AutoChunkLod.levels` defaults to precision values `1`, `0.5`, `0.25`, `0.05`, `0.01`, with scale boosts `1`, `1`, `1`, `1.01`, `1.02`. The last two levels also set `merged: true` and `permanent: true`. A custom array replaces these defaults; omitted `merged` and `permanent` fields are `false`.
 - `Voxel` supports `compression: "none" | "gzip" | "zstd"`, `nodeEncoding: "raw" | "compact"`, and `collisionMesh: false | true | "smooth" | "faces"`. Defaults are `"none"`, `"raw"`, and `false`; `true` selects smooth mesh generation. Cluster filtering, automatic dense bounds, floor fill, and navigation options are documented in the task reference.
 - Voxel capacity limits can increase the effective voxel edge length. Use output metadata values, and decompress then decode compact nodes before supplying runtime arrays. See the [voxel file format](https://aholojs.dev/en-US/manual/physics-collision/).

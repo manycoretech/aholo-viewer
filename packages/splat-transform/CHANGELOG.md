@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2
+
+- support top-level pipeline `cpuWorkers` for the shared CPU pool, capped at hardware concurrency minus one with a minimum of one worker
+- remove per-Write `parallelCounts`; limit concurrent bundle writes to the shared CPU pool's worker count
+- build voxel octrees from Morton-sorted contiguous arrays while preserving node order and serialized output
+
 ## 2.0.1
 
 - resolve the Voxel backend before processing and select CPU for the entire task when Vulkan device initialization fails; keep the selected backend for filtering, generation, and navigation without per-operation CPU retries

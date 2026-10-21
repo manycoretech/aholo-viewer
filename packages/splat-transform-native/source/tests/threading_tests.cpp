@@ -1,9 +1,13 @@
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <barrier>
+#include <bit>
 #include <codec/codec.h>
 #include <iostream>
 #include <latch>
+#include <pipeline/runner.h>
+#include <string_view>
 #include <utility/random.h>
 #include <utility/thread_pool.h>
 
@@ -22,8 +26,32 @@ static_assert(!AcceptsGroupTask<int, decltype([] {})>);
 static_assert(!AcceptsGroupTask<int, decltype([](int value) { return value; }), std::string>);
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     try {
+        const auto hardware = std::thread::hardware_concurrency();
+        const size_t worker_limit = hardware > 1 ? hardware - 1 : 1;
+        size_t expected_workers = std::clamp(std::bit_ceil(hardware) / 2u, 1u, 16u);
+        if (threading::default_thread_count() != expected_workers) {
+            throw std::runtime_error("Automatic CPU worker count changed");
+        }
+        // Reject malformed values before any task starts or the shared pool is created.
+        for (const auto& value : io::Json::array({ 0, -1, 1.5, true, false, nullptr, "4", io::Json::array(), io::Json::object() })) {
+            bool rejected = false;
+            try {
+                pipeline::run({ { "version", 1 }, { "cpuWorkers", value },
+                    { "tasks", io::Json::array({ { { "type", "Read" }, { "config", io::Json::object() } } }) } });
+            } catch (const std::runtime_error& error) {
+                rejected = std::string_view(error.what()) == "cpuWorkers must be a positive integer";
+            }
+            if (!rejected) {
+                throw std::runtime_error("Invalid cpuWorkers reached task execution");
+            }
+        }
+        if (argc == 2) {
+            const auto requested = io::Json::parse(argv[1]);
+            expected_workers = size_t(std::min<uint64_t>(requested.get<uint64_t>(), worker_limit));
+            pipeline::run({ { "version", 1 }, { "cpuWorkers", requested }, { "tasks", io::Json::array() } });
+        }
         std::array<threading::ThreadPool*, 8> instances {};
         std::barrier first_access(instances.size());
         std::atomic<bool> random_isolated { true };
@@ -57,8 +85,8 @@ int main() {
                 throw std::runtime_error("Concurrent first access created different default pools");
             }
         }
-        if (pool.thread_count() != threading::default_thread_count()) {
-            throw std::runtime_error("Default worker count changed");
+        if (pool.thread_count() != expected_workers || threading::default_thread_count() != expected_workers) {
+            throw std::runtime_error("Pipeline cpuWorkers did not configure the shared pool");
         }
         auto owned_task = pool.submit_task([value = std::make_unique<int>(41)]() mutable { return ++*value; });
         if (pool.get(owned_task) != 42) {

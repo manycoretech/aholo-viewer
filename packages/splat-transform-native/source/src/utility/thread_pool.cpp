@@ -3,14 +3,24 @@
 #include <utility/thread_pool.h>
 
 namespace splat_transform::threading {
+namespace {
+// Pipeline startup may override this before any CPU work starts.
+size_t default_pool_thread_count = std::clamp(std::bit_ceil(std::thread::hardware_concurrency()) / 2u, 1u, 16u);
+} // namespace
+
 thread_local ThreadPool::State* ThreadPool::current_state_ = nullptr;
 
 size_t default_thread_count() noexcept {
-    return std::clamp(std::bit_ceil(std::thread::hardware_concurrency()) / 2u, 1u, 16u);
+    return default_pool_thread_count;
+}
+
+void configure_default_pool(size_t thread_count) noexcept {
+    const auto hardware = std::thread::hardware_concurrency();
+    default_pool_thread_count = std::clamp<size_t>(thread_count, 1, hardware > 1 ? hardware - 1 : 1);
 }
 
 ThreadPool& default_pool() {
-    static ThreadPool pool(default_thread_count());
+    static ThreadPool pool(default_pool_thread_count);
     return pool;
 }
 
