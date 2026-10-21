@@ -1,13 +1,14 @@
 #pragma once
 #include "grid.h"
 #include <io/file.h>
+#include <memory>
 #include <string_view>
 
 namespace splat_transform::voxel {
 struct PreparedData;
 
-// One backend instance is shared by cluster filtering, final voxelization, and
-// navigation. Implementations own their execution policy, not the pipeline.
+// One task-owned backend is shared by filtering, generation, and navigation.
+// GPU implementations retain their session until the whole operation finishes.
 class Backend {
 public:
     virtual ~Backend() = default;
@@ -17,9 +18,9 @@ public:
     virtual Grid dilate(const Grid& grid, Eigen::Vector3i radius) const = 0;
 };
 
-const Backend& cpu_backend();
-const Backend& gpu_backend();
+std::unique_ptr<Backend> cpu_backend();
+std::unique_ptr<Backend> gpu_backend();
 // Resolve once per voxel task so filtering, generation, and navigation share
 // the same backend. Unavailable GPU initialization selects CPU for all phases.
-const Backend& resolve_backend(const io::Json& config);
+std::unique_ptr<Backend> resolve_backend(const io::Json& config);
 } // namespace splat_transform::voxel

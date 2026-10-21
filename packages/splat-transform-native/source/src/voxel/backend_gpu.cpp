@@ -13,13 +13,13 @@ struct Batches {
     std::vector<Batch> batches;
     std::vector<uint32_t> indices;
 };
-Batches build_batches(const PreparedData& data, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
+Batches build_batches(gpu::VoxelSession& session, const PreparedData& data, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
     Eigen::Vector3i count;
     for (int a = 0; a < 3; ++a) {
         count[a] = (grid.blocks[a] + 3) / 4;
     }
     const float batch_size = 16 * resolution;
-    auto candidates = gpu::candidates(data.gaussians, { float(bounds.min()[0]), float(bounds.min()[1]), float(bounds.min()[2]) }, float(batch_size),
+    auto candidates = session.candidates(data.gaussians, { float(bounds.min()[0]), float(bounds.min()[1]), float(bounds.min()[2]) }, float(batch_size),
         { uint32_t(count[0]), uint32_t(count[1]), uint32_t(count[2]) });
     std::vector<Batch> output;
     output.reserve(std::ranges::count_if(candidates.counts, [](auto size) { return size != 0; }));
@@ -47,7 +47,7 @@ public:
     bool requires_gpu() const noexcept override { return true; }
     Grid voxelize(const PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff) const override {
         auto output = make_grid(bounds, resolution);
-        const auto [batches, indices] = build_batches(data, output, bounds, resolution);
+        const auto [batches, indices] = build_batches(session_, data, output, bounds, resolution);
         std::vector<gpu::VoxelBatch> specs;
         specs.reserve(batches.size());
         for (const auto& b : batches) {
@@ -57,7 +57,7 @@ public:
         // The GPU layer splits for device storage/dispatch limits and retains the
         // full Gaussian input across splits. Fixed 256-batch calls re-uploaded the
         // entire scene on every call, even though only the batch descriptors changed.
-        const auto masks = gpu::voxelize(data.gaussians, indices, specs, resolution, cutoff, 64);
+        const auto masks = session_.voxelize(data.gaussians, indices, specs, resolution, cutoff, 64);
         for (size_t j = 0; j < batches.size(); ++j) {
             const auto& b = batches[j];
             for (int z = 0; z < b.dimensions[2]; ++z) {
@@ -79,7 +79,7 @@ public:
             const auto bits = grid.mask(index);
             packed.insert(packed.end(), { index, uint32_t(bits), uint32_t(bits >> 32) });
         }
-        const auto masks = gpu::dilate_blocks(packed, { uint32_t(grid.size[0]), uint32_t(grid.size[1]), uint32_t(grid.size[2]) },
+        const auto masks = session_.dilate_blocks(packed, { uint32_t(grid.size[0]), uint32_t(grid.size[1]), uint32_t(grid.size[2]) },
             { uint32_t(radius[0]), uint32_t(radius[1]), uint32_t(radius[2]) });
         Grid output(grid.size);
         for (uint32_t index = 0; index < grid.block_count(); ++index) {
@@ -87,11 +87,13 @@ public:
         }
         return output;
     }
+
+private:
+    mutable gpu::VoxelSession session_;
 };
 } // namespace
 
-const Backend& gpu_backend() {
-    static const GpuBackend backend;
-    return backend;
+std::unique_ptr<Backend> gpu_backend() {
+    return std::make_unique<GpuBackend>();
 }
 } // namespace splat_transform::voxel

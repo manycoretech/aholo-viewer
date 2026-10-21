@@ -27,10 +27,6 @@ public:
         if (!rows_ || !columns_ || !centroid_count_ || centroid_count_ > UINT32_MAX) {
             throw std::runtime_error("Invalid GPU clustering dimensions");
         }
-        // The generic executor is synchronous; its scratch allocations are idle here.
-        context_->storage_.clear();
-        context_->uploads_.clear();
-        context_->downloads_.clear();
         const size_t centroid_bytes = centroid_count_ * stride_ * sizeof(float);
         if (centroid_bytes > context_->storage_limit()) {
             throw std::runtime_error("Clustering centroid table exceeds the storage buffer limit");
@@ -322,7 +318,12 @@ ClusterSession::ClusterSession(spatial::FeatureView points, size_t centroid_coun
 }
 ClusterSession::~ClusterSession() = default;
 std::vector<uint32_t> ClusterSession::assign(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& centroids) { return impl_->work->assign(centroids); }
-std::vector<uint32_t> voxelize(std::span<const Gaussian> gaussians, std::span<const uint32_t> indices, std::span<const VoxelBatch> batches,
+struct VoxelSession::Impl {
+    vulkan::VoxelWork work { vulkan::context() };
+};
+VoxelSession::VoxelSession() : impl_(std::make_unique<Impl>()) {}
+VoxelSession::~VoxelSession() = default;
+std::vector<uint32_t> VoxelSession::voxelize(std::span<const Gaussian> gaussians, std::span<const uint32_t> indices, std::span<const VoxelBatch> batches,
     float resolution, float cutoff, uint32_t max_blocks) {
     if (batches.empty()) {
         return {};
@@ -338,7 +339,8 @@ std::vector<uint32_t> voxelize(std::span<const Gaussian> gaussians, std::span<co
         uint32_t first_block;
     };
     static_assert(sizeof(Parameters) == 20);
-    auto context = vulkan::context();
+    auto& work = impl_->work;
+    const auto& context = work.context();
     const size_t storage = context->storage_limit();
     const size_t words = batches.size() * max_blocks * 2;
     std::vector<uint32_t> output(words);
@@ -348,7 +350,7 @@ std::vector<uint32_t> voxelize(std::span<const Gaussian> gaussians, std::span<co
         const bool padded = std::ranges::any_of(local_batches, [&](const auto& batch) {
             return uint64_t(batch.blocks_x) * batch.blocks_y * batch.blocks_z < end_block;
         });
-        context->execute("voxelize", vulkan::shaders::voxelize,
+        work.execute("voxelize", vulkan::shaders::voxelize,
             { { std::as_bytes(points), 0, {}, reuse_inputs }, { std::as_bytes(local_indices), 0, {}, reuse_inputs }, { std::as_bytes(local_batches), 0 }, { previous, result.size_bytes(), std::as_writable_bytes(result), false, padded } },
             std::as_bytes(std::span(&parameters, 1)), { parameters.max_blocks, 1, uint32_t(local_batches.size()) }, parameters.accumulation || parameters.first_block ? 1 : 0);
     };
@@ -447,7 +449,7 @@ std::vector<uint32_t> voxelize(std::span<const Gaussian> gaussians, std::span<co
     }
     return output;
 }
-CandidateBins candidates(std::span<const Gaussian> gaussians, std::array<float, 3> origin, float batch_size, std::array<uint32_t, 3> dimensions) {
+CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std::array<float, 3> origin, float batch_size, std::array<uint32_t, 3> dimensions) {
     const uint64_t plane = uint64_t(dimensions[0]) * dimensions[1];
     if ((dimensions[2] && plane > UINT32_MAX / dimensions[2]) || gaussians.size() > UINT32_MAX) {
         throw std::runtime_error("Voxel candidate grid exceeds 32-bit indexing");
@@ -469,7 +471,8 @@ CandidateBins candidates(std::span<const Gaussian> gaussians, std::array<float, 
         uint32_t bin_count;
         uint32_t first_point;
     };
-    auto context = vulkan::context();
+    auto& work = impl_->work;
+    const auto& context = work.context();
     const size_t point_limit = std::min(context->storage_limit() / sizeof(Gaussian), context->linear_item_limit());
     const size_t index_limit = context->storage_limit() / sizeof(uint32_t);
     if (!point_limit || !index_limit) {
@@ -482,7 +485,7 @@ CandidateBins candidates(std::span<const Gaussian> gaussians, std::array<float, 
         const auto groups = context->linear_groups(gaussians.size());
         const Parameters parameters { origin, batch_size, dimensions, uint32_t(gaussians.size()), groups[0], 0, uint32_t(bin_count), 0 };
         const auto push = std::as_bytes(std::span(&parameters, 1));
-        context->execute("candidate_count", vulkan::shaders::candidate_count,
+        work.execute("candidate_count", vulkan::shaders::candidate_count,
             { { std::as_bytes(gaussians), 0 }, { {}, bin_count * 4, std::as_writable_bytes(std::span(output.counts)) } }, push, groups);
         uint64_t total = 0;
         for (size_t i = 0; i < bin_count; ++i) {
@@ -497,7 +500,7 @@ CandidateBins candidates(std::span<const Gaussian> gaussians, std::array<float, 
         }
         if (total <= index_limit) {
             output.indices.resize(size_t(total));
-            context->execute("candidate_scatter", vulkan::shaders::candidate_scatter,
+            work.execute("candidate_scatter", vulkan::shaders::candidate_scatter,
                 { { std::as_bytes(gaussians), 0, {}, true }, { std::as_bytes(std::span(output.offsets)), 0 }, { {}, bin_count * 4 }, { {}, size_t(total) * 4, std::as_writable_bytes(std::span(output.indices)), false, false } }, push, groups);
             return output;
         }
@@ -523,7 +526,7 @@ CandidateBins candidates(std::span<const Gaussian> gaussians, std::array<float, 
         const uint32_t windowed = first_bin || bins != bin_count ? 1 : 0;
         const auto push = std::as_bytes(std::span(&parameters, 1));
         std::vector<uint32_t> counts(bins);
-        context->execute("candidate_count", vulkan::shaders::candidate_count,
+        work.execute("candidate_count", vulkan::shaders::candidate_count,
             { { std::as_bytes(points), 0 }, { {}, bins * 4, std::as_writable_bytes(std::span(counts)) } }, push, groups, windowed);
         const uint64_t total = std::accumulate(counts.begin(), counts.end(), uint64_t(0));
         if (!total) {
@@ -560,7 +563,7 @@ CandidateBins candidates(std::span<const Gaussian> gaussians, std::array<float, 
             }
         }
         part.indices.resize(size_t(total));
-        context->execute("candidate_scatter", vulkan::shaders::candidate_scatter,
+        work.execute("candidate_scatter", vulkan::shaders::candidate_scatter,
             { { std::as_bytes(points), 0, {}, true }, { std::as_bytes(std::span(counts)), 0 }, { {}, bins * 4 }, { {}, size_t(total) * 4, std::as_writable_bytes(std::span(part.indices)), false, false } }, push, groups, windowed | (first_point ? 2 : 0));
         parts.push_back(std::move(part));
     };
@@ -597,7 +600,7 @@ CandidateBins candidates(std::span<const Gaussian> gaussians, std::array<float, 
     }
     return output;
 }
-std::vector<uint32_t> dilate_blocks(std::span<const uint32_t> blocks, std::array<uint32_t, 3> dimensions, std::array<uint32_t, 3> radii) {
+std::vector<uint32_t> VoxelSession::dilate_blocks(std::span<const uint32_t> blocks, std::array<uint32_t, 3> dimensions, std::array<uint32_t, 3> radii) {
     if (std::ranges::any_of(dimensions, [](uint32_t size) { return !size || size % 4; }) || blocks.size() % 3) {
         throw std::runtime_error("Invalid GPU dilation grid or packed blocks");
     }
@@ -607,7 +610,8 @@ std::vector<uint32_t> dilate_blocks(std::span<const uint32_t> blocks, std::array
     }
     const uint64_t cells = plane * dimensions[2], block_count = cells / 64;
     const size_t dense_bytes = size_t((cells + 31) / 32) * 4;
-    auto context = vulkan::context();
+    auto& work = impl_->work;
+    const auto& context = work.context();
     for (size_t axis = 0; axis < 3; ++axis) {
         radii[axis] = std::min(radii[axis], dimensions[axis] - 1);
     }
@@ -633,7 +637,7 @@ std::vector<uint32_t> dilate_blocks(std::span<const uint32_t> blocks, std::array
         }
         stages.push_back({ "compact", vulkan::shaders::compact, { current, 3 }, std::as_bytes(std::span(compact)), compact_groups });
         std::vector<uint32_t> output(count * 2);
-        context->execute_chain({ { std::as_bytes(packed), 0 }, { {}, bytes }, { {}, bytes, {}, false, false }, { {}, count * 8, std::as_writable_bytes(std::span(output)), false, false } }, stages);
+        work.execute_chain({ { std::as_bytes(packed), 0 }, { {}, bytes }, { {}, bytes, {}, false, false }, { {}, count * 8, std::as_writable_bytes(std::span(output)), false, false } }, stages);
         return output;
     };
     if (blocks.size_bytes() <= context->storage_limit() && dense_bytes <= context->storage_limit() &&

@@ -219,8 +219,7 @@ public:
 };
 } // namespace
 
-const Backend& cpu_backend() {
-    static const CpuBackend backend;
-    return backend;
+std::unique_ptr<Backend> cpu_backend() {
+    return std::make_unique<CpuBackend>();
 }
 } // namespace splat_transform::voxel

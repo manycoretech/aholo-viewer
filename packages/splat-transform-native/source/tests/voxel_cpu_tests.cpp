@@ -74,7 +74,7 @@ void numerical_contracts() {
     }
     const auto prepared = voxel::prepare(source);
     for (float cutoff : { 0.0f, 0.1f, 0.7f, 1.0f }) {
-        const auto actual = voxel::cpu_backend().voxelize(prepared, bounds, 0.125f, cutoff);
+        const auto actual = voxel::cpu_backend()->voxelize(prepared, bounds, 0.125f, cutoff);
         const auto expected = reference(prepared, bounds, 0.125f, cutoff);
         require(actual.masks == expected.masks, "CPU batches differ from serial voxel-first density reference");
     }
@@ -87,25 +87,25 @@ void numerical_contracts() {
         g.opacity = 0.06f;
     }
     const Eigen::AlignedBox3f unit(Eigen::Vector3f::Zero(), Eigen::Vector3f::Constant(1));
-    require(voxel::cpu_backend().voxelize(voxel::prepare(weak), unit, 0.125f, 0.1f).get({ 3, 3, 3 }),
+    require(voxel::cpu_backend()->voxelize(voxel::prepare(weak), unit, 0.125f, 0.1f).get({ 3, 3, 3 }),
         "Small CPU input lost the accumulated contribution of weak Gaussians");
     splat::Splat opaque(32, 0);
     for (auto& g : opaque.gaussians) {
         g = weak.gaussians.front();
         g.opacity = 1;
     }
-    require(voxel::cpu_backend().voxelize(voxel::prepare(opaque), unit, 0.125f, 1).get({ 3, 3, 3 }),
+    require(voxel::cpu_backend()->voxelize(voxel::prepare(opaque), unit, 0.125f, 1).get({ 3, 3, 3 }),
         "CPU cutoff=1 inherited the GPU density cap");
     for (auto& g : opaque.gaussians) {
         g.opacity = voxel::ALPHA_THRESHOLD;
     }
-    require(voxel::cpu_backend().voxelize(voxel::prepare(opaque), unit, 0.125f, 0).voxel_count() == 0,
+    require(voxel::cpu_backend()->voxelize(voxel::prepare(opaque), unit, 0.125f, 0).voxel_count() == 0,
         "CPU alpha threshold must exclude negligible Gaussians");
     opaque.gaussians[0].opacity = 1;
     opaque.gaussians[0].scale.x() = std::numeric_limits<float>::quiet_NaN();
-    require(voxel::cpu_backend().voxelize(voxel::prepare(opaque), unit, 0.125f, 0).voxel_count() == 0,
+    require(voxel::cpu_backend()->voxelize(voxel::prepare(opaque), unit, 0.125f, 0).voxel_count() == 0,
         "CPU candidate generation accepted nonfinite geometry");
-    require(voxel::cpu_backend().voxelize(voxel::prepare({}), unit, 0.125f, 0.1f).voxel_count() == 0,
+    require(voxel::cpu_backend()->voxelize(voxel::prepare({}), unit, 0.125f, 0.1f).voxel_count() == 0,
         "Empty CPU input generated occupied voxels");
 }
 
@@ -120,7 +120,7 @@ void scheduling_contracts() {
     }
     const auto prepared = voxel::prepare(source);
     const Eigen::AlignedBox3f bounds(Eigen::Vector3f::Constant(-0.5f), Eigen::Vector3f(4.5f, 2.5f, 2.5f));
-    const auto expected = voxel::cpu_backend().voxelize(prepared, bounds, 0.125f, 0.2f);
+    const auto expected = voxel::cpu_backend()->voxelize(prepared, bounds, 0.125f, 0.2f);
     require(expected.voxel_count() > 0, "Parallel CPU fixture must contain occupied voxels");
     auto& pool = threading::default_pool();
     // Fill the same pool with parent jobs; each parent submits its own candidate
@@ -128,7 +128,7 @@ void scheduling_contracts() {
     threading::TaskGroup<void> jobs(pool, pool.thread_count());
     for (size_t i = 0; i < pool.thread_count(); ++i) {
         jobs.submit([&] {
-            const auto actual = voxel::cpu_backend().voxelize(prepared, bounds, 0.125f, 0.2f);
+            const auto actual = voxel::cpu_backend()->voxelize(prepared, bounds, 0.125f, 0.2f);
             require(actual.masks == expected.masks, "CPU scheduling changed deterministic occupancy");
         });
     }
@@ -149,7 +149,7 @@ void pipeline_contracts(const std::filesystem::path& directory) {
     const Eigen::AlignedBox3f box(Eigen::Vector3f::Constant(-1), Eigen::Vector3f::Constant(4));
     auto prepared = voxel::prepare(source);
     const io::Json selection { { "seed", { { "x", 2.25 }, { "y", 2.25 }, { "z", 2.25 } } }, { "voxelResolution", 0.25 } };
-    voxel::filter_cluster(prepared, selection, box, voxel::cpu_backend());
+    voxel::filter_cluster(prepared, selection, box, *voxel::cpu_backend());
     require(prepared.gaussians.size() == 16 && prepared.gaussians.front().values[0] == 2.25f,
         "CPU cluster filtering did not use the requested component");
     pipeline::TaskContext context;

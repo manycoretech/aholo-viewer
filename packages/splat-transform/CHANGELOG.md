@@ -1,5 +1,10 @@
 # Changelog
 
+## DEV
+
+- reuse Voxel GPU buffers within each task and release them when the task completes, reducing retained memory during subsequent pipeline tasks
+- separate task buffers from shared Vulkan device and kernel resources so Voxel and SOG clustering sessions manage their allocations independently
+
 ## 2.0.2
 
 - support top-level pipeline `cpuWorkers` for the shared CPU pool, capped at hardware concurrency minus one with a minimum of one worker

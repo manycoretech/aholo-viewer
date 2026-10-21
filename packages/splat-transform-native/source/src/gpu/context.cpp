@@ -169,31 +169,45 @@ std::array<uint32_t, 3> ComputeContext::linear_groups(size_t count) const {
     }
     return { uint32_t(x), uint32_t(y), 1 };
 }
-void ComputeContext::execute(const std::string& name, std::span<const uint8_t> spirv, const std::vector<Binding>& bindings,
+size_t ComputeContext::allocation_bytes() const {
+    VmaTotalStatistics statistics {};
+    vmaCalculateStatistics(allocator_.get(), &statistics);
+    return statistics.total.statistics.allocationBytes;
+}
+VoxelWork::VoxelWork(std::shared_ptr<ComputeContext> context) : context_(std::move(context)) {}
+VoxelWork::~VoxelWork() {
+    // Successful calls already wait for their fence. Also cover exceptional
+    // unwinding after a submission before releasing task-owned buffers.
+    try {
+        context_->device_.waitIdle();
+    } catch (...) {
+    }
+}
+void VoxelWork::execute(const std::string& name, std::span<const uint8_t> spirv, const std::vector<Binding>& bindings,
     std::span<const std::byte> push, std::array<uint32_t, 3> groups, uint32_t specialization) {
     std::vector<uint32_t> slots(bindings.size());
     std::iota(slots.begin(), slots.end(), 0);
     execute_chain(bindings, { { name, spirv, std::move(slots), push, groups, specialization } });
 }
-void ComputeContext::execute_chain(const std::vector<Binding>& bindings, const std::vector<Stage>& stages) {
+void VoxelWork::execute_chain(const std::vector<Binding>& bindings, const std::vector<Stage>& stages) {
     storage_.resize(std::max(storage_.size(), bindings.size()));
     uploads_.resize(storage_.size());
     downloads_.resize(storage_.size());
     auto ensure = [&](std::unique_ptr<Buffer>& buffer, size_t size, bool host) {
         if (!buffer || buffer->size() < std::max<size_t>(4, size)) {
-            buffer = std::make_unique<Buffer>(allocator_.get(), size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc | (host ? vk::BufferUsageFlags {} : vk::BufferUsageFlagBits::eStorageBuffer), host);
+            buffer = std::make_unique<Buffer>(context_->allocator_.get(), size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc | (host ? vk::BufferUsageFlags {} : vk::BufferUsageFlagBits::eStorageBuffer), host);
             return true;
         }
         return false;
     };
-    auto commands = device_.allocateCommandBuffers(vk::CommandBufferAllocateInfo(*command_pool_, vk::CommandBufferLevel::ePrimary, 1));
+    auto commands = context_->device_.allocateCommandBuffers(vk::CommandBufferAllocateInfo(*context_->command_pool_, vk::CommandBufferLevel::ePrimary, 1));
     auto& command = commands.front();
     command.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
     std::vector<vk::DescriptorBufferInfo> buffer_infos;
     for (size_t i = 0; i < bindings.size(); ++i) {
         const auto& binding = bindings[i];
         const size_t size = std::max<size_t>(4, std::max(binding.bytes.size(), binding.size));
-        if (size > storage_limit_) {
+        if (size > context_->storage_limit_) {
             throw std::runtime_error("Vulkan storage buffer exceeds device limit; reduce batch size");
         }
         if (binding.output.size() > size) {
@@ -218,25 +232,25 @@ void ComputeContext::execute_chain(const std::vector<Binding>& bindings, const s
         descriptor_count += uint32_t(stage.bindings.size());
     }
     vk::DescriptorPoolSize pool_size(vk::DescriptorType::eStorageBuffer, descriptor_count);
-    auto pool = device_.createDescriptorPool(vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, uint32_t(stages.size()), pool_size));
+    auto pool = context_->device_.createDescriptorPool(vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, uint32_t(stages.size()), pool_size));
     std::vector<vk::raii::DescriptorSet> descriptor_sets;
     for (const auto& stage : stages) {
         for (size_t axis = 0; axis < 3; ++axis) {
-            if (stage.groups[axis] > limits_.maxComputeWorkGroupCount[axis]) {
+            if (stage.groups[axis] > context_->limits_.maxComputeWorkGroupCount[axis]) {
                 throw std::runtime_error("Vulkan dispatch exceeds device limits");
             }
         }
-        if (stage.push.size() > limits_.maxPushConstantsSize) {
+        if (stage.push.size() > context_->limits_.maxPushConstantsSize) {
             throw std::runtime_error("Vulkan push constants exceed device limit");
         }
-        auto& kernel = get_kernel(stage);
-        auto sets = device_.allocateDescriptorSets(vk::DescriptorSetAllocateInfo(*pool, *kernel.descriptors));
+        auto& kernel = context_->get_kernel(stage);
+        auto sets = context_->device_.allocateDescriptorSets(vk::DescriptorSetAllocateInfo(*pool, *kernel.descriptors));
         descriptor_sets.push_back(std::move(sets.front()));
         std::vector<vk::WriteDescriptorSet> writes;
         for (uint32_t i = 0; i < stage.bindings.size(); ++i) {
             writes.emplace_back(*descriptor_sets.back(), i, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &buffer_infos.at(stage.bindings[i]));
         }
-        device_.updateDescriptorSets(writes, nullptr);
+        context_->device_.updateDescriptorSets(writes, nullptr);
         command.bindPipeline(vk::PipelineBindPoint::eCompute, *kernel.pipeline);
         command.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *kernel.layout, 0, *descriptor_sets.back(), nullptr);
         command.pushConstants<std::byte>(*kernel.layout, vk::ShaderStageFlagBits::eCompute, 0, stage.push);
@@ -254,11 +268,11 @@ void ComputeContext::execute_chain(const std::vector<Binding>& bindings, const s
     vk::MemoryBarrier host(vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead);
     command.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eHost, {}, host, nullptr, nullptr);
     command.end();
-    auto fence = device_.createFence({});
+    auto fence = context_->device_.createFence({});
     vk::SubmitInfo submit;
     submit.setCommandBuffers(*command);
-    queue_.submit(submit, *fence);
-    if (device_.waitForFences(*fence, true, UINT64_MAX) != vk::Result::eSuccess) {
+    context_->queue_.submit(submit, *fence);
+    if (context_->device_.waitForFences(*fence, true, UINT64_MAX) != vk::Result::eSuccess) {
         throw std::runtime_error("Vulkan submission failed");
     }
     for (size_t i = 0; i < bindings.size(); ++i) {

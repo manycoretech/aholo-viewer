@@ -164,7 +164,7 @@ float fallback_resolution(float current, float count, float target) {
 } // namespace
 void write(const splat::Splat& input, const std::filesystem::path& directory, const io::Json& config) {
     auto& logger = utility::logger();
-    const auto& backend = resolve_backend(config);
+    const auto backend = resolve_backend(config);
     const auto compression = config.value("compression", std::string("none"));
     const auto encoding = config.value("nodeEncoding", std::string("raw"));
     if (compression != "none" && compression != "gzip" && compression != "zstd") {
@@ -189,7 +189,7 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
     if (filter != false) {
         logger.info("voxel filterCluster enabled");
         auto filter_time = logger.time("Filter clusters");
-        filter_cluster(prepared, filter.is_object() ? filter : io::Json::object(), box, backend);
+        filter_cluster(prepared, filter.is_object() ? filter : io::Json::object(), box, *backend);
     }
     if (!prepared.invalid_extents.empty()) {
         logger.info("voxel: skipped ", prepared.invalid_extents.size(), " gaussians with invalid extent values");
@@ -245,14 +245,14 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
         if (resolution != requested_resolution) {
             logger.info("voxel effective resolution=", resolution, " (requested=", requested_resolution, ')');
         }
-        auto voxel_time = logger.time("Voxelizing (" + std::string(backend.name()) + ") done");
-        auto grid = backend.voxelize(prepared, bounds, resolution, cutoff);
+        auto voxel_time = logger.time("Voxelizing (" + std::string(backend->name()) + ") done");
+        auto grid = backend->voxelize(prepared, bounds, resolution, cutoff);
         voxel_time.finish();
         {
             auto filter_time = logger.time("Filter blocks");
             grid = filter_blocks(grid);
         }
-        navigate(grid, bounds, resolution, navigation, backend);
+        navigate(grid, bounds, resolution, navigation, *backend);
         {
             auto crop_time = logger.time("Crop voxel bounds");
             crop_grid(grid, bounds, resolution, has_exterior || navigation.floor_fill, has_exterior || navigation.floor_fill ? 1 : 0);

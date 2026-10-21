@@ -36,12 +36,12 @@ void resolution_contracts() {
         require(task.requires_gpu(io::Json::object(), context), "GPU requirement query performed fallback before pipeline device selection");
         require(task.requires_gpu({ { "backend", "gpu" } }, context), "Explicit GPU request was lost before device selection");
         require(!task.requires_gpu({ { "backend", "cpu" } }, context), "Explicit CPU processing requires GPU initialization");
-        require(&voxel::resolve_backend({ { "backend", "cpu" } }) == &voxel::cpu_backend(), "Explicit CPU backend changed");
+        require(!voxel::resolve_backend({ { "backend", "cpu" } })->requires_gpu(), "Explicit CPU backend changed");
         require(errors.output.str().empty(), "GPU requirement query or CPU resolution attempted GPU initialization");
     }
-    const auto& backend = voxel::resolve_backend(io::Json::object());
-    require(&backend == &voxel::cpu_backend(), "Unavailable GPU did not resolve to the CPU backend");
-    require(&voxel::resolve_backend({ { "backend", "gpu" } }) == &backend, "Explicit GPU request did not fall back during resolution");
+    const auto backend = voxel::resolve_backend(io::Json::object());
+    require(!backend->requires_gpu(), "Unavailable GPU did not resolve to the CPU backend");
+    require(!voxel::resolve_backend({ { "backend", "gpu" } })->requires_gpu(), "Explicit GPU request did not fall back during resolution");
     splat::Splat source(2, 0);
     for (auto& gaussian : source.gaussians) {
         gaussian.mean.setConstant(0.5f);
@@ -51,13 +51,13 @@ void resolution_contracts() {
     }
     const auto prepared = voxel::prepare(source);
     const Eigen::AlignedBox3f bounds(Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones());
-    const auto expected = voxel::cpu_backend().voxelize(prepared, bounds, 0.125f, 0.1f);
+    const auto expected = voxel::cpu_backend()->voxelize(prepared, bounds, 0.125f, 0.1f);
     require(expected.voxel_count() > 0, "Fallback fixture must accumulate weak Gaussian contributions");
     {
         CaptureErrors errors;
-        const auto result = backend.voxelize(prepared, bounds, 0.125f, 0.1f);
+        const auto result = backend->voxelize(prepared, bounds, 0.125f, 0.1f);
         require(result.masks == expected.masks, "Resolved backend changed CPU geometry or thresholds");
-        require(backend.dilate(result, { 1, 2, 1 }).masks == voxel::cpu_backend().dilate(expected, { 1, 2, 1 }).masks,
+        require(backend->dilate(result, { 1, 2, 1 }).masks == voxel::cpu_backend()->dilate(expected, { 1, 2, 1 }).masks,
             "Resolved backend did not keep navigation on CPU");
         require(errors.output.str().empty(), "Resolved CPU backend attempted GPU processing later");
     }

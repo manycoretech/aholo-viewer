@@ -38,8 +38,21 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
-CandidateBins candidates(std::span<const Gaussian> gaussians, std::array<float, 3> origin, float batch_size, std::array<uint32_t, 3> dimensions);
-std::vector<uint32_t> voxelize(std::span<const Gaussian> gaussians, std::span<const uint32_t> indices,
-    std::span<const VoxelBatch> batches, float resolution, float cutoff, uint32_t max_blocks);
-std::vector<uint32_t> dilate_blocks(std::span<const uint32_t> blocks, std::array<uint32_t, 3> dimensions, std::array<uint32_t, 3> radii);
+// Reuse full-size GPU/transfer buffers throughout one voxel task. Destruction
+// releases task resources while leaving the shared device/kernel cache alive.
+class VoxelSession {
+public:
+    VoxelSession();
+    ~VoxelSession();
+    VoxelSession(const VoxelSession&) = delete;
+    VoxelSession& operator=(const VoxelSession&) = delete;
+    CandidateBins candidates(std::span<const Gaussian> gaussians, std::array<float, 3> origin, float batch_size, std::array<uint32_t, 3> dimensions);
+    std::vector<uint32_t> voxelize(std::span<const Gaussian> gaussians, std::span<const uint32_t> indices,
+        std::span<const VoxelBatch> batches, float resolution, float cutoff, uint32_t max_blocks);
+    std::vector<uint32_t> dilate_blocks(std::span<const uint32_t> blocks, std::array<uint32_t, 3> dimensions, std::array<uint32_t, 3> radii);
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
 } // namespace splat_transform::gpu

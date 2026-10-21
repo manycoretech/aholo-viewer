@@ -50,6 +50,7 @@ struct Kernel {
     vk::raii::Pipeline pipeline { nullptr };
 };
 class ClusterWork;
+class VoxelWork;
 class ComputeContext {
 public:
     explicit ComputeContext(uint32_t index);
@@ -58,6 +59,8 @@ public:
     size_t storage_limit() const { return storage_limit_; }
     size_t linear_item_limit() const;
     std::array<uint32_t, 3> linear_groups(size_t count) const;
+    // Live VMA allocations, excluding empty allocator blocks kept for reuse.
+    size_t allocation_bytes() const;
     struct Stage {
         std::string name;
         std::span<const uint8_t> spirv;
@@ -66,13 +69,11 @@ public:
         std::array<uint32_t, 3> groups;
         uint32_t specialization = 0;
     };
-    void execute(const std::string& name, std::span<const uint8_t> spirv, const std::vector<Binding>& bindings,
-        std::span<const std::byte> push, std::array<uint32_t, 3> groups, uint32_t specialization = 0);
-    void execute_chain(const std::vector<Binding>& bindings, const std::vector<Stage>& stages);
     Kernel& get_kernel(const Stage& stage);
 
 private:
     friend class ClusterWork;
+    friend class VoxelWork;
     vk::raii::Context context_;
     vk::raii::Instance instance_ { nullptr };
     vk::raii::PhysicalDevice physical_ { nullptr };
@@ -81,14 +82,32 @@ private:
     vk::raii::Queue queue_ { nullptr };
     vk::raii::CommandPool command_pool_ { nullptr };
     std::unordered_map<std::string, std::unique_ptr<Kernel>> kernels_;
-    // Synchronous fence completion makes these allocations reusable by the next dispatch.
-    std::vector<std::unique_ptr<Buffer>> storage_;
-    std::vector<std::unique_ptr<Buffer>> uploads_;
-    std::vector<std::unique_ptr<Buffer>> downloads_;
     vk::PhysicalDeviceLimits limits_;
     uint32_t family_ = 0;
     size_t storage_limit_ = 0;
     bool memory_budget_ = false;
+};
+// One voxel operation owns these buffers and reuses them across filtering,
+// generation, navigation, and device-limited dispatches. The retained context
+// keeps their allocator/device alive even if shared device selection changes.
+class VoxelWork {
+public:
+    explicit VoxelWork(std::shared_ptr<ComputeContext> context);
+    ~VoxelWork();
+    VoxelWork(const VoxelWork&) = delete;
+    VoxelWork& operator=(const VoxelWork&) = delete;
+    const std::shared_ptr<ComputeContext>& context() const { return context_; }
+    using Stage = ComputeContext::Stage;
+    void execute(const std::string& name, std::span<const uint8_t> spirv, const std::vector<Binding>& bindings,
+        std::span<const std::byte> push, std::array<uint32_t, 3> groups, uint32_t specialization = 0);
+    void execute_chain(const std::vector<Binding>& bindings, const std::vector<Stage>& stages);
+
+private:
+    // Destroy buffers before releasing the context that owns their allocator.
+    std::shared_ptr<ComputeContext> context_;
+    std::vector<std::unique_ptr<Buffer>> storage_;
+    std::vector<std::unique_ptr<Buffer>> uploads_;
+    std::vector<std::unique_ptr<Buffer>> downloads_;
 };
 // Keep the selected context alive for the entire operation or clustering session.
 std::shared_ptr<ComputeContext> context();
