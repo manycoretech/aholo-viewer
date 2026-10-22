@@ -1,4 +1,4 @@
-#include "gpu/cluster_schedule.h"
+#include "spatial/cluster_schedule.h"
 #include "voxel/grid.h"
 #include <chrono>
 #include <cmath>
@@ -172,7 +172,7 @@ int main() {
         single.set({ 5, 5, 5 });
         require(voxel::filter_blocks(single).voxel_count() == 0, "Isolated voxel was not filtered");
         for (const size_t budget : { 32 * 1024 * 1024, 48 * 1024 * 1024 }) {
-            const auto schedule = gpu::cluster_schedule(200003, 129, 48, { 128 * 1024 * 1024, 65535, budget });
+            const auto schedule = spatial::cluster_schedule(200003, 129, 48, { 128 * 1024 * 1024, 65535, budget });
             const auto bytes = (129 + schedule.batch_rows * (schedule.cached_batches + schedule.streaming_slots)) * 49 * sizeof(float);
             require(bytes <= budget, "Clustering schedule exceeded available memory");
             if (budget == 32 * 1024 * 1024) {

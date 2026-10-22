@@ -43,7 +43,7 @@ function(compile_shader NAME SOURCE)
     file(READ "${BINARY}" SHADER_HEX HEX)
     string(REGEX REPLACE "(..)" "0x\\1," SHADER_BYTES "${SHADER_HEX}")
     file(CONFIGURE OUTPUT "${SHADER_TEMP_DIRECTORY}/${NAME}.h"
-        CONTENT "#pragma once\n#include <cstdint>\nnamespace splat_transform::gpu::vulkan::shaders {\nalignas(4) inline constexpr uint8_t ${NAME}[] = { ${SHADER_BYTES} };\n}\n"
+        CONTENT "#pragma once\n#include <gpu/compute.h>\nnamespace splat_transform::shaders {\nalignas(4) inline constexpr uint8_t ${NAME}_spirv[] = { ${SHADER_BYTES} };\ninline constexpr gpu::ShaderCode ${NAME} { ${NAME}_spirv };\n}\n"
         @ONLY NEWLINE_STYLE UNIX)
 endfunction()
 
@@ -65,7 +65,7 @@ foreach(COLUMNS IN LISTS SHADER_CLUSTER_COLUMNS)
         string(APPEND CLUSTER_VARIANTS "    ClusterShader { \"${NAME}\", ${COLUMNS}, ${TILE}, ${NAME} },\n")
     endforeach()
 endforeach()
-string(APPEND CLUSTER_HEADER "namespace splat_transform::gpu::vulkan::shaders {\nstruct ClusterShader {\n    std::string_view name;\n    uint32_t columns;\n    uint32_t tile;\n    std::span<const uint8_t> spirv;\n};\ninline constexpr std::array cluster_variants {\n${CLUSTER_VARIANTS}};\n}\n")
+string(APPEND CLUSTER_HEADER "namespace splat_transform::shaders {\nstruct ClusterShader {\n    std::string_view name;\n    uint32_t columns;\n    uint32_t tile;\n    gpu::ShaderCode code;\n};\ninline constexpr std::array cluster_variants {\n${CLUSTER_VARIANTS}};\n}\n")
 file(CONFIGURE OUTPUT "${SHADER_TEMP_DIRECTORY}/cluster.h" CONTENT "${CLUSTER_HEADER}"
     @ONLY NEWLINE_STYLE UNIX)
 

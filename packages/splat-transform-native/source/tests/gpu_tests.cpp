@@ -1,4 +1,4 @@
-#include "gpu/vulkan_context.h"
+#include "spatial/cluster_gpu.h"
 #include "voxel/grid.h"
 #include "voxel/voxelize.h"
 #include <algorithm>
@@ -46,31 +46,31 @@ voxel::Grid reference_dilation(const voxel::Grid& grid, Eigen::Vector3i radius) 
     }
     return result;
 }
-void voxel_session_lifetimes(const gpu::Gaussian& gaussian) {
-    const auto context = gpu::vulkan::context();
-    const auto initial = context->allocation_bytes();
-    const auto run = [&](gpu::VoxelSession& session) {
+void voxel_session_lifetimes(const voxel::Gaussian& gaussian) {
+    const gpu::ComputeDevice device;
+    const auto initial = device.allocation_bytes();
+    const auto run = [&](voxel::VoxelSession& session) {
         const auto result = session.candidates(std::span(&gaussian, 1), { 0, 0, 0 }, 1, { 2, 2, 2 });
         if (result.indices != std::vector<uint32_t> { 0 } || result.counts[0] != 1) {
             throw std::runtime_error("Voxel session reuse changed candidate output");
         }
     };
     {
-        gpu::VoxelSession session;
+        voxel::VoxelSession session;
         run(session);
-        const auto retained = context->allocation_bytes();
+        const auto retained = device.allocation_bytes();
         run(session);
-        if (retained <= initial || context->allocation_bytes() != retained) {
+        if (retained <= initial || device.allocation_bytes() != retained) {
             throw std::runtime_error("Voxel task did not retain and reuse its allocations");
         }
         {
-            gpu::VoxelSession second;
+            voxel::VoxelSession second;
             run(second);
-            if (context->allocation_bytes() <= retained) {
+            if (device.allocation_bytes() <= retained) {
                 throw std::runtime_error("Concurrent voxel sessions shared task allocations");
             }
         }
-        if (context->allocation_bytes() != retained) {
+        if (device.allocation_bytes() != retained) {
             throw std::runtime_error("Ending a voxel session changed another task's allocations");
         }
         {
@@ -80,35 +80,35 @@ void voxel_session_lifetimes(const gpu::Gaussian& gaussian) {
             centroids.row(0).setZero();
             centroids.row(1).setOnes();
             const auto input = feature_splats(points, 1);
-            gpu::ClusterSession cluster(spatial::FeatureView(input), 2);
-            const auto combined = context->allocation_bytes();
+            spatial::ClusterSession cluster(spatial::FeatureView(input), 2);
+            const auto combined = device.allocation_bytes();
             for (int iteration = 0; iteration < 3; ++iteration) {
                 if (cluster.assign(centroids) != std::vector<uint32_t> { 0, 0, 0, 0, 1, 1, 1, 1 }) {
                     throw std::runtime_error("Voxel and clustering sessions changed each other's output");
                 }
                 run(session);
-                if (combined <= retained || context->allocation_bytes() != combined) {
+                if (combined <= retained || device.allocation_bytes() != combined) {
                     throw std::runtime_error("Voxel and clustering sessions changed each other's allocations");
                 }
             }
         }
-        if (context->allocation_bytes() != retained) {
+        if (device.allocation_bytes() != retained) {
             throw std::runtime_error("Ending clustering changed active voxel allocations");
         }
         run(session);
     }
-    if (context->allocation_bytes() != initial || gpu::vulkan::context() != context) {
-        throw std::runtime_error("Voxel task retained buffers or released the shared compute context");
+    if (device.allocation_bytes() != initial || gpu::ComputeDevice() != device) {
+        throw std::runtime_error("Voxel task retained buffers or changed the guard-owned context");
     }
     bool rejected = false;
     try {
-        gpu::VoxelSession session;
+        voxel::VoxelSession session;
         run(session);
         session.dilate_blocks({}, { 1, 4, 4 }, { 1, 1, 1 });
     } catch (const std::runtime_error& error) {
         rejected = std::string_view(error.what()) == "Invalid GPU dilation grid or packed blocks";
     }
-    if (!rejected || context->allocation_bytes() != initial) {
+    if (!rejected || device.allocation_bytes() != initial) {
         throw std::runtime_error("Failed voxel task retained buffers or hid its processing error");
     }
     std::cout << "Voxel task allocation reuse, isolation, and release passed\n";
@@ -169,26 +169,8 @@ int main(int argc, char** argv) {
                 }
             }
             const auto input = feature_splats(points, degree);
-            gpu::ClusterSession session(spatial::FeatureView(input), static_cast<size_t>(centroids.rows()));
-            std::vector<uint32_t> actual;
-            {
-                gpu::DeviceGuard session_guard;
-                actual = session.assign(centroids);
-            }
-            if (degree == 1) {
-                // Sessions retain their context after guard destruction and device changes.
-                if (session.assign(centroids) != actual) {
-                    throw std::runtime_error("Releasing the shared context invalidated an active clustering session");
-                }
-                gpu::select_device(std::numeric_limits<uint32_t>::max());
-                if (voxel::resolve_backend({ { "backend", "gpu" } })->requires_gpu() || session.assign(centroids) != actual) {
-                    throw std::runtime_error("Failed device selection changed an active clustering session");
-                }
-                gpu::select_device(selected);
-                if (!voxel::resolve_backend({ { "backend", "gpu" } })->requires_gpu() || session.assign(centroids) != actual) {
-                    throw std::runtime_error("Reinitializing the shared context invalidated an active clustering session");
-                }
-            }
+            spatial::ClusterSession session(spatial::FeatureView(input), static_cast<size_t>(centroids.rows()));
+            const auto actual = session.assign(centroids);
             for (size_t row = 0; row < actual.size(); ++row) {
                 double best = INFINITY;
                 uint32_t expected = 0;
@@ -228,7 +210,7 @@ int main(int argc, char** argv) {
             }
             {
                 const auto input = feature_splats(points, 3);
-                gpu::ClusterSession session(spatial::FeatureView(input), CENTROIDS);
+                spatial::ClusterSession session(spatial::FeatureView(input), CENTROIDS);
                 auto rotating = centroids;
                 for (size_t iteration = 0; iteration < 3; ++iteration) {
                     const auto labels = session.assign(rotating);
@@ -245,11 +227,11 @@ int main(int argc, char** argv) {
                 }
             }
         }
-        std::vector<gpu::Gaussian> gaussians(2);
+        std::vector<voxel::Gaussian> gaussians(2);
         gaussians[0].values = { 0.5f, 0.5f, 0.5f, 1, 1, 0, 0, 0, 0.1f, 0.1f, 0.1f, 0.2f, 0.2f, 0.2f, 0, 0 };
         gaussians[1].values = { 1.0f, 1.0f, 1.0f, 1, 1, 0, 0, 0, 0.1f, 0.1f, 0.1f, 0.2f, 0.2f, 0.2f, 0, 0 };
         voxel_session_lifetimes(gaussians.front());
-        const auto candidates = gpu::VoxelSession().candidates(gaussians, { 0, 0, 0 }, 1, { 2, 2, 2 });
+        const auto candidates = voxel::VoxelSession().candidates(gaussians, { 0, 0, 0 }, 1, { 2, 2, 2 });
         if (candidates.counts[0] != 2 || candidates.indices.size() != 9) {
             throw std::runtime_error("Vulkan candidate count/scatter mismatch");
         }
@@ -260,9 +242,8 @@ int main(int argc, char** argv) {
         }
         if (large_tests) {
             {
-                gpu::DeviceGuard batch_guard;
-                gpu::VoxelSession session;
-                std::vector<gpu::Gaussian> large(65535 * 128 + 1);
+                voxel::VoxelSession session;
+                std::vector<voxel::Gaussian> large(65535 * 128 + 1);
                 large.back() = gaussians.front();
                 const auto result = session.candidates(large, { 0, 0, 0 }, 1, { 2, 2, 2 });
                 if (result.counts[0] != 1 || result.indices.size() != 1 || result.indices[0] != large.size() - 1) {
@@ -274,7 +255,7 @@ int main(int argc, char** argv) {
                 weak.values[3] = 0.06f;
                 const std::array reference_points { weak, weak };
                 const std::array<uint32_t, 2> reference_indices { 0, 1 };
-                gpu::VoxelBatch batch { 0, 2, 1, 1, 1, 0.45f, 0.45f, 0.45f };
+                voxel::VoxelBatch batch { 0, 2, 1, 1, 1, 0.45f, 0.45f, 0.45f };
                 const auto expected = session.voxelize(reference_points, reference_indices, std::span(&batch, 1), 0.1f, 0.1f, 1);
                 batch.index_count = 1;
                 const auto single = session.voxelize(reference_points, reference_indices, std::span(&batch, 1), 0.1f, 0.1f, 1);
@@ -299,19 +280,18 @@ int main(int argc, char** argv) {
                 std::cout << "Large voxel compaction and density accumulation passed\n";
             }
             {
-                gpu::DeviceGuard batch_guard;
-                gpu::VoxelSession session;
+                voxel::VoxelSession session;
                 const std::array<uint32_t, 1> indices { 0 };
-                const gpu::VoxelBatch batch { 0, 1, 1, 1, 1, 0.45f, 0.45f, 0.45f };
+                const voxel::VoxelBatch batch { 0, 1, 1, 1, 1, 0.45f, 0.45f, 0.45f };
                 const auto expected = session.voxelize(gaussians, indices, std::span(&batch, 1), 0.1f, 0.1f, 1);
-                std::vector<gpu::VoxelBatch> batches(65536, batch);
+                std::vector<voxel::VoxelBatch> batches(65536, batch);
                 const auto masks = session.voxelize(gaussians, indices, batches, 0.1f, 0.1f, 1);
                 for (size_t i = 0; i < batches.size(); ++i) {
                     if (masks[i * 2] != expected[0] || masks[i * 2 + 1] != expected[1]) {
                         throw std::runtime_error("Voxel Z dispatch split lost a batch");
                     }
                 }
-                gpu::VoxelBatch padded { 0, 0, 65535, 1, 1, 0, 0, 0 };
+                voxel::VoxelBatch padded { 0, 0, 65535, 1, 1, 0, 0, 0 };
                 const auto empty = session.voxelize({}, {}, std::span(&padded, 1), 1, 0, 65536);
                 if (empty.size() != 65536 * 2 || empty[65535 * 2] || empty.back() ||
                     std::ranges::any_of(empty.begin(), empty.end() - 2, [](uint32_t word) { return word != UINT32_MAX; })) {
@@ -320,11 +300,10 @@ int main(int argc, char** argv) {
                 std::cout << "Large voxel X/Z workgroup splits passed\n";
             }
             {
-                gpu::DeviceGuard batch_guard;
-                gpu::VoxelSession session;
+                voxel::VoxelSession session;
                 // The scatter output is 256 MiB even though both inputs fit
                 // within Lavapipe's 128 MiB storage-buffer range.
-                std::vector<gpu::Gaussian> overlapping(64);
+                std::vector<voxel::Gaussian> overlapping(64);
                 for (auto& gaussian : overlapping) {
                     gaussian.values = { 64, 64, 32, 1, 1, 0, 0, 0, 1, 1, 1, 64, 64, 32, 0, 0 };
                 }
@@ -350,9 +329,8 @@ int main(int argc, char** argv) {
                 std::cout << "Large candidate scatter passed: 256 MiB of indices\n";
             }
             {
-                gpu::DeviceGuard batch_guard;
-                gpu::VoxelSession session;
-                gpu::Gaussian boundary;
+                voxel::VoxelSession session;
+                voxel::Gaussian boundary;
                 boundary.values = { 0.5f, 8192, 0.5f, 1, 1, 0, 0, 0, 1, 1, 1, 0.1f, 0.1f, 0.1f, 0, 0 };
                 const auto result = session.candidates(std::span(&boundary, 1), { 0, 0, 0 }, 1, { 4096, 8193, 1 });
                 const size_t first = 8191 * 4096, second = 8192 * 4096;
@@ -363,8 +341,7 @@ int main(int argc, char** argv) {
                 std::cout << "Large candidate bin window passed\n";
             }
             {
-                gpu::DeviceGuard batch_guard;
-                gpu::VoxelSession session;
+                voxel::VoxelSession session;
                 // Cross the 65535-workgroup X limit in expand, dilate, and compact.
                 constexpr uint32_t BLOCKS = 1024 * 1024 * 512 / 64;
                 std::vector<uint32_t> packed(size_t(65535 * 128 + 1) * 3);
@@ -378,7 +355,6 @@ int main(int argc, char** argv) {
                 std::cout << "Large expand/dilate/compact dispatch passed: " << BLOCKS << " blocks\n";
             }
             {
-                gpu::DeviceGuard batch_guard;
                 // More than 128 MiB of dense grid, with occupancy crossing a
                 // tile seam and the outer grid faces. Build an independent
                 // sparse oracle instead of scanning a billion cells on CPU.
@@ -408,7 +384,7 @@ int main(int argc, char** argv) {
             }
         }
         for (int dimension : { 12, 8, 16 }) {
-            gpu::VoxelSession session;
+            voxel::VoxelSession session;
             voxel::Grid grid({ dimension, dimension, dimension });
             grid.set({ 0, 0, 0 });
             grid.set({ 5, 5, 5 });
@@ -447,7 +423,7 @@ int main(int argc, char** argv) {
         if (empty.voxel_count()) {
             throw std::runtime_error("An empty GPU result must stay empty");
         }
-        const auto backend = voxel::resolve_backend({ { "backend", "gpu" } });
+        auto backend = voxel::resolve_backend({ { "backend", "gpu" } });
         if (!backend->requires_gpu() || backend->voxelize(prepared, box, 0.1, 0.1).masks != grid.masks) {
             throw std::runtime_error("Available GPU did not retain its backend and occupancy");
         }
@@ -467,20 +443,19 @@ int main(int argc, char** argv) {
                 throw std::runtime_error("Resolved GPU backend retried an empty result on CPU");
             }
         }
-        // Active tasks retain their device even if selection changes for later
-        // tasks. Only the new task resolves an unavailable device to CPU.
-        {
-            gpu::DeviceGuard session_guard;
-        }
+        // Release every resource before changing the single device context.
+        backend.reset();
         gpu::select_device(std::numeric_limits<uint32_t>::max());
-        if (backend->voxelize(prepared, box, 0.1, 0.1).masks != grid.masks ||
-            backend->dilate(single, { 1, 2, 1 }).voxel_count() != 45 ||
-            voxel::resolve_backend({ { "backend", "gpu" } })->requires_gpu()) {
-            throw std::runtime_error("Device selection invalidated an active voxel session or failed to resolve a new task");
+        if (voxel::resolve_backend({ { "backend", "gpu" } })->requires_gpu()) {
+            throw std::runtime_error("Unavailable device did not resolve a new task to CPU");
         }
         gpu::select_device(selected);
-        if (!voxel::resolve_backend({ { "backend", "gpu" } })->requires_gpu()) {
-            throw std::runtime_error("GPU backend failed to recover for a new task");
+        {
+            const auto recovered = voxel::resolve_backend({ { "backend", "gpu" } });
+            if (!recovered->requires_gpu() || recovered->voxelize(prepared, box, 0.1, 0.1).masks != grid.masks ||
+                recovered->dilate(single, { 1, 2, 1 }).voxel_count() != 45) {
+                throw std::runtime_error("Recreated device context changed voxel results");
+            }
         }
         {
             // Interleave two disconnected clusters to check stable selection.

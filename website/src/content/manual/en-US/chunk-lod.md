@@ -12,7 +12,11 @@ Rendering large-scale `3DGS` scenes requires far more system resources than most
 
 ## Generating `chunk-lod`
 
-`chunk-lod` data used by `@manycore/aholo-viewer` is usually generated with [`@manycore/aholo-splat-transform`](./splat-transform.md). ESZ output is recommended. Generation mainly includes these steps:
+`chunk-lod` data used by `@manycore/aholo-viewer` is usually generated with [`@manycore/aholo-splat-transform`](./splat-transform.md). ESZ output is recommended.
+
+Chunk splitting and LOD fusion run on CPU; generating ESZ/SPZ chunks does not require Vulkan. Top-level pipeline `cpuWorkers` configures CPU workers and file-output concurrency; the former `parallelCounts` option is no longer used. Writing SOG with SH coefficients or generating associated voxels on GPU must also meet the [GPU environment requirements](./splat-transform.md#environment-requirements).
+
+Generation mainly includes these steps:
 
 1. Chunk splitting
     > Chunks are split primarily with an octree. `maxChunkCounts` defaults to `400000` Gaussians to control initial block size. Increase it for large scenes to reduce the block count; merged level files can exceed that size.

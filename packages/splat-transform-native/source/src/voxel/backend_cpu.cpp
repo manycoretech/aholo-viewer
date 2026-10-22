@@ -44,7 +44,7 @@ void parallel_chunks(size_t count, size_t grain, F&& function) {
 
 // Match the historical CPU worker's floor/ceil voxel window, including a
 // Gaussian whose center lies outside the grid but whose extent overlaps it.
-bool voxel_range(const gpu::Gaussian& gaussian, const Grid& grid, const Eigen::AlignedBox3f& bounds,
+bool voxel_range(const Gaussian& gaussian, const Grid& grid, const Eigen::AlignedBox3f& bounds,
     float resolution, Eigen::Vector3i& minimum, Eigen::Vector3i& maximum) {
     const auto& g = gaussian.values;
     if (!(g[3] > ALPHA_THRESHOLD) || !std::all_of(g.begin(), g.begin() + 14, [](float value) { return std::isfinite(value); })) {

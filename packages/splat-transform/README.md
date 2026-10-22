@@ -10,7 +10,7 @@ The processing engine is a standalone C++20 executable. The npm package translat
 - Windows 22H2 or later: x64 or ARM64.
 - Linux: x64 or ARM64, Ubuntu 22.04 / glibc 2.35 or later. The C++ runtime is linked statically.
 - macOS 13 or later: Apple silicon ARM64.
-- GPU operations require a user-installed Vulkan 1.1+ loader and a compatible driver. macOS additionally requires a working MoltenVK installation. The packages do not include a Vulkan runtime or GPU drivers.
+- GPU operations require a user-installed Vulkan 1.2+ loader and a compatible device with timeline semaphores. macOS additionally requires a MoltenVK installation supporting Vulkan 1.2 or newer. The packages do not include a Vulkan runtime or GPU drivers.
 
 CPU operations start without Vulkan. SOG output with SH coefficients requires GPU clustering; SH0 SOG encoding runs on CPU. Voxel tasks accept `backend: "gpu" | "cpu"`, defaulting to `"gpu"`. Backend resolution initializes the selected Vulkan device; if initialization fails, it logs a warning and selects CPU for the complete task, including cluster filtering, voxel generation, and navigation. Explicit CPU processing does not initialize Vulkan. The selected backend stays fixed: later compute errors propagate and empty GPU results are not retried on CPU. CPU jobs reuse the process-wide pool; the former `cpuWorkerCount` option is not used. CPU and GPU results can differ near occupancy thresholds.
 

@@ -4,10 +4,10 @@
 #include "compact.h"
 #include "dilate.h"
 #include "expand.h"
+#include "voxel/compute.h"
 #include "voxelize.h"
 #include <algorithm>
 #include <cstring>
-#include <gpu/compute.h>
 #include <iostream>
 #include <stdexcept>
 #include <unordered_map>
@@ -46,7 +46,7 @@ struct Module {
     explicit Module(std::span<const uint8_t> bytes) : words(bytes.size() / 4) {
         require(bytes.size() % 4 == 0 && words.size() >= 5, "Invalid SPIR-V size");
         std::memcpy(words.data(), bytes.data(), bytes.size());
-        require(words[0] == 0x07230203 && words[1] == 0x00010300, "Expected Vulkan 1.1 / SPIR-V 1.3");
+        require(words[0] == 0x07230203 && words[1] == 0x00010500, "Expected Vulkan 1.2 / SPIR-V 1.5");
         for (size_t offset = 5; offset < words.size();) {
             const size_t count = words[offset] >> 16;
             require(count != 0 && count <= words.size() - offset, "Invalid SPIR-V instruction");
@@ -162,21 +162,21 @@ void check(std::span<const uint8_t> bytes, Words strides, uint32_t push_size, ui
 } // namespace
 
 int main() {
-    using namespace splat_transform::gpu::vulkan::shaders;
-    static_assert(sizeof(splat_transform::gpu::Gaussian) == 64);
-    static_assert(sizeof(splat_transform::gpu::VoxelBatch) == 32);
+    using namespace splat_transform::shaders;
+    static_assert(sizeof(splat_transform::voxel::Gaussian) == 64);
+    static_assert(sizeof(splat_transform::voxel::VoxelBatch) == 32);
     try {
         for (const auto& shader : cluster_variants) {
-            check(shader.spirv, std::array { 16u, 16u, 4u, 4u }, 8, 128, shader.tile * (shader.columns * 16 + 4));
+            check(shader.code.bytes, std::array { 16u, 16u, 4u, 4u }, 8, 128, shader.tile * (shader.columns * 16 + 4));
         }
-        check(candidate_count, std::array { 64u, 4u }, 48, 128, 0);
-        check(candidate_scatter, std::array { 64u, 4u, 4u, 4u }, 48, 128, 0);
-        check(voxelize, std::array { 64u, 4u, 32u, 4u }, 20, 64, 64 * 64 + 8);
-        for (const auto shader : { std::span<const uint8_t>(expand), std::span<const uint8_t>(compact) }) {
+        check(candidate_count.bytes, std::array { 64u, 4u }, 48, 128, 0);
+        check(candidate_scatter.bytes, std::array { 64u, 4u, 4u, 4u }, 48, 128, 0);
+        check(voxelize.bytes, std::array { 64u, 4u, 32u, 4u }, 20, 64, 64 * 64 + 8);
+        for (const auto shader : { std::span<const uint8_t>(expand.bytes), std::span<const uint8_t>(compact.bytes) }) {
             check(shader, std::array { 4u, 4u }, 20, 128, 0);
         }
-        check(dilate, std::array { 4u, 4u }, 28, 128, 0);
-        std::cout << "All 30 embedded shaders preserve the Vulkan 1.1 storage, push constant, and workgroup ABI\n";
+        check(dilate.bytes, std::array { 4u, 4u }, 28, 128, 0);
+        std::cout << "All 30 embedded shaders preserve the Vulkan 1.2 storage, push constant, and workgroup ABI\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

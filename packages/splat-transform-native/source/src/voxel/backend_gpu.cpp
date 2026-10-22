@@ -13,7 +13,7 @@ struct Batches {
     std::vector<Batch> batches;
     std::vector<uint32_t> indices;
 };
-Batches build_batches(gpu::VoxelSession& session, const PreparedData& data, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
+Batches build_batches(VoxelSession& session, const PreparedData& data, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
     Eigen::Vector3i count;
     for (int a = 0; a < 3; ++a) {
         count[a] = (grid.blocks[a] + 3) / 4;
@@ -48,13 +48,13 @@ public:
     Grid voxelize(const PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff) const override {
         auto output = make_grid(bounds, resolution);
         const auto [batches, indices] = build_batches(session_, data, output, bounds, resolution);
-        std::vector<gpu::VoxelBatch> specs;
+        std::vector<VoxelBatch> specs;
         specs.reserve(batches.size());
         for (const auto& b : batches) {
             specs.push_back({ b.offset, b.count, uint32_t(b.dimensions[0]), uint32_t(b.dimensions[1]), uint32_t(b.dimensions[2]),
                 float(bounds.min()[0] + b.origin[0] * 4 * resolution), float(bounds.min()[1] + b.origin[1] * 4 * resolution), float(bounds.min()[2] + b.origin[2] * 4 * resolution) });
         }
-        // The GPU layer splits for device storage/dispatch limits and retains the
+        // The voxel session splits for device storage/dispatch limits and retains the
         // full Gaussian input across splits. Fixed 256-batch calls re-uploaded the
         // entire scene on every call, even though only the batch descriptors changed.
         const auto masks = session_.voxelize(data.gaussians, indices, specs, resolution, cutoff, 64);
@@ -89,7 +89,7 @@ public:
     }
 
 private:
-    mutable gpu::VoxelSession session_;
+    mutable VoxelSession session_;
 };
 } // namespace
 

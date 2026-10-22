@@ -41,6 +41,7 @@ set(SPLAT_TRANSFORM_SOURCE_FILES
     src/splat/splat_lod.cpp
     src/splat/splat_block.cpp
     src/spatial/clustering.cpp
+    src/spatial/cluster_gpu.cpp
     src/codec/compression.cpp
     src/codec/image.cpp
     src/io/file.cpp
@@ -58,6 +59,7 @@ set(SPLAT_TRANSFORM_SOURCE_FILES
     src/io/esz.cpp
     src/gpu/context.cpp
     src/gpu/compute.cpp
+    src/gpu/vulkan_context.cpp
     src/pipeline/runner.cpp
     src/pipeline/task.cpp
     src/pipeline/context.cpp
@@ -82,6 +84,8 @@ set(SPLAT_TRANSFORM_SOURCE_FILES
     src/voxel/backend.cpp
     src/voxel/backend_cpu.cpp
     src/voxel/backend_gpu.cpp
+    src/voxel/compute.cpp
+    src/voxel/gpu_workspace.cpp
     src/voxel/mesh.cpp
     src/voxel/marching_cubes.cpp
     src/voxel/coplanar_merge.cpp
@@ -131,7 +135,9 @@ set(SPLAT_TRANSFORM_HEADER_FILES
 set(SPLAT_TRANSFORM_PRIVATE_HEADER_FILES
     src/codec/compression_stream.h
     src/gpu/vulkan_context.h
-    src/gpu/cluster_schedule.h
+    src/gpu/backend.h
+    src/spatial/cluster_schedule.h
+    src/spatial/cluster_gpu.h
     src/io/zip_archive.h
     src/io/file_stream.h
     src/io/stream_reader.h
@@ -141,6 +147,8 @@ set(SPLAT_TRANSFORM_PRIVATE_HEADER_FILES
     src/voxel/backend.h
     src/voxel/marching_tables.h
     src/voxel/voxelize.h
+    src/voxel/compute.h
+    src/voxel/gpu_workspace.h
 )
 list(TRANSFORM SPLAT_TRANSFORM_SOURCE_FILES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 list(TRANSFORM SPLAT_TRANSFORM_HEADER_FILES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
@@ -289,15 +297,20 @@ if(BUILD_TESTING)
     set_tests_properties(threading_contracts threading_single_worker threading_configured_workers threading_worker_limit PROPERTIES TIMEOUT 30)
     add_executable(splat_transform_shader_tests)
     target_sources(splat_transform_shader_tests PRIVATE tests/shader_tests.cpp)
-    target_include_directories(splat_transform_shader_tests PRIVATE "${SHADER_OUTPUT_DIR}")
+    target_include_directories(splat_transform_shader_tests PRIVATE "${SHADER_OUTPUT_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_link_libraries(splat_transform_shader_tests PRIVATE splat_transform_core)
     add_test(NAME shader_contracts COMMAND splat_transform_shader_tests)
     add_executable(splat_transform_gpu_tests)
     target_sources(splat_transform_gpu_tests PRIVATE tests/gpu_tests.cpp)
     set_target_properties(splat_transform_gpu_tests PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/src")
-    target_link_libraries(splat_transform_gpu_tests PRIVATE splat_transform_core Vulkan::Headers GPUOpen::VulkanMemoryAllocator)
+    target_link_libraries(splat_transform_gpu_tests PRIVATE splat_transform_core)
+    add_executable(splat_transform_compute_tests)
+    target_sources(splat_transform_compute_tests PRIVATE tests/compute_tests.cpp)
+    target_include_directories(splat_transform_compute_tests PRIVATE "${SHADER_OUTPUT_DIR}")
+    target_link_libraries(splat_transform_compute_tests PRIVATE splat_transform_core)
     if(SPLAT_TRANSFORM_TEST_GPU)
         add_test(NAME gpu_contracts COMMAND splat_transform_gpu_tests)
+        add_test(NAME compute_contracts COMMAND splat_transform_compute_tests)
     endif()
     add_test(NAME pipeline_empty COMMAND splat-transform "${CMAKE_CURRENT_SOURCE_DIR}/tests/empty.json")
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND SPLAT_TRANSFORM_STATIC_RUNTIME)
@@ -311,7 +324,7 @@ if(BUILD_TESTING)
         splat_transform_abstraction_tests splat_transform_geometry_tests splat_transform_tests splat_transform_pipeline_tests
         splat_transform_data_task_tests
         splat_transform_frozen_pipeline_tests
-        splat_transform_threading_tests splat_transform_shader_tests splat_transform_gpu_tests)
+        splat_transform_threading_tests splat_transform_shader_tests splat_transform_gpu_tests splat_transform_compute_tests)
 endif()
 
 set_target_properties(${SPLAT_TRANSFORM_TARGETS} PROPERTIES

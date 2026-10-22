@@ -1,6 +1,6 @@
 #pragma once
 
-// Matches gpu::Gaussian: sixteen tightly packed 32-bit floats.
+// Matches voxel::Gaussian: sixteen tightly packed 32-bit floats.
 struct Gaussian {
     float x;
     float y;

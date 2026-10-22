@@ -10,6 +10,8 @@ A reconstructed 3DGS scene is a Gaussian point cloud without solid boundaries fo
 
 Voxel colliders are produced from 3DGS assets by the `Voxel` task in `splat-transform`. See the [Voxel task](./splat-transform.md#voxel) for generation parameters, CPU/GPU selection, and fallback rules. Set `collisionMesh: "smooth"` or `"faces"` to also generate a `collision.glb` mesh.
 
+GPU generation must meet the [splat-transform environment requirements](./splat-transform.md#environment-requirements): Vulkan 1.2+ and `timelineSemaphore`. If device initialization fails, the complete Voxel task uses CPU; you can also select `backend: "cpu"` explicitly. CPU and GPU occupancy may differ near thresholds. Both backends produce the same file format.
+
 ## Overview
 
 Voxel data encodes scene occupancy as a **sparse voxel octree (SVO)** for runtime collision and ray tests:

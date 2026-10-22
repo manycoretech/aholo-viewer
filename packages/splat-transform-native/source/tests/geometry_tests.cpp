@@ -124,7 +124,7 @@ void voxel_geometry() {
     require(prepared.invalid_extents.size() == 1 && prepared.scene.isEmpty(), "Invalid voxel extents changed the scene bounds");
     require(prepared.gaussians[0].values[11] == 0 && prepared.gaussians[0].values[12] == 0 && prepared.gaussians[0].values[13] == 0, "Invalid extents must be packed as zero");
 
-    gpu::Gaussian packed;
+    voxel::Gaussian packed;
     packed.values[4] = point.rotation.w();
     packed.values[5] = point.rotation.x();
     packed.values[6] = point.rotation.y();

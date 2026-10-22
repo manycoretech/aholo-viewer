@@ -17,6 +17,8 @@ void run(const io::Json& pipeline) {
         }
         threading::configure_default_pool(workers.get<size_t>());
     }
+    // Destroy all tasks and their resources before the owning GPU scope.
+    gpu::DeviceGuard device_guard;
     std::vector<std::unique_ptr<BaseTask>> tasks;
     for (const auto& task : pipeline.at("tasks")) {
         tasks.push_back(create_task(task.at("type").get<std::string>()));
@@ -28,7 +30,6 @@ void run(const io::Json& pipeline) {
         auto cpu_log = logger.scope("[Task:CPU]");
         logger.info("CPU workers: ", threading::default_thread_count());
     }
-    gpu::DeviceGuard device_guard;
     TaskContext context;
     bool gpu_selected = false;
     for (size_t i = 0; i < tasks.size(); ++i) {

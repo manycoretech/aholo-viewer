@@ -14,11 +14,11 @@ order: 5
 - Windows：Windows 22H2+，x86_64 或 ARM64。
 - Linux：x86_64 或 ARM64，Ubuntu 22.04 / glibc >= 2.35；C++ 运行库静态链接。
 - macOS：macOS 13+，苹果芯片 ARM64。
-- GPU 加速需要 Vulkan 1.1+ loader 和兼容驱动；macOS 还需要 MoltenVK。安装包不携带 Vulkan 运行时或驱动。
+- GPU 加速需要 Vulkan 1.2+ loader、支持 Vulkan 1.2+ 的计算设备，以及 `timelineSemaphore` 特性；macOS 还需要支持上述要求的 MoltenVK。程序会在初始化时检查并启用该特性。安装包不携带 Vulkan 运行时或驱动。
 
-含 SH 系数的 SOG 输出使用 GPU 聚类；SH0 SOG 编码可在 CPU 上执行。其他格式转换和 LOD 处理无需 Vulkan。Voxel 的后端和回退规则见 [Voxel](#voxel)。
+含 SH 系数的 SOG 输出使用 GPU 聚类，设备初始化失败时任务报错；SH0 SOG 编码可在 CPU 上执行。其他格式转换和 LOD 处理无需 Vulkan。Voxel 的后端和回退规则见 [Voxel](#voxel)。
 
-运行 `splat-transform list:gpu` 查询 Vulkan 设备。旧版 Dawn 枚举可能包含 D3D12 设备，迁移时应重新确认 GPU 下标。
+运行 `splat-transform list:gpu` 查询 Vulkan 设备。设备枚举不检查计算队列和 `timelineSemaphore` 支持，能列出设备不代表它满足 GPU 任务要求。旧版 Dawn 枚举可能包含 D3D12 设备，迁移时应重新确认 GPU 下标。
 
 ## 格式说明
 
@@ -109,7 +109,9 @@ Get-Content -Raw pipeline.json | splat-transform -
 | `tasks[].config`  | `object`          | 对应任务的参数。                                                              |
 | `tasks[].release` | `string[]` / `[]` | 当前任务成功完成后删除这些内存资源键。                                        |
 
-`cpuWorkers` 为可选字段，在执行任务前配置，线程池仍在首次使用时创建，供 LOD、聚类更新、文件写出、CPU 体素和 gzip 等任务共享。显式配置的上限为 `max(1, std::thread::hardware_concurrency() - 1)`；例如硬件线程数返回 28 时最多使用 27 个工作线程。省略时保持原有默认行为：硬件线程数向上取 2 的幂后除以 2，再限制到 1–16。显式配置会在日志中显示生效的线程数；0、负数、小数及非整数类型会报错。zstd 使用独立线程池，并以相同线程数初始化。
+`cpuWorkers` 为可选字段，在执行任务前配置，线程池仍在首次使用时创建，供 LOD、聚类更新、文件写出、CPU 体素和 gzip 等任务共享。显式配置的上限为 `max(1, std::thread::hardware_concurrency() - 1)`；例如硬件线程数返回 28 时最多使用 27 个工作线程。省略时保持原有默认行为：硬件线程数向上取 2 的幂后除以 2，再限制到 1–16。启动日志会显示生效的线程数；0、负数、小数及非整数类型会报错。zstd 使用独立线程池，并以相同线程数初始化。
+
+同一 pipeline 的 GPU 任务复用所选设备上下文，首次需要 GPU 计算时才初始化，pipeline 结束时释放。SOG 聚类和 Voxel 的工作缓冲在各自计算过程中复用，完成后由任务释放。每次 `run()` 启动独立原生进程，设备上下文和工作缓存不跨调用共享。
 
 `Read.output` 和处理任务的 `input` / `output` 是本次运行的内存资源键；`Read.inputs`、`Write.output`、`Voxel.output` 才是磁盘路径。相对路径以进程工作目录为基准，不以 pipeline 文件所在目录为基准。
 
@@ -144,7 +146,7 @@ Get-Content -Raw pipeline.json | splat-transform -
 | `compressLevel`    | `number`            | SPZ v3 使用 gzip，默认 `6`，常用范围 `0–9`；SPZ v4 使用 zstd，默认 `7`，遵循 zstd 等级范围。 |
 | `highPrecision`    | `boolean` / `false` | 仅用于 ESZ：`false` 为低精度，`true` 为高精度布局。                                          |
 
-bundle 的 CPU 文件写出并发上限直接使用全局 CPU 线程池的线程数，可通过 pipeline 根级 `cpuWorkers` 统一设置。
+bundle 的 CPU 文件写出并发上限由 pipeline 根级 `cpuWorkers` 统一设置，旧 `parallelCounts` 不再生效。需要 GPU 的文件按顺序写出；单个 SOG 文件的 CPU 纹理编码仍使用共享线程池。
 
 **目录覆盖：写出 bundle 时，已有输出目录会先被递归删除，再重新创建。请使用专用输出目录。** 根目录和当前工作目录会被拒绝。单文件输出会覆盖同名文件。
 
@@ -304,7 +306,7 @@ patch 中的索引相对于对应输入块。`deletedIndices` 是位图，不是
 | `navSeed`           | `{ x, y, z }` / 不设置                       | 场景坐标中的导航种子点，供外部填充与胶囊体导航使用。                                        |
 | `navCapsule`        | `{ height, radius }` / 不设置                | 胶囊体导航尺寸；`height > 0` 且设置 `navSeed` 时启用，`radius` 非负。                       |
 
-默认优先使用 GPU。每个 Voxel 任务在获取后端时初始化所选 Vulkan 设备；初始化失败则记录警告并返回 CPU 后端，随后聚类过滤、主生成和导航均使用 CPU。设置 `backend: "cpu"` 时不尝试初始化 Vulkan。后端一旦选定，计算过程中不再切换；GPU 计算错误直接返回，空结果也不会触发 CPU 重算。参数、文件无效及 CPU 处理失败仍会报错。线程数由进程级共享线程池管理，旧 `cpuWorkerCount` 不再生效。
+默认优先使用 GPU。每个 Voxel 任务在获取后端时初始化或复用本次 pipeline 的 Vulkan 设备；设备不满足[环境要求](#环境需求)或初始化失败时，记录警告并为整个任务选择 CPU，随后聚类过滤、主生成和导航均使用 CPU。设置 `backend: "cpu"` 时不尝试初始化 Vulkan。后端一旦选定，计算过程中不再切换；GPU 计算错误直接返回，空结果也不会触发 CPU 重算。参数、文件无效及 CPU 处理失败仍会报错。线程数由进程级共享线程池管理，旧 `cpuWorkerCount` 不再生效。
 
 `filterCluster` 对象参数：
 
@@ -456,7 +458,7 @@ try {
 }
 ```
 
-`run()` 返回 `Promise<void>`。`enumerateAdapters({ cwd, signal })` 返回 Vulkan 设备数组，包含 `index`、`name`、`backend: "vulkan"`、`vendorId`、`deviceId`、`apiVersion` 和 `uuid`；枚举本身需要 Vulkan。
+`run()` 返回 `Promise<void>`。`enumerateAdapters({ cwd, signal })` 返回 Vulkan 设备数组，包含 `index`、`name`、`backend: "vulkan"`、`vendorId`、`deviceId`、`apiVersion` 和 `uuid`；枚举本身需要 Vulkan 1.2+ loader，实际计算能力在 GPU 任务初始化时检查。
 
 `PipelineError` 表示子进程以非零状态或信号退出；启动失败和 `AbortSignal` 取消也可能以普通 Error / AbortError 拒绝。SIGINT、SIGTERM 会转发给子进程。可使用 `resolveExecutable()` 查询原生程序路径，或通过 `SPLAT_TRANSFORM_EXECUTABLE` 指定本地可执行文件的绝对路径。安装缺少平台程序时，确认 npm optional dependencies 未被禁用。
 
@@ -467,6 +469,7 @@ try {
 2.0 移除了 `SplatData`、`injectCustomTask`、深层模块导入等内存处理接口。数据保留在原生子进程中，通过 CLI、version 1 pipeline 和 `run()` 使用。
 
 - 生成 `chunk-lod` 推荐使用 `esz`：pipeline 设置 `type: "esz"`，CLI 使用 `--type esz`。
-- SOG 聚类按可用 Vulkan 显存和设备限制自动分批，数据可分批传输，不存在统一的 10 GB 显存门槛；不足以容纳工作缓冲时仍会报错。相同数据多次 SOG 导出可能因随机聚类而不同。
-- 大场景 LOD 和体素处理需要足够的系统内存。及时 `release` 不再使用的资源，限制 bundle 的写出并发，并按场景调整分块规模和体素尺寸。
+- SOG 聚类按可用 Vulkan 显存和设备限制自动分批，在一次聚类中缓存可容纳的输入并跨迭代复用工作缓冲，其余输入分批传输。不存在统一的 10 GB 显存门槛；传输暂存和驱动分配还会占用额外资源，不足以容纳工作缓冲时仍会报错。相同数据多次 SOG 导出可能因随机聚类而不同。
+- Voxel 在单个任务内复用过滤、生成和导航所需的工作缓冲，任务结束后释放。网格规模较大时会按设备的存储和调度限制分块处理；选择更大的体素边长可减少网格规模。
+- 大场景 LOD 和体素处理需要足够的系统内存。及时 `release` 不再使用的资源，用 `cpuWorkers` 控制 CPU 写出并发，并按场景调整分块规模和体素尺寸。`release` 删除的是 pipeline 资源键；仍被其他键共享的数据会继续保留。
 - CPU 和 GPU 体素在阈值附近可能产生不同占用结果。设备初始化失败时选择 CPU，可在没有可用 GPU 的环境中继续生成，但不保证两种后端逐位一致。

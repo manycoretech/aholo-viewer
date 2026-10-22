@@ -10,6 +10,8 @@ order: 6
 
 体素碰撞体由 `splat-transform` 的 `Voxel` 任务从 3DGS 资产生成。完整生成参数、CPU/GPU 后端和回退规则见 [Voxel 任务](./splat-transform.md#voxel)。设置 `collisionMesh: "smooth"` 或 `"faces"` 可同时生成 `collision.glb` 网格碰撞体。
 
+GPU 生成需要满足 [splat-transform 环境要求](./splat-transform.md#环境需求)：Vulkan 1.2+ 和 `timelineSemaphore`。设备初始化失败时，当前 Voxel 任务会整体选择 CPU；也可显式设置 `backend: "cpu"`。CPU/GPU 在阈值附近可能产生不同占用结果，两种后端使用相同的输出格式。
+
 ## 概述
 
 体素数据将场景占用编码为 **稀疏体素八叉树（SVO）**，用于运行时碰撞与射线检测，例如：

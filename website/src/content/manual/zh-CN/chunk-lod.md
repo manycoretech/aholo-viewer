@@ -12,7 +12,11 @@ order: 8
 
 ## `chunk-lod`生成
 
-`@manycore/aholo-viewer`使用的`chunk-lod`数据主要可以通过[`@manycore/aholo-splat-transform`](./splat-transform.md)生成，推荐使用 `esz` 输出。生成主要经过以下几个步骤：
+`@manycore/aholo-viewer`使用的`chunk-lod`数据主要可以通过[`@manycore/aholo-splat-transform`](./splat-transform.md)生成，推荐使用 `esz` 输出。
+
+分块和 LOD 融合在 CPU 上执行，生成 ESZ/SPZ 分块无需 Vulkan。通过 pipeline 根级 `cpuWorkers` 统一设置 CPU 工作线程和文件写出并发，旧 `parallelCounts` 不再生效。写出含 SH 的 SOG 或使用 GPU 生成关联体素时，还需要满足 [GPU 环境要求](./splat-transform.md#环境需求)。
+
+生成主要经过以下几个步骤：
 
 1. 块分割
     > 块分割主要采用八叉树，`maxChunkCounts` 默认以 `400000` 个高斯控制初始分块规模。大型方案可以增加该值以减少块数；合并后的层级文件可能超过此规模。

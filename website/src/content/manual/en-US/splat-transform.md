@@ -14,11 +14,11 @@ order: 5
 - Windows: Windows 22H2+, x86_64 or ARM64.
 - Linux: x86_64 or ARM64, Ubuntu 22.04 / glibc >= 2.35; the C++ runtime is linked statically.
 - macOS: macOS 13+, Apple silicon ARM64.
-- GPU acceleration requires a Vulkan 1.1+ loader and compatible driver. macOS also requires MoltenVK. Packages do not include a Vulkan runtime or drivers.
+- GPU acceleration requires a Vulkan 1.2+ loader, a Vulkan 1.2+ compute device, and the `timelineSemaphore` feature. macOS also requires MoltenVK supporting these requirements. Initialization checks and enables the feature. Packages do not include a Vulkan runtime or drivers.
 
-SOG output with SH coefficients uses GPU clustering; SH0 SOG encoding runs on CPU. Other format conversion and LOD processing do not require Vulkan. See [Voxel](#voxel) for backend selection and fallback behavior.
+SOG output with SH coefficients uses GPU clustering and reports an error if device initialization fails. SH0 SOG encoding runs on CPU. Other format conversion and LOD processing do not require Vulkan. See [Voxel](#voxel) for backend selection and fallback behavior.
 
-Run `splat-transform list:gpu` to list Vulkan devices. The former Dawn backend could include D3D12 devices, so check saved GPU indices when migrating.
+Run `splat-transform list:gpu` to list Vulkan devices. Enumeration does not check compute queues or `timelineSemaphore` support, so a listed device may not meet GPU task requirements. The former Dawn backend could include D3D12 devices, so check saved GPU indices when migrating.
 
 ## Format Notes
 
@@ -109,7 +109,9 @@ Get-Content -Raw pipeline.json | splat-transform -
 | `tasks[].config`  | `object`                     | Parameters for that task.                                                                      |
 | `tasks[].release` | `string[]` / `[]`            | Resource keys removed after the current task succeeds.                                         |
 
-`cpuWorkers` is optional and configured before tasks run. The pool is still created on first use and shared by LOD, clustering updates, file output, CPU voxel jobs, and gzip. Explicit values are capped at `max(1, std::thread::hardware_concurrency() - 1)`, using logical hardware threads; a reported concurrency of 28 allows at most 27 workers. Omitting the field preserves the existing default: half the next power of two of hardware concurrency, clamped to 1–16. Explicit configuration logs the effective count. Zero, negative, fractional, and non-integer values report an error. zstd uses a separate pool initialized with the same worker count.
+`cpuWorkers` is optional and configured before tasks run. The pool is still created on first use and shared by LOD, clustering updates, file output, CPU voxel jobs, and gzip. Explicit values are capped at `max(1, std::thread::hardware_concurrency() - 1)`, using logical hardware threads; a reported concurrency of 28 allows at most 27 workers. Omitting the field preserves the existing default: half the next power of two of hardware concurrency, clamped to 1–16. The startup log reports the effective count. Zero, negative, fractional, and non-integer values report an error. zstd uses a separate pool initialized with the same worker count.
+
+GPU tasks in one pipeline reuse the selected device context. It is initialized when GPU computation is first needed and released when the pipeline ends. SOG clustering and Voxel reuse working buffers during their respective computations and release them afterward. Each `run()` starts a separate native process; device contexts and working caches are not shared across calls.
 
 `Read.output` and processing-task `input` / `output` fields refer to in-memory resource keys for the current run. `Read.inputs`, `Write.output`, and `Voxel.output` are filesystem paths. Relative paths use the process working directory, not the directory containing the pipeline file.
 
@@ -144,7 +146,7 @@ Writes a single splat to a file or a LOD / split bundle to a directory. The outp
 | `compressLevel`    | `number`            | SPZ v3 uses gzip, default `6`, typically `0–9`; SPZ v4 uses zstd, default `7`, with zstd's level range. |
 | `highPrecision`    | `boolean` / `false` | ESZ only: `false` selects low precision, `true` selects high precision.                                 |
 
-Concurrent CPU bundle file writes are limited to the global CPU pool's worker count, configured through top-level pipeline `cpuWorkers`.
+Concurrent CPU bundle file writes are limited by top-level pipeline `cpuWorkers`; the former `parallelCounts` option is no longer used. Files requiring GPU processing are written sequentially. CPU texture encoding within a SOG file still uses the shared pool.
 
 **Directory replacement: writing a bundle recursively removes an existing output directory before recreating it. Use a dedicated output directory.** Filesystem roots and the current working directory are rejected. Single-file output overwrites an existing file.
 
@@ -304,7 +306,7 @@ Writes a voxel directory directly from a splat resource; no subsequent `Write` i
 | `navSeed`           | `{ x, y, z }` / unset                        | Navigation seed in scene coordinates for exterior fill and capsule navigation.                                         |
 | `navCapsule`        | `{ height, radius }` / unset                 | Enables capsule navigation when `height > 0` and `navSeed` is set; `radius` must be nonnegative.                       |
 
-GPU is preferred by default. Each Voxel task initializes the selected Vulkan device when resolving its backend. If initialization fails, it logs a warning and selects CPU for cluster filtering, main generation, and navigation. Explicit `backend: "cpu"` never attempts Vulkan initialization. Once selected, the backend stays fixed: GPU compute errors propagate, and empty results do not trigger CPU retries. Invalid parameters or files and CPU processing failures still report errors. The process-wide pool manages worker counts; the former `cpuWorkerCount` option is no longer used.
+GPU is preferred by default. Each Voxel task initializes or reuses the pipeline's Vulkan device when resolving its backend. If the device does not meet the [environment requirements](#environment-requirements) or initialization fails, it logs a warning and selects CPU for the complete task, including cluster filtering, main generation, and navigation. Explicit `backend: "cpu"` never attempts Vulkan initialization. Once selected, the backend stays fixed: GPU compute errors propagate, and empty results do not trigger CPU retries. Invalid parameters or files and CPU processing failures still report errors. The process-wide pool manages worker counts; the former `cpuWorkerCount` option is no longer used.
 
 `filterCluster` object fields:
 
@@ -456,7 +458,7 @@ try {
 }
 ```
 
-`run()` returns `Promise<void>`. `enumerateAdapters({ cwd, signal })` returns Vulkan devices with `index`, `name`, `backend: "vulkan"`, `vendorId`, `deviceId`, `apiVersion`, and `uuid`. Enumeration itself requires Vulkan.
+`run()` returns `Promise<void>`. `enumerateAdapters({ cwd, signal })` returns Vulkan devices with `index`, `name`, `backend: "vulkan"`, `vendorId`, `deviceId`, `apiVersion`, and `uuid`. Enumeration itself requires a Vulkan 1.2+ loader; compute capabilities are checked when a GPU task initializes the device.
 
 `PipelineError` represents a nonzero child exit or termination signal. Process-start failures and `AbortSignal` cancellation can reject with a regular Error / AbortError. SIGINT and SIGTERM are forwarded to the child. Use `resolveExecutable()` to locate the native executable or set `SPLAT_TRANSFORM_EXECUTABLE` to an absolute local build path. If a platform executable is missing, check that npm optional dependencies are enabled.
 
@@ -467,6 +469,7 @@ The package exports `PipelineConfig`, `PipelineTask`, `TaskType`, `RunOptions`, 
 Version 2.0 removes in-memory APIs such as `SplatData`, `injectCustomTask`, and deep module imports. Data remains in the native child process and is processed through the CLI, version 1 pipelines, and `run()`.
 
 - Use `esz` for chunk LOD: set `type: "esz"` in a pipeline or pass `--type esz` to the CLI.
-- SOG clustering batches work according to the available Vulkan memory budget and device limits, streaming data as needed. There is no universal 10 GB requirement, but insufficient working-buffer memory still causes an error. Random clustering can produce different results across repeated SOG exports.
-- Large LOD and voxel jobs require sufficient system memory. Release resources after their final consumer, limit concurrent bundle writes, and tune chunk sizes and voxel resolution for the scene.
+- SOG clustering batches work according to the available Vulkan memory budget and device limits. It caches input that fits, reuses working buffers across iterations, and streams the remaining input. There is no universal 10 GB requirement; transfer staging and driver allocations consume additional resources, and insufficient working-buffer memory still causes an error. Random clustering can produce different results across repeated SOG exports.
+- Voxel reuses working buffers for filtering, generation, and navigation within one task and releases them when the task ends. Large grids are split according to device storage and dispatch limits. A larger voxel edge length reduces grid size.
+- Large LOD and voxel jobs require sufficient system memory. Release resources after their final consumer, control concurrent CPU writes with `cpuWorkers`, and tune chunk sizes and voxel resolution for the scene. `release` removes pipeline resource keys; data still shared by another key remains alive.
 - CPU and GPU voxel occupancy can differ near thresholds. Selecting CPU after device initialization fails allows generation without an available GPU, but does not guarantee bit-identical results across backends.

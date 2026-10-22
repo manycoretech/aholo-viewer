@@ -1,114 +1,59 @@
 #pragma once
-#include <array>
-#include <cstddef>
-#include <cstdint>
-#include <memory>
-#include <span>
-#include <stdexcept>
-#include <string>
-#include <unordered_map>
-#include <vector>
+#include "backend.h"
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_raii.hpp>
 
 namespace splat_transform::gpu::vulkan {
-struct Binding {
-    std::span<const std::byte> bytes;
-    size_t size;
-    std::span<std::byte> output {};
-    bool reuse = false;
-    bool clear = true;
-};
-class AllocationFailure : public std::runtime_error {
+class Buffer final : public detail::BackendBuffer {
 public:
-    explicit AllocationFailure(VkResult result) : std::runtime_error("Vulkan allocation failed: " + std::to_string(result)) {}
-};
-class Buffer {
-public:
-    Buffer(VmaAllocator allocator, size_t size, vk::BufferUsageFlags usage, bool host = false, bool within_budget = false);
-    Buffer(const Buffer&) = delete;
-    Buffer& operator=(const Buffer&) = delete;
-    ~Buffer();
+    Buffer(VmaAllocator allocator, size_t size, BufferMemory memory, bool within_budget);
+    ~Buffer() override;
     vk::Buffer handle() const { return vk::Buffer(buffer_); }
-    size_t size() const { return size_; }
-    std::byte* mapped_data() const;
-    void flush();
-    void read_into(std::span<std::byte> output, size_t offset = 0);
-    void upload(std::span<const std::byte> data);
+    std::byte* mapped_data() override;
+    void flush() override;
+    void invalidate() override;
 
 private:
     VmaAllocator allocator_;
-    size_t size_;
     VkBuffer buffer_ = VK_NULL_HANDLE;
     VmaAllocation allocation_ {};
     VmaAllocationInfo info_ {};
 };
-struct Kernel {
+struct Pipeline final : detail::BackendPipeline {
     vk::raii::DescriptorSetLayout descriptors { nullptr };
     vk::raii::PipelineLayout layout { nullptr };
     vk::raii::ShaderModule shader { nullptr };
     vk::raii::Pipeline pipeline { nullptr };
 };
-class ClusterWork;
-class VoxelWork;
-class ComputeContext {
+class Commands;
+class Queue;
+class Device final : public detail::BackendDevice {
 public:
-    explicit ComputeContext(uint32_t index);
-    ~ComputeContext();
-    const vk::PhysicalDeviceLimits& limits() const { return limits_; }
-    size_t storage_limit() const { return storage_limit_; }
-    size_t linear_item_limit() const;
-    std::array<uint32_t, 3> linear_groups(size_t count) const;
-    // Live VMA allocations, excluding empty allocator blocks kept for reuse.
-    size_t allocation_bytes() const;
-    struct Stage {
-        std::string name;
-        std::span<const uint8_t> spirv;
-        std::vector<uint32_t> bindings;
-        std::span<const std::byte> push;
-        std::array<uint32_t, 3> groups;
-        uint32_t specialization = 0;
-    };
-    Kernel& get_kernel(const Stage& stage);
+    explicit Device(uint32_t index);
+    ~Device() override;
+    ComputeLimits limits() const override;
+    size_t available_memory() const override;
+    size_t allocation_bytes() const override;
+    std::unique_ptr<detail::BackendBuffer> create_buffer(size_t size, BufferMemory memory, bool within_budget) override;
+    std::unique_ptr<detail::BackendPipeline> create_pipeline(const ComputeShader& shader) override;
+    std::unique_ptr<detail::BackendDescriptorTable> create_descriptor_table(detail::BackendPipeline& pipeline, std::span<const detail::BackendRange> buffers) override;
+    std::unique_ptr<detail::BackendCommands> create_commands() override;
+    std::unique_ptr<detail::BackendQueue> create_queue() override;
+    std::unique_ptr<detail::BackendFence> create_fence(uint64_t initial_value) override;
 
 private:
-    friend class ClusterWork;
-    friend class VoxelWork;
+    friend class Commands;
+    friend class Queue;
     vk::raii::Context context_;
     vk::raii::Instance instance_ { nullptr };
     vk::raii::PhysicalDevice physical_ { nullptr };
     vk::raii::Device device_ { nullptr };
     std::unique_ptr<VmaAllocator_T, decltype(&vmaDestroyAllocator)> allocator_ { nullptr, vmaDestroyAllocator };
     vk::raii::Queue queue_ { nullptr };
-    vk::raii::CommandPool command_pool_ { nullptr };
-    std::unordered_map<std::string, std::unique_ptr<Kernel>> kernels_;
     vk::PhysicalDeviceLimits limits_;
     uint32_t family_ = 0;
     size_t storage_limit_ = 0;
+    uint64_t timeline_max_difference_ = 0;
     bool memory_budget_ = false;
 };
-// One voxel operation owns these buffers and reuses them across filtering,
-// generation, navigation, and device-limited dispatches. The retained context
-// keeps their allocator/device alive even if shared device selection changes.
-class VoxelWork {
-public:
-    explicit VoxelWork(std::shared_ptr<ComputeContext> context);
-    ~VoxelWork();
-    VoxelWork(const VoxelWork&) = delete;
-    VoxelWork& operator=(const VoxelWork&) = delete;
-    const std::shared_ptr<ComputeContext>& context() const { return context_; }
-    using Stage = ComputeContext::Stage;
-    void execute(const std::string& name, std::span<const uint8_t> spirv, const std::vector<Binding>& bindings,
-        std::span<const std::byte> push, std::array<uint32_t, 3> groups, uint32_t specialization = 0);
-    void execute_chain(const std::vector<Binding>& bindings, const std::vector<Stage>& stages);
-
-private:
-    // Destroy buffers before releasing the context that owns their allocator.
-    std::shared_ptr<ComputeContext> context_;
-    std::vector<std::unique_ptr<Buffer>> storage_;
-    std::vector<std::unique_ptr<Buffer>> uploads_;
-    std::vector<std::unique_ptr<Buffer>> downloads_;
-};
-// Keep the selected context alive for the entire operation or clustering session.
-std::shared_ptr<ComputeContext> context();
 } // namespace splat_transform::gpu::vulkan

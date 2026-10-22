@@ -1,14 +1,14 @@
 #pragma once
 #include "backend.h"
-#include <gpu/compute.h>
+#include "compute.h"
 #include <io/file.h>
 
 namespace splat_transform::voxel {
 inline constexpr float ALPHA_THRESHOLD = 1.0f / 255;
 Eigen::Vector3f extents(const splat::Gaussian& gaussian);
-float distance_squared(const gpu::Gaussian& gaussian, const Eigen::Vector3f& difference);
+float distance_squared(const Gaussian& gaussian, const Eigen::Vector3f& difference);
 struct PreparedData {
-    std::vector<gpu::Gaussian> gaussians;
+    std::vector<Gaussian> gaussians;
     Eigen::AlignedBox3f scene;
     // Sparse, sorted indices distinguish invalid extents from valid zero extents.
     std::vector<uint32_t> invalid_extents;

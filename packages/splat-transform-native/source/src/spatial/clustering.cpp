@@ -1,6 +1,6 @@
+#include "cluster_gpu.h"
 #include <algorithm>
 #include <cmath>
-#include <gpu/compute.h>
 #include <numeric>
 #include <spatial/clustering.h>
 #include <unordered_set>
@@ -139,7 +139,7 @@ Clustering k_means(FeatureView points, size_t count, size_t iterations) {
         partial.sums.resize(count * points.dimensions());
         partial.counts.resize(count);
     }
-    gpu::ClusterSession session(points, count);
+    ClusterSession session(points, count);
     for (size_t step = 0; step < iterations; ++step) {
         utility::logger().info("kmeans iteration ", step + 1);
         result.labels = session.assign(result.centroids);

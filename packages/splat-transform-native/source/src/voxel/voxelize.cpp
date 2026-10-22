@@ -19,7 +19,7 @@ Eigen::Vector3f extents(const splat::Gaussian& gaussian) {
     const Eigen::Vector3f scale = extend * gaussian.scale;
     return gaussian.rotation.toRotationMatrix().cwiseAbs() * scale;
 }
-float distance_squared(const gpu::Gaussian& gaussian, const Eigen::Vector3f& difference) {
+float distance_squared(const Gaussian& gaussian, const Eigen::Vector3f& difference) {
     const auto& g = gaussian.values;
     // The GPU layout stores wxyz; Eigen's coefficient buffer stores xyzw.
     const Eigen::Quaternionf rotation(g[4], g[5], g[6], g[7]);

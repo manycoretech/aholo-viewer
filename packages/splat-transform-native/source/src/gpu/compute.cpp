@@ -1,735 +1,381 @@
-#include "candidate_count.h"
-#include "candidate_scatter.h"
-#include "cluster.h"
-#include "cluster_schedule.h"
-#include "compact.h"
-#include "dilate.h"
-#include "expand.h"
-#include "voxelize.h"
-#include "vulkan_context.h"
+#include "backend.h"
 #include <algorithm>
-#include <array>
-#include <cstddef>
+#include <cstring>
 #include <deque>
-#include <gpu/compute.h>
-#include <memory>
-#include <numeric>
-#include <stdexcept>
-#include <utility/logger.h>
 #include <utility>
 
 namespace splat_transform::gpu {
-namespace vulkan {
-class ClusterWork {
-public:
-    ClusterWork(std::shared_ptr<ComputeContext> context, spatial::FeatureView points, size_t centroid_count)
-        : context_(std::move(context)), points_(points), columns_(points.dimensions()), rows_(points.rows()), centroid_count_(centroid_count), stride_((columns_ + 3) / 4 * 4) {
-        if (!rows_ || !columns_ || !centroid_count_ || centroid_count_ > UINT32_MAX) {
-            throw std::runtime_error("Invalid GPU clustering dimensions");
-        }
-        const size_t centroid_bytes = centroid_count_ * stride_ * sizeof(float);
-        if (centroid_bytes > context_->storage_limit()) {
-            throw std::runtime_error("Clustering centroid table exceeds the storage buffer limit");
-        }
-        size_t tile = 128;
-        while (tile * (stride_ * sizeof(float) + sizeof(float)) > context_->limits_.maxComputeSharedMemorySize && tile > 1) {
-            tile /= 2;
-        }
-        const auto variant = std::ranges::find_if(shaders::cluster_variants, [&](const auto& shader) {
-            return shader.columns == stride_ / 4 && shader.tile == tile;
-        });
-        if (variant == shaders::cluster_variants.end()) {
-            throw std::runtime_error("Unsupported GPU clustering shader dimensions");
-        }
-        const std::array<uint32_t, 2> parameters { 0, uint32_t(centroid_count_) };
-        kernel_ = &context_->get_kernel({ std::string(variant->name), variant->spirv, { 0, 1, 2, 3 }, std::as_bytes(std::span(parameters)), {} });
-        size_t budget = memory_budget();
-        for (;;) {
-            plan(budget);
-            try {
-                allocate();
-                break;
-            } catch (const AllocationFailure&) {
-                clear();
-                if (budget <= 32 * 1024 * 1024) {
-                    throw;
-                }
-                budget = std::max<size_t>(32 * 1024 * 1024, budget / 2);
-            }
-        }
-        upload_cached_points();
-        record_centroids();
-        for (size_t i = 0; i < cached_.size(); ++i) {
-            record(*cached_[i], i * schedule_.batch_rows, false);
-        }
-        const auto batches = (rows_ + schedule_.batch_rows - 1) / schedule_.batch_rows;
-        const auto concurrency = std::min<size_t>(2, schedule_.cached_batches + schedule_.streaming_slots);
-        utility::logger().info("GPU k-means kernel bootstrapped with batch ", (schedule_.batch_rows + 127) / 128,
-            "*128*", batches, ", concurrency: ", concurrency, ", runs: ", (batches + concurrency - 1) / concurrency);
+namespace {
+void require(bool condition, const char* message) {
+    if (!condition) {
+        throw std::runtime_error(message);
     }
-    ~ClusterWork() {
-        try {
-            context_->device_.waitIdle();
-        } catch (...) {
-        }
+}
+void check_range(size_t capacity, size_t offset, size_t size) {
+    require(offset <= capacity && size <= capacity - offset, "GPU buffer range is out of bounds");
+}
+void check_transfer(size_t offset, size_t size) {
+    require(size && offset % 4 == 0 && size % 4 == 0, "GPU transfers require a nonempty, four-byte-aligned range");
+}
+} // namespace
+
+struct Buffer::Impl {
+    detail::DeviceState* state;
+    size_t size;
+    BufferMemory memory;
+    std::unique_ptr<detail::BackendBuffer> resource;
+};
+Buffer::Buffer() = default;
+Buffer::~Buffer() = default;
+Buffer::Buffer(Buffer&&) noexcept = default;
+Buffer& Buffer::operator=(Buffer&&) noexcept = default;
+size_t Buffer::size() const { return impl_ ? impl_->size : 0; }
+std::byte* Buffer::mapped_data() const {
+    require(impl_ && impl_->memory == BufferMemory::Upload, "GPU mapping requires an upload buffer");
+    return impl_->resource->mapped_data();
+}
+void Buffer::flush() const {
+    require(impl_ && impl_->memory == BufferMemory::Upload, "GPU buffer is not host accessible");
+    impl_->resource->flush();
+}
+void Buffer::upload(std::span<const std::byte> data) const {
+    require(impl_ && impl_->memory == BufferMemory::Upload, "GPU upload requires an upload buffer");
+    auto* destination = mapped_data();
+    check_range(size(), 0, data.size());
+    if (!data.empty()) {
+        std::memcpy(destination, data.data(), data.size());
+        flush();
     }
-    std::vector<uint32_t> assign(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& centroids) {
-        if (static_cast<size_t>(centroids.cols()) != columns_) {
-            throw std::runtime_error("GPU centroid column count differs");
-        }
-        if (static_cast<size_t>(centroids.rows()) != centroid_count_) {
-            throw std::runtime_error("GPU centroid count differs");
-        }
-        auto* packed = reinterpret_cast<float*>(centroid_upload_->mapped_data());
-        auto* norms = reinterpret_cast<float*>(norm_upload_->mapped_data());
-        for (size_t row = 0; row < centroid_count_; ++row) {
-            float norm = 0;
-            for (size_t c = 0; c < columns_; ++c) {
-                const auto value = centroids(row, c);
-                packed[row * stride_ + c] = value;
-                norm += float(value) * value;
-            }
-            std::fill(packed + row * stride_ + columns_, packed + (row + 1) * stride_, 0.0f);
-            norms[row] = norm;
-        }
-        centroid_upload_->flush();
-        norm_upload_->flush();
-        vk::SubmitInfo upload;
-        upload.setCommandBuffers(*centroid_command_);
-        context_->queue_.submit(upload, nullptr);
-        std::vector<uint32_t> labels(rows_);
-        std::deque<Slot*> pending;
-        auto retire = [&] {
-            auto* slot = pending.front();
+}
+void Buffer::read_into(std::span<std::byte> output, size_t offset) const {
+    require(impl_ && impl_->memory == BufferMemory::Readback, "GPU readback requires a readback buffer");
+    const auto* source = impl_->resource->mapped_data();
+    check_range(size(), offset, output.size());
+    if (!output.empty()) {
+        impl_->resource->invalidate();
+        std::memcpy(output.data(), source + offset, output.size());
+    }
+}
+struct ComputePipeline::Impl {
+    detail::DeviceState* state;
+    std::vector<BufferAccess> bindings;
+    uint32_t push_constant_bytes;
+    std::unique_ptr<detail::BackendPipeline> resource;
+};
+ComputePipeline::ComputePipeline() = default;
+ComputePipeline::~ComputePipeline() = default;
+ComputePipeline::ComputePipeline(ComputePipeline&&) noexcept = default;
+ComputePipeline& ComputePipeline::operator=(ComputePipeline&&) noexcept = default;
+struct DescriptorTable::Impl {
+    detail::DeviceState* state;
+    std::vector<BufferAccess> bindings;
+    std::unique_ptr<detail::BackendDescriptorTable> resource;
+};
+DescriptorTable::DescriptorTable() = default;
+DescriptorTable::~DescriptorTable() = default;
+DescriptorTable::DescriptorTable(DescriptorTable&&) noexcept = default;
+DescriptorTable& DescriptorTable::operator=(DescriptorTable&&) noexcept = default;
+struct CommandList::Impl {
+    enum class State { Initial,
+        Recording,
+        Executable };
+    detail::DeviceState* device;
+    State state = State::Initial;
+    ComputePipeline::Impl* bound_pipeline = nullptr;
+    bool table_bound = false;
+    bool constants_bound = false;
+    bool pending = false;
+    std::unique_ptr<detail::BackendCommands> commands;
+
+    void recording() const { require(state == State::Recording, "GPU command list is not recording"); }
+};
+namespace detail {
+struct FenceState {
+    uint64_t submitted_value = 0;
+    uint64_t completed_value = 0;
+    DeviceState* device;
+    QueueState* queue = nullptr;
+    std::unique_ptr<BackendFence> fence;
+};
+struct QueueState {
+    struct Submission {
+        uint64_t sequence;
+        uint64_t value;
+        FenceState* fence;
+        CommandList::Impl* commands;
+    };
+    DeviceState* device;
+    uint64_t sequence = 0;
+    std::deque<Submission> pending;
+    std::unique_ptr<BackendQueue> queue;
+
+    void retire(uint64_t completed) {
+        while (!pending.empty() && pending.front().sequence <= completed) {
+            auto& submission = pending.front();
+            submission.fence->completed_value = std::max(submission.fence->completed_value, submission.value);
+            submission.commands->pending = false;
             pending.pop_front();
-            if (context_->device_.waitForFences(*slot->fence, true, UINT64_MAX) != vk::Result::eSuccess) {
-                throw std::runtime_error("GPU clustering submission failed");
-            }
-            slot->readback->read_into(std::as_writable_bytes(std::span(labels).subspan(slot->start, slot->count)));
-        };
-        const size_t batches = (rows_ + schedule_.batch_rows - 1) / schedule_.batch_rows;
-        for (size_t batch = 0; batch < batches; ++batch) {
-            // Two submissions keep transfer/CPU packing ahead without unbounded queueing.
-            if (pending.size() == 2) {
-                retire();
-            }
-            Slot* slot;
-            if (batch < cached_.size()) {
-                slot = cached_[batch].get();
-            } else {
-                slot = streaming_[(batch - cached_.size()) % streaming_.size()].get();
-                if (!pending.empty() && pending.front() == slot) {
-                    retire();
-                }
-                pack_points(*slot->upload, batch * schedule_.batch_rows);
-                record(*slot, batch * schedule_.batch_rows, true);
-            }
-            context_->device_.resetFences(*slot->fence);
-            vk::SubmitInfo submit;
-            submit.setCommandBuffers(*slot->command);
-            context_->queue_.submit(submit, *slot->fence);
-            pending.push_back(slot);
         }
-        while (!pending.empty()) {
-            retire();
-        }
-        return labels;
     }
-
-private:
-    struct Slot {
-        std::unique_ptr<Buffer> points;
-        std::unique_ptr<Buffer> labels;
-        std::unique_ptr<Buffer> upload;
-        std::unique_ptr<Buffer> readback;
-        vk::raii::DescriptorSet descriptors { nullptr };
-        vk::raii::CommandBuffer command { nullptr };
-        vk::raii::Fence fence { nullptr };
-        size_t start = 0;
-        size_t count = 0;
-        bool recorded = false;
-    };
-    size_t memory_budget() {
-        std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> budgets;
-        vmaGetHeapBudgets(context_->allocator_.get(), budgets.data());
-        const auto properties = context_->physical_.getMemoryProperties();
-        uint64_t available = 0;
-        for (uint32_t i = 0; i < properties.memoryHeapCount; ++i) {
-            if (properties.memoryHeaps[i].flags & vk::MemoryHeapFlagBits::eDeviceLocal) {
-                available = std::max(available, budgets[i].budget > budgets[i].usage ? budgets[i].budget - budgets[i].usage : uint64_t(0));
+    uint64_t poll(FenceState* fence) {
+        fence->completed_value = std::max(fence->completed_value, fence->fence->completed_value());
+        uint64_t completed = 0;
+        for (const auto& submission : pending) {
+            if (submission.fence == fence && submission.value <= fence->completed_value) {
+                completed = submission.sequence;
             }
         }
-        // Cache as much of the input as the available budget permits.
-        return size_t(available);
+        retire(completed);
+        return fence->completed_value;
     }
-    void plan(size_t budget) {
-        schedule_ = cluster_schedule(rows_, centroid_count_, stride_,
-            { context_->storage_limit(), context_->limits_.maxComputeWorkGroupCount[0], budget });
-    }
-    std::unique_ptr<Buffer> buffer(size_t bytes, bool host = false) {
-        const auto usage = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst |
-                           (host ? vk::BufferUsageFlags {} : vk::BufferUsageFlagBits::eStorageBuffer);
-        return std::make_unique<Buffer>(context_->allocator_.get(), bytes, usage, host, !host);
-    }
-    vk::raii::CommandBuffer command_buffer() {
-        auto commands = context_->device_.allocateCommandBuffers(vk::CommandBufferAllocateInfo(*context_->command_pool_, vk::CommandBufferLevel::ePrimary, 1));
-        return std::move(commands.front());
-    }
-    void allocate() {
-        centroids_ = buffer(centroid_count_ * stride_ * sizeof(float));
-        norms_ = buffer(centroid_count_ * sizeof(float));
-        centroid_upload_ = buffer(centroids_->size(), true);
-        norm_upload_ = buffer(norms_->size(), true);
-        const auto count = uint32_t(schedule_.cached_batches + schedule_.streaming_slots);
-        const vk::DescriptorPoolSize pool_size(vk::DescriptorType::eStorageBuffer, count * 4);
-        descriptor_pool_ = context_->device_.createDescriptorPool(vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, count, pool_size));
-        auto create_slot = [&](bool streaming) {
-            auto slot = std::make_unique<Slot>();
-            slot->points = buffer(schedule_.batch_rows * stride_ * sizeof(float));
-            slot->labels = buffer(schedule_.batch_rows * sizeof(uint32_t));
-            slot->readback = buffer(slot->labels->size(), true);
-            if (streaming) {
-                slot->upload = buffer(slot->points->size(), true);
-            }
-            auto sets = context_->device_.allocateDescriptorSets(vk::DescriptorSetAllocateInfo(*descriptor_pool_, *kernel_->descriptors));
-            slot->descriptors = std::move(sets.front());
-            const std::array<vk::DescriptorBufferInfo, 4> infos { vk::DescriptorBufferInfo(slot->points->handle(), 0, slot->points->size()),
-                vk::DescriptorBufferInfo(centroids_->handle(), 0, centroids_->size()), vk::DescriptorBufferInfo(norms_->handle(), 0, norms_->size()),
-                vk::DescriptorBufferInfo(slot->labels->handle(), 0, slot->labels->size()) };
-            std::array<vk::WriteDescriptorSet, 4> writes;
-            for (uint32_t i = 0; i < 4; ++i) {
-                writes[i] = vk::WriteDescriptorSet(*slot->descriptors, i, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &infos[i]);
-            }
-            context_->device_.updateDescriptorSets(writes, nullptr);
-            slot->command = command_buffer();
-            slot->fence = context_->device_.createFence({});
-            return slot;
-        };
-        for (size_t i = 0; i < schedule_.cached_batches; ++i) {
-            cached_.push_back(create_slot(false));
-        }
-        for (size_t i = 0; i < schedule_.streaming_slots; ++i) {
-            streaming_.push_back(create_slot(true));
-        }
-        centroid_command_ = command_buffer();
-        if (!cached_.empty()) {
-            initial_upload_ = buffer(schedule_.batch_rows * stride_ * sizeof(float), true);
+    void wait_cpu(FenceState* fence, uint64_t value) {
+        if (value > fence->completed_value) {
+            queue->wait_cpu(*fence->fence, value);
+            poll(fence);
         }
     }
-    void clear() {
-        cached_.clear();
-        streaming_.clear();
-        descriptor_pool_ = nullptr;
-        centroids_.reset();
-        norms_.reset();
-        centroid_upload_.reset();
-        norm_upload_.reset();
-        initial_upload_.reset();
-        centroid_command_ = nullptr;
-    }
-    void pack_points(Buffer& upload, size_t start) {
-        auto* packed = reinterpret_cast<float*>(upload.mapped_data());
-        const auto count = std::min(schedule_.batch_rows, rows_ - start);
-        for (size_t row = 0; row < count; ++row) {
-            for (size_t c = 0; c < columns_; ++c) {
-                packed[row * stride_ + c] = points_(start + row, c);
-            }
-            std::fill(packed + row * stride_ + columns_, packed + (row + 1) * stride_, 0.0f);
+    void wait_cpu() {
+        if (!pending.empty()) {
+            queue->wait_cpu();
+            retire(sequence);
         }
-        upload.flush();
     }
-    void upload_cached_points() {
-        if (cached_.empty()) {
-            return;
-        }
-        auto command = command_buffer();
-        auto fence = context_->device_.createFence({});
-        for (size_t batch = 0; batch < cached_.size(); ++batch) {
-            pack_points(*initial_upload_, batch * schedule_.batch_rows);
-            command.reset();
-            context_->device_.resetFences(*fence);
-            command.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
-            const size_t count = std::min(schedule_.batch_rows, rows_ - batch * schedule_.batch_rows);
-            command.copyBuffer(initial_upload_->handle(), cached_[batch]->points->handle(), vk::BufferCopy(0, 0, count * stride_ * sizeof(float)));
-            vk::MemoryBarrier ready(vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead);
-            command.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eComputeShader, {}, ready, nullptr, nullptr);
-            command.end();
-            vk::SubmitInfo submit;
-            submit.setCommandBuffers(*command);
-            context_->queue_.submit(submit, *fence);
-            if (context_->device_.waitForFences(*fence, true, UINT64_MAX) != vk::Result::eSuccess) {
-                throw std::runtime_error("GPU clustering point upload failed");
-            }
-        }
-        initial_upload_.reset();
-    }
-    void record_centroids() {
-        centroid_command_.begin({});
-        centroid_command_.copyBuffer(centroid_upload_->handle(), centroids_->handle(), vk::BufferCopy(0, 0, centroids_->size()));
-        centroid_command_.copyBuffer(norm_upload_->handle(), norms_->handle(), vk::BufferCopy(0, 0, norms_->size()));
-        vk::MemoryBarrier ready(vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead);
-        centroid_command_.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eComputeShader, {}, ready, nullptr, nullptr);
-        centroid_command_.end();
-    }
-    void record(Slot& slot, size_t start, bool upload) {
-        slot.start = start;
-        slot.count = std::min(schedule_.batch_rows, rows_ - start);
-        if (slot.recorded) {
-            slot.command.reset();
-        }
-        slot.command.begin({});
-        if (upload) {
-            slot.command.copyBuffer(slot.upload->handle(), slot.points->handle(), vk::BufferCopy(0, 0, slot.count * stride_ * sizeof(float)));
-            vk::MemoryBarrier ready(vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead);
-            slot.command.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eComputeShader, {}, ready, nullptr, nullptr);
-        }
-        slot.command.bindPipeline(vk::PipelineBindPoint::eCompute, *kernel_->pipeline);
-        slot.command.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *kernel_->layout, 0, *slot.descriptors, nullptr);
-        const std::array<uint32_t, 2> parameters { uint32_t(slot.count), uint32_t(centroid_count_) };
-        slot.command.pushConstants<uint32_t>(*kernel_->layout, vk::ShaderStageFlagBits::eCompute, 0, parameters);
-        slot.command.dispatch(uint32_t((slot.count + 127) / 128), 1, 1);
-        vk::MemoryBarrier readback(vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eTransferRead);
-        slot.command.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eTransfer, {}, readback, nullptr, nullptr);
-        slot.command.copyBuffer(slot.labels->handle(), slot.readback->handle(), vk::BufferCopy(0, 0, slot.count * sizeof(uint32_t)));
-        vk::MemoryBarrier host(vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead);
-        slot.command.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eHost, {}, host, nullptr, nullptr);
-        slot.command.end();
-        slot.recorded = true;
-    }
-    std::shared_ptr<ComputeContext> context_;
-    spatial::FeatureView points_;
-    size_t columns_;
-    size_t rows_;
-    size_t centroid_count_;
-    size_t stride_;
-    ClusterSchedule schedule_ {};
-    Kernel* kernel_ = nullptr;
-    vk::raii::DescriptorPool descriptor_pool_ { nullptr };
-    std::unique_ptr<Buffer> centroids_, norms_, centroid_upload_, norm_upload_, initial_upload_;
-    std::vector<std::unique_ptr<Slot>> cached_, streaming_;
-    vk::raii::CommandBuffer centroid_command_ { nullptr };
 };
-} // namespace vulkan
-struct ClusterSession::Impl {
-    std::unique_ptr<vulkan::ClusterWork> work;
-};
-ClusterSession::ClusterSession(spatial::FeatureView points, size_t centroid_count) : impl_(std::make_unique<Impl>()) {
-    impl_->work = std::make_unique<vulkan::ClusterWork>(vulkan::context(), points, centroid_count);
+} // namespace detail
+CommandList::CommandList() = default;
+CommandList::~CommandList() = default;
+CommandList::CommandList(CommandList&&) noexcept = default;
+CommandList& CommandList::operator=(CommandList&&) noexcept = default;
+void CommandList::reset() {
+    require(bool(impl_), "GPU command list is empty");
+    require(!impl_->pending, "GPU command list is pending; call wait_cpu on its queue before resetting");
+    impl_->commands->reset();
+    impl_->bound_pipeline = nullptr;
+    impl_->table_bound = false;
+    impl_->constants_bound = false;
+    impl_->state = Impl::State::Initial;
 }
-ClusterSession::~ClusterSession() = default;
-std::vector<uint32_t> ClusterSession::assign(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& centroids) { return impl_->work->assign(centroids); }
-struct VoxelSession::Impl {
-    vulkan::VoxelWork work { vulkan::context() };
-};
-VoxelSession::VoxelSession() : impl_(std::make_unique<Impl>()) {}
-VoxelSession::~VoxelSession() = default;
-std::vector<uint32_t> VoxelSession::voxelize(std::span<const Gaussian> gaussians, std::span<const uint32_t> indices, std::span<const VoxelBatch> batches,
-    float resolution, float cutoff, uint32_t max_blocks) {
-    if (batches.empty()) {
-        return {};
-    }
-    if (!max_blocks) {
-        throw std::runtime_error("Voxel dispatch must contain at least one block");
-    }
-    struct Parameters {
-        float resolution;
-        float cutoff;
-        uint32_t max_blocks;
-        uint32_t accumulation;
-        uint32_t first_block;
-    };
-    static_assert(sizeof(Parameters) == 20);
-    auto& work = impl_->work;
-    const auto& context = work.context();
-    const size_t storage = context->storage_limit();
-    const size_t words = batches.size() * max_blocks * 2;
-    std::vector<uint32_t> output(words);
-    const auto execute = [&](std::span<const Gaussian> points, std::span<const uint32_t> local_indices, std::span<const VoxelBatch> local_batches,
-                             Parameters parameters, std::span<const std::byte> previous, std::span<uint32_t> result, bool reuse_inputs = false) {
-        const uint64_t end_block = uint64_t(parameters.first_block) + parameters.max_blocks;
-        const bool padded = std::ranges::any_of(local_batches, [&](const auto& batch) {
-            return uint64_t(batch.blocks_x) * batch.blocks_y * batch.blocks_z < end_block;
-        });
-        work.execute("voxelize", vulkan::shaders::voxelize,
-            { { std::as_bytes(points), 0, {}, reuse_inputs }, { std::as_bytes(local_indices), 0, {}, reuse_inputs }, { std::as_bytes(local_batches), 0 }, { previous, result.size_bytes(), std::as_writable_bytes(result), false, padded } },
-            std::as_bytes(std::span(&parameters, 1)), { parameters.max_blocks, 1, uint32_t(local_batches.size()) }, parameters.accumulation || parameters.first_block ? 1 : 0);
-    };
-    if (gaussians.size_bytes() <= storage && indices.size_bytes() <= storage && batches.size_bytes() <= storage &&
-        words <= storage / 4 && max_blocks <= context->limits().maxComputeWorkGroupCount[0] && batches.size() <= context->limits().maxComputeWorkGroupCount[2]) {
-        execute(gaussians, indices, batches, { resolution, cutoff, max_blocks, 0, 0 }, {}, output);
-        return output;
-    }
-
-    const size_t point_limit = storage / sizeof(Gaussian);
-    const size_t batch_limit = std::min({ storage / sizeof(VoxelBatch), storage / (size_t(max_blocks) * 8), size_t(context->limits().maxComputeWorkGroupCount[2]) });
-    const size_t block_limit = std::min<size_t>(storage / (64 * 4), context->limits().maxComputeWorkGroupCount[0]);
-    if (!point_limit || !block_limit) {
-        throw std::runtime_error("Vulkan limits cannot hold one voxel workgroup");
-    }
-    // When only the dispatch/output needs splitting, keep the original input
-    // buffers resident instead of duplicating candidates into packed arrays.
-    if (gaussians.size_bytes() <= storage && indices.size_bytes() <= storage && batch_limit && max_blocks <= context->limits().maxComputeWorkGroupCount[0]) {
-        for (size_t begin = 0; begin < batches.size(); begin += batch_limit) {
-            const auto local_batches = batches.subspan(begin, std::min(batch_limit, batches.size() - begin));
-            const size_t local_words = local_batches.size() * max_blocks * 2;
-            execute(gaussians, indices, local_batches, { resolution, cutoff, max_blocks, 0, 0 }, {}, std::span(output).subspan(begin * max_blocks * 2, local_words), begin != 0);
-        }
-        return output;
-    }
-    std::vector<Gaussian> packed;
-    std::vector<uint32_t> local_indices;
-    std::vector<VoxelBatch> local_batches;
-    const auto pack = [&](const VoxelBatch& batch, size_t begin, size_t count) {
-        if (uint64_t(batch.index_offset) + batch.index_count > indices.size()) {
-            throw std::runtime_error("Voxel batch references unavailable candidate indices");
-        }
-        for (size_t i = 0; i < count; ++i) {
-            const auto index = indices[size_t(batch.index_offset) + begin + i];
-            if (index >= gaussians.size()) {
-                throw std::runtime_error("Voxel candidate references an unavailable Gaussian");
-            }
-            local_indices.push_back(uint32_t(packed.size()));
-            packed.push_back(gaussians[index]);
-        }
-    };
-    for (size_t begin = 0; begin < batches.size();) {
-        packed.clear();
-        local_indices.clear();
-        local_batches.clear();
-        // Compact only the candidates referenced by this dispatch. Unrelated
-        // Gaussians need not fit in a device buffer, even for a large scene.
-        if (max_blocks <= context->limits().maxComputeWorkGroupCount[0]) {
-            for (size_t i = begin; i < batches.size() && local_batches.size() < batch_limit; ++i) {
-                const auto& batch = batches[i];
-                if (batch.index_count > point_limit - packed.size()) {
-                    break;
-                }
-                auto local = batch;
-                local.index_offset = uint32_t(packed.size());
-                pack(batch, 0, batch.index_count);
-                local_batches.push_back(local);
-            }
-        }
-        if (!local_batches.empty()) {
-            const size_t local_words = local_batches.size() * max_blocks * 2;
-            execute(packed, local_indices, local_batches, { resolution, cutoff, max_blocks, 0, 0 }, {}, std::span(output).subspan(begin * max_blocks * 2, local_words));
-            begin += local_batches.size();
-            continue;
-        }
-
-        // A single dense batch can also exceed the Gaussian buffer limit.
-        // Carry float densities between chunks and threshold only the final
-        // chunk, preserving candidate order and the shader's saturation rule.
-        const auto& batch = batches[begin];
-        for (size_t block = 0; block < max_blocks; block += block_limit) {
-            const auto block_count = uint32_t(std::min<size_t>(block_limit, max_blocks - block));
-            std::vector<uint32_t> state;
-            for (size_t point = 0; point < std::max<size_t>(batch.index_count, 1); point += point_limit) {
-                const size_t count = std::min<size_t>(point_limit, batch.index_count - point);
-                const bool last = point + count == batch.index_count;
-                const uint32_t accumulation = (point ? 1u : 0u) | (last ? 0u : 2u);
-                packed.clear();
-                local_indices.clear();
-                pack(batch, point, count);
-                auto local = batch;
-                local.index_offset = 0;
-                local.index_count = uint32_t(count);
-                const size_t stride = accumulation ? 64 : 2;
-                state.resize(size_t(block_count) * stride);
-                execute(packed, local_indices, std::span(&local, 1),
-                    { resolution, cutoff, block_count, accumulation, uint32_t(block) }, point ? std::as_bytes(std::span(state)) : std::span<const std::byte> {}, state);
-                if (last) {
-                    for (size_t i = 0; i < block_count; ++i) {
-                        std::copy_n(state.data() + i * stride, 2, output.data() + (begin * max_blocks + block + i) * 2);
-                    }
-                }
-            }
-        }
-        ++begin;
-    }
-    return output;
+void CommandList::begin() {
+    require(bool(impl_), "GPU command list is empty");
+    require(!impl_->pending, "GPU command list is pending; call wait_cpu on its queue before recording");
+    require(impl_->state == Impl::State::Initial, "GPU command list must be explicitly reset before recording again");
+    impl_->commands->begin();
+    impl_->state = Impl::State::Recording;
 }
-CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std::array<float, 3> origin, float batch_size, std::array<uint32_t, 3> dimensions) {
-    const uint64_t plane = uint64_t(dimensions[0]) * dimensions[1];
-    if ((dimensions[2] && plane > UINT32_MAX / dimensions[2]) || gaussians.size() > UINT32_MAX) {
-        throw std::runtime_error("Voxel candidate grid exceeds 32-bit indexing");
-    }
-    const size_t bin_count = size_t(plane * dimensions[2]);
-    CandidateBins output;
-    output.counts.resize(size_t(bin_count));
-    output.offsets.resize(size_t(bin_count));
-    if (gaussians.empty() || !bin_count) {
-        return output;
-    }
-    struct Parameters {
-        std::array<float, 3> origin;
-        float size;
-        std::array<uint32_t, 3> dimensions;
-        uint32_t count;
-        uint32_t groups_x;
-        uint32_t first_bin;
-        uint32_t bin_count;
-        uint32_t first_point;
-    };
-    auto& work = impl_->work;
-    const auto& context = work.context();
-    const size_t point_limit = std::min(context->storage_limit() / sizeof(Gaussian), context->linear_item_limit());
-    const size_t index_limit = context->storage_limit() / sizeof(uint32_t);
-    if (!point_limit || !index_limit) {
-        throw std::runtime_error("Vulkan limits cannot hold one voxel candidate");
-    }
-    bool split_full_input = false;
-    if (gaussians.size() <= point_limit && bin_count <= index_limit) {
-        // Preserve the one-dispatch path on devices with a large buffer range.
-        // Count and scatter share the same uploaded Gaussian buffer.
-        const auto groups = context->linear_groups(gaussians.size());
-        const Parameters parameters { origin, batch_size, dimensions, uint32_t(gaussians.size()), groups[0], 0, uint32_t(bin_count), 0 };
-        const auto push = std::as_bytes(std::span(&parameters, 1));
-        work.execute("candidate_count", vulkan::shaders::candidate_count,
-            { { std::as_bytes(gaussians), 0 }, { {}, bin_count * 4, std::as_writable_bytes(std::span(output.counts)) } }, push, groups);
-        uint64_t total = 0;
-        for (size_t i = 0; i < bin_count; ++i) {
-            output.offsets[i] = uint32_t(total);
-            total += output.counts[i];
-            if (total > UINT32_MAX) {
-                throw std::runtime_error("Voxel candidates exceed 32-bit indexing");
-            }
-        }
-        if (!total) {
-            return output;
-        }
-        if (total <= index_limit) {
-            output.indices.resize(size_t(total));
-            work.execute("candidate_scatter", vulkan::shaders::candidate_scatter,
-                { { std::as_bytes(gaussians), 0, {}, true }, { std::as_bytes(std::span(output.offsets)), 0 }, { {}, bin_count * 4 }, { {}, size_t(total) * 4, std::as_writable_bytes(std::span(output.indices)), false, false } }, push, groups);
-            return output;
-        }
-        split_full_input = true;
-        std::fill(output.counts.begin(), output.counts.end(), 0);
-    }
-    struct Range {
-        uint32_t bin;
-        uint32_t offset;
-        uint32_t count;
-    };
-    struct Part {
-        std::vector<Range> ranges;
-        std::vector<uint32_t> indices;
-    };
-    std::vector<Part> parts;
-    uint64_t total_indices = 0;
-    const auto process = [&](auto&& self, size_t first_point, size_t point_count, size_t first_bin, size_t bins) -> void {
-        const auto points = gaussians.subspan(first_point, point_count);
-        const auto groups = context->linear_groups(point_count);
-        const Parameters parameters { origin, batch_size, dimensions, uint32_t(point_count), groups[0], uint32_t(first_bin), uint32_t(bins), uint32_t(first_point) };
-        static_assert(sizeof(Parameters) == 48);
-        const uint32_t windowed = first_bin || bins != bin_count ? 1 : 0;
-        const auto push = std::as_bytes(std::span(&parameters, 1));
-        std::vector<uint32_t> counts(bins);
-        work.execute("candidate_count", vulkan::shaders::candidate_count,
-            { { std::as_bytes(points), 0 }, { {}, bins * 4, std::as_writable_bytes(std::span(counts)) } }, push, groups, windowed);
-        const uint64_t total = std::accumulate(counts.begin(), counts.end(), uint64_t(0));
-        if (!total) {
-            return;
-        }
-        if (total > index_limit) {
-            // Overlap can make scatter output larger than either input. Split
-            // again using the measured count, including the one-point case.
-            std::vector<uint32_t>().swap(counts);
-            if (point_count > 1) {
-                const size_t half = point_count / 2;
-                self(self, first_point, half, first_bin, bins);
-                self(self, first_point + half, point_count - half, first_bin, bins);
-            } else {
-                const size_t half = bins / 2;
-                self(self, first_point, point_count, first_bin, half);
-                self(self, first_point, point_count, first_bin + half, bins - half);
-            }
-            return;
-        }
-        total_indices += total;
-        if (total_indices > UINT32_MAX) {
-            throw std::runtime_error("Voxel candidates exceed 32-bit indexing");
-        }
-        Part part;
-        uint32_t offset = 0;
-        for (size_t i = 0; i < bins; ++i) {
-            const auto count = counts[i];
-            counts[i] = offset;
-            if (count) {
-                part.ranges.push_back({ uint32_t(first_bin + i), offset, count });
-                output.counts[first_bin + i] += count;
-                offset += count;
-            }
-        }
-        part.indices.resize(size_t(total));
-        work.execute("candidate_scatter", vulkan::shaders::candidate_scatter,
-            { { std::as_bytes(points), 0, {}, true }, { std::as_bytes(std::span(counts)), 0 }, { {}, bins * 4 }, { {}, size_t(total) * 4, std::as_writable_bytes(std::span(part.indices)), false, false } }, push, groups, windowed | (first_point ? 2 : 0));
-        parts.push_back(std::move(part));
-    };
-    if (split_full_input) {
-        const size_t half = gaussians.size() / 2;
-        process(process, 0, half, 0, bin_count);
-        process(process, half, gaussians.size() - half, 0, bin_count);
-    } else {
-        for (size_t bin = 0; bin < bin_count; bin += index_limit) {
-            for (size_t point = 0; point < gaussians.size(); point += point_limit) {
-                process(process, point, std::min(point_limit, gaussians.size() - point), bin, std::min(index_limit, bin_count - bin));
-            }
-        }
-    }
-    uint32_t offset = 0;
-    for (size_t i = 0; i < output.counts.size(); ++i) {
-        output.offsets[i] = offset;
-        offset += output.counts[i];
-    }
-    if (parts.size() == 1) {
-        output.indices = std::move(parts.front().indices);
-    } else {
-        output.indices.resize(size_t(total_indices));
-        for (auto& part : parts) {
-            for (const auto& range : part.ranges) {
-                std::copy_n(part.indices.data() + range.offset, range.count, output.indices.data() + output.offsets[range.bin]);
-                output.offsets[range.bin] += range.count;
-            }
-            std::vector<uint32_t>().swap(part.indices);
-        }
-        for (size_t i = 0; i < bin_count; ++i) {
-            output.offsets[i] -= output.counts[i];
-        }
-    }
-    return output;
+void CommandList::copy(const Buffer& source, const Buffer& destination, size_t size, size_t source_offset, size_t destination_offset) {
+    require(bool(impl_), "GPU command list is empty");
+    impl_->recording();
+    require(source.impl_ && destination.impl_, "GPU copy requires valid buffers");
+    require(source.impl_->state == impl_->device && destination.impl_->state == impl_->device, "GPU copy mixes devices");
+    require(source.impl_->memory != BufferMemory::Readback && destination.impl_->memory != BufferMemory::Upload, "GPU copy uses an incompatible transfer buffer");
+    check_range(source.size(), source_offset, size);
+    check_range(destination.size(), destination_offset, size);
+    check_transfer(source_offset, size);
+    check_transfer(destination_offset, size);
+    require(source.impl_ != destination.impl_ || source_offset + size <= destination_offset || destination_offset + size <= source_offset,
+        "GPU copy ranges overlap");
+    impl_->commands->copy({ source.impl_->resource.get(), source_offset, size }, { destination.impl_->resource.get(), destination_offset, size });
 }
-std::vector<uint32_t> VoxelSession::dilate_blocks(std::span<const uint32_t> blocks, std::array<uint32_t, 3> dimensions, std::array<uint32_t, 3> radii) {
-    if (std::ranges::any_of(dimensions, [](uint32_t size) { return !size || size % 4; }) || blocks.size() % 3) {
-        throw std::runtime_error("Invalid GPU dilation grid or packed blocks");
+void CommandList::fill(const Buffer& buffer, uint32_t value, size_t size, size_t offset) {
+    require(bool(impl_), "GPU command list is empty");
+    impl_->recording();
+    require(buffer.impl_ && buffer.impl_->state == impl_->device, "GPU fill requires a buffer from this device");
+    require(buffer.impl_->memory == BufferMemory::Device, "GPU fill requires device storage");
+    check_range(buffer.size(), offset, size);
+    if (!size) {
+        size = buffer.size() - offset;
     }
-    const uint64_t plane = uint64_t(dimensions[0]) * dimensions[1];
-    if (plane > UINT32_MAX / dimensions[2]) {
-        throw std::runtime_error("GPU dilation grid exceeds 32-bit indexing");
-    }
-    const uint64_t cells = plane * dimensions[2], block_count = cells / 64;
-    const size_t dense_bytes = size_t((cells + 31) / 32) * 4;
-    auto& work = impl_->work;
-    const auto& context = work.context();
+    check_transfer(offset, size);
+    impl_->commands->fill({ buffer.impl_->resource.get(), offset, size }, value);
+}
+void CommandList::bind_pipeline(const ComputePipeline& pipeline) {
+    require(bool(impl_), "GPU command list is empty");
+    impl_->recording();
+    require(pipeline.impl_ && pipeline.impl_->state == impl_->device, "GPU binding requires a pipeline from this device");
+    impl_->commands->bind_pipeline(*pipeline.impl_->resource);
+    impl_->bound_pipeline = pipeline.impl_.get();
+    impl_->table_bound = pipeline.impl_->bindings.empty();
+    impl_->constants_bound = pipeline.impl_->push_constant_bytes == 0;
+}
+void CommandList::bind_descriptor_table(const DescriptorTable& table) {
+    require(bool(impl_), "GPU command list is empty");
+    impl_->recording();
+    const auto* pipeline = impl_->bound_pipeline;
+    require(bool(pipeline), "GPU descriptor table binding requires a bound pipeline");
+    require(table.impl_ && table.impl_->state == impl_->device, "GPU descriptor table binding requires a table from this device");
+    require(table.impl_->bindings == pipeline->bindings, "GPU descriptor table layout differs from the pipeline");
+    impl_->commands->bind_descriptor_table(*table.impl_->resource);
+    impl_->table_bound = true;
+}
+void CommandList::push_constants(std::span<const std::byte> push) {
+    require(bool(impl_), "GPU command list is empty");
+    impl_->recording();
+    require(bool(impl_->bound_pipeline), "GPU push constants require a bound pipeline");
+    require(push.size() == impl_->bound_pipeline->push_constant_bytes, "GPU push constant size differs from the pipeline");
+    impl_->commands->push_constants(push);
+    impl_->constants_bound = true;
+}
+void CommandList::dispatch(std::array<uint32_t, 3> groups) {
+    require(bool(impl_), "GPU command list is empty");
+    impl_->recording();
+    require(impl_->bound_pipeline && impl_->table_bound && impl_->constants_bound, "GPU dispatch requires a pipeline, descriptor table and push constants");
     for (size_t axis = 0; axis < 3; ++axis) {
-        radii[axis] = std::min(radii[axis], dimensions[axis] - 1);
+        require(groups[axis] <= impl_->device->limits.workgroup_count[axis], "GPU dispatch exceeds device workgroup limits");
     }
-    const auto execute = [&](std::span<const uint32_t> packed, std::array<uint32_t, 3> size) {
-        const size_t count = size_t(size[0]) * size[1] * size[2] / 64;
-        const size_t bytes = count * 8;
-        const auto expand_groups = context->linear_groups(packed.size() / 3);
-        const auto compact_groups = context->linear_groups(count);
-        const auto dilate_groups = context->linear_groups(bytes / 4);
-        std::array<uint32_t, 5> expand { size[0], size[1], size[2], uint32_t(packed.size() / 3), expand_groups[0] };
-        std::array<uint32_t, 5> compact { size[0], size[1], size[2], uint32_t(count), compact_groups[0] };
-        std::array<std::array<uint32_t, 7>, 3> dilation;
-        std::vector<vulkan::ComputeContext::Stage> stages;
-        stages.push_back({ "expand", vulkan::shaders::expand, { 0, 1 }, std::as_bytes(std::span(expand)), expand_groups });
-        uint32_t current = 1, next = 2;
-        for (size_t axis = 0; axis < 3; ++axis) {
-            if (radii[axis]) {
-                dilation[axis] = { size[0], size[1], size[2], 0, 0, 0, dilate_groups[0] };
-                dilation[axis][3 + axis] = std::min(radii[axis], size[axis] - 1);
-                stages.push_back({ "dilate", vulkan::shaders::dilate, { current, next }, std::as_bytes(std::span(dilation[axis])), dilate_groups });
-                std::swap(current, next);
-            }
-        }
-        stages.push_back({ "compact", vulkan::shaders::compact, { current, 3 }, std::as_bytes(std::span(compact)), compact_groups });
-        std::vector<uint32_t> output(count * 2);
-        work.execute_chain({ { std::as_bytes(packed), 0 }, { {}, bytes }, { {}, bytes, {}, false, false }, { {}, count * 8, std::as_writable_bytes(std::span(output)), false, false } }, stages);
-        return output;
-    };
-    if (blocks.size_bytes() <= context->storage_limit() && dense_bytes <= context->storage_limit() &&
-        blocks.size() / 3 <= context->linear_item_limit() && dense_bytes / 4 <= context->linear_item_limit()) {
-        return execute(blocks, dimensions);
+    if (std::ranges::find(groups, 0) == groups.end()) {
+        impl_->commands->dispatch(groups);
     }
-
-    std::array<uint32_t, 3> grid { dimensions[0] / 4, dimensions[1] / 4, dimensions[2] / 4 };
-    std::array<uint32_t, 3> minimum = grid, maximum {};
-    std::vector<uint32_t> source(size_t(block_count) * 2);
-    std::vector<uint32_t> output(source.size());
-    for (size_t i = 0; i < blocks.size(); i += 3) {
-        const auto index = blocks[i];
-        if (index >= block_count) {
-            throw std::runtime_error("GPU dilation references an unavailable block");
-        }
-        if (!(blocks[i + 1] | blocks[i + 2])) {
-            continue;
-        }
-        source[size_t(index) * 2] |= blocks[i + 1];
-        source[size_t(index) * 2 + 1] |= blocks[i + 2];
-        const std::array<uint32_t, 3> point { index % grid[0], index / grid[0] % grid[1], index / (grid[0] * grid[1]) };
-        for (size_t axis = 0; axis < 3; ++axis) {
-            minimum[axis] = std::min(minimum[axis], point[axis]);
-            maximum[axis] = std::max(maximum[axis], point[axis] + 1);
-        }
+}
+void CommandList::end() {
+    require(bool(impl_), "GPU command list is empty");
+    impl_->recording();
+    impl_->commands->end();
+    impl_->state = Impl::State::Executable;
+}
+Fence::Fence() = default;
+Fence::~Fence() = default;
+Fence::Fence(Fence&&) noexcept = default;
+Fence& Fence::operator=(Fence&&) noexcept = default;
+uint64_t Fence::completed_value() const {
+    require(bool(state_), "GPU fence is empty");
+    if (state_->queue) {
+        return state_->queue->poll(state_.get());
     }
-    if (!maximum[0]) {
-        return output;
+    return state_->completed_value;
+}
+Queue::Queue() = default;
+Queue::~Queue() = default;
+uint64_t Queue::submit(CommandList& commands, Fence& fence) const {
+    require(bool(state_), "GPU queue is empty");
+    require(commands.impl_ && commands.impl_->state == CommandList::Impl::State::Executable, "GPU command list must be ended before submission");
+    require(commands.impl_->device == state_->device && fence.state_ && fence.state_->device == state_->device,
+        "GPU queue submission requires commands and a fence from this device");
+    require(!commands.impl_->pending, "GPU command list is already pending");
+    require(fence.state_->submitted_value != UINT64_MAX, "GPU fence completion values exhausted");
+    require(!fence.state_->queue || fence.state_->queue == state_.get(), "GPU fence must be signaled by a single queue");
+    require(state_->sequence != UINT64_MAX, "GPU queue submission sequence exhausted");
+    const uint64_t value = fence.state_->submitted_value + 1;
+    state_->pending.push_back({ state_->sequence + 1, value, fence.state_.get(), commands.impl_.get() });
+    try {
+        state_->queue->submit(*commands.impl_->commands, *fence.state_->fence, value);
+    } catch (...) {
+        state_->pending.pop_back();
+        throw;
     }
-    std::array<uint32_t, 3> halo, tile;
-    for (size_t axis = 0; axis < 3; ++axis) {
-        halo[axis] = (radii[axis] + 3) / 4;
-        minimum[axis] -= std::min(minimum[axis], halo[axis]);
-        maximum[axis] = std::min(grid[axis], maximum[axis] + halo[axis]);
-        tile[axis] = maximum[axis] - minimum[axis];
+    ++state_->sequence;
+    fence.state_->submitted_value = value;
+    fence.state_->queue = state_.get();
+    commands.impl_->pending = true;
+    return value;
+}
+void Queue::wait_cpu(const Fence& fence, uint64_t value) const {
+    require(state_ && fence.state_ && fence.state_->device == state_->device, "CPU wait requires a fence from this device");
+    require(value <= fence.state_->submitted_value, "CPU wait value is not covered by the fence's initial value or a submission");
+    if (value > fence.state_->completed_value) {
+        require(fence.state_->queue == state_.get(), "CPU wait requires a fence submitted to this queue");
+        state_->wait_cpu(fence.state_.get(), value);
     }
-    // Reserve enough space for even a fully occupied tile's packed input.
-    // Halos provide all neighbors for the three separable dilation passes.
-    const size_t tile_limit = std::min(context->storage_limit() / 12, context->linear_item_limit() / 2);
-    const auto padded_count = [&] {
-        uint64_t count = 1;
-        for (size_t axis = 0; axis < 3; ++axis) {
-            count *= std::min(grid[axis], tile[axis] + 2 * halo[axis]);
-        }
-        return count;
-    };
-    while (padded_count() > tile_limit) {
-        const auto largest = std::max_element(tile.begin(), tile.end());
-        if (*largest <= 1) {
-            throw std::runtime_error("Vulkan storage limit cannot hold the dilation neighborhood");
-        }
-        *largest = (*largest + 1) / 2;
+}
+void Queue::wait_cpu() const {
+    require(bool(state_), "GPU queue is empty");
+    state_->wait_cpu();
+}
+ComputeDevice::ComputeDevice() : state_(&detail::context()) {}
+detail::DeviceState& ComputeDevice::state() const { return *state_; }
+const ComputeLimits& ComputeDevice::limits() const { return state().limits; }
+size_t ComputeDevice::available_memory() const { return state().backend->available_memory(); }
+size_t ComputeDevice::allocation_bytes() const { return state().backend->allocation_bytes(); }
+size_t ComputeDevice::linear_item_limit(uint32_t group_size) const {
+    require(group_size && group_size <= limits().workgroup_size[0] && group_size <= limits().workgroup_invocations,
+        "GPU linear workgroup size exceeds device limits");
+    const uint64_t x = std::min<uint64_t>(limits().workgroup_count[0], UINT32_MAX / group_size);
+    const uint64_t y = std::min<uint64_t>(limits().workgroup_count[1], UINT32_MAX / (x * group_size));
+    return size_t(x * y * group_size);
+}
+std::array<uint32_t, 3> ComputeDevice::linear_groups(size_t count, uint32_t group_size) const {
+    require(count <= linear_item_limit(group_size), "GPU linear dispatch exceeds device limits");
+    if (!count) {
+        return { 0, 1, 1 };
     }
-    std::vector<uint32_t> packed;
-    for (uint32_t z = minimum[2]; z < maximum[2]; z += tile[2]) {
-        for (uint32_t y = minimum[1]; y < maximum[1]; y += tile[1]) {
-            for (uint32_t x = minimum[0]; x < maximum[0]; x += tile[0]) {
-                const std::array<uint32_t, 3> begin { x, y, z };
-                std::array<uint32_t, 3> end, low, high, size;
-                for (size_t axis = 0; axis < 3; ++axis) {
-                    end[axis] = std::min(maximum[axis], begin[axis] + tile[axis]);
-                    low[axis] = begin[axis] - std::min(begin[axis], halo[axis]);
-                    high[axis] = std::min(grid[axis], end[axis] + halo[axis]);
-                    size[axis] = high[axis] - low[axis];
-                }
-                packed.clear();
-                for (uint32_t iz = low[2]; iz < high[2]; ++iz) {
-                    for (uint32_t iy = low[1]; iy < high[1]; ++iy) {
-                        for (uint32_t ix = low[0]; ix < high[0]; ++ix) {
-                            const size_t index = size_t(ix) + size_t(iy) * grid[0] + size_t(iz) * grid[0] * grid[1];
-                            if (source[index * 2] | source[index * 2 + 1]) {
-                                const uint32_t local = ix - low[0] + (iy - low[1]) * size[0] + (iz - low[2]) * size[0] * size[1];
-                                packed.insert(packed.end(), { local, source[index * 2], source[index * 2 + 1] });
-                            }
-                        }
-                    }
-                }
-                if (packed.empty()) {
-                    continue;
-                }
-                const auto masks = execute(packed, { size[0] * 4, size[1] * 4, size[2] * 4 });
-                for (uint32_t iz = begin[2]; iz < end[2]; ++iz) {
-                    for (uint32_t iy = begin[1]; iy < end[1]; ++iy) {
-                        const size_t global = size_t(begin[0]) + size_t(iy) * grid[0] + size_t(iz) * grid[0] * grid[1];
-                        const size_t local = begin[0] - low[0] + size_t(iy - low[1]) * size[0] + size_t(iz - low[2]) * size[0] * size[1];
-                        std::copy_n(masks.data() + local * 2, size_t(end[0] - begin[0]) * 2, output.data() + global * 2);
-                    }
-                }
-            }
-        }
+    const size_t groups = 1 + (count - 1) / group_size;
+    const size_t x = std::min<size_t>(groups, limits().workgroup_count[0]);
+    return { uint32_t(x), uint32_t(1 + (groups - 1) / x), 1 };
+}
+Buffer ComputeDevice::create_buffer(size_t size, BufferMemory memory, bool within_budget) const {
+    require(size && (memory != BufferMemory::Device || size <= limits().storage_buffer_bytes), "GPU buffer size exceeds device limits or is zero");
+    require(memory == BufferMemory::Upload || memory == BufferMemory::Readback || memory == BufferMemory::Device, "Invalid GPU buffer memory type");
+    Buffer buffer;
+    buffer.impl_ = std::make_unique<Buffer::Impl>(&state(), size, memory, state().backend->create_buffer(size, memory, within_budget));
+    return buffer;
+}
+ComputePipeline ComputeDevice::create_pipeline(const ComputeShader& shader) const {
+    require(shader.bindings.size() <= limits().storage_buffer_bindings, "GPU pipeline exceeds device binding limits");
+    for (const auto access : shader.bindings) {
+        require(access == BufferAccess::Read || access == BufferAccess::ReadWrite, "Invalid GPU buffer access type");
     }
-    return output;
+    require(shader.push_constant_bytes <= limits().push_constant_bytes && shader.push_constant_bytes % 4 == 0,
+        "GPU pipeline push constants exceed device size or alignment limits");
+    require(!shader.entry_point.empty() && shader.entry_point.find('\0') == std::string::npos, "Invalid GPU shader entry point");
+    const auto code = shader.code.bytes;
+    require(!code.empty(), "Shader asset does not contain a binary for the selected GPU backend");
+    std::vector<uint32_t> constant_ids;
+    constant_ids.reserve(shader.constants.size());
+    for (const auto& constant : shader.constants) {
+        constant_ids.push_back(constant.id);
+    }
+    std::ranges::sort(constant_ids);
+    for (size_t i = 1; i < constant_ids.size(); ++i) {
+        require(constant_ids[i - 1] != constant_ids[i], "GPU specialization constant IDs must be unique");
+    }
+    ComputePipeline pipeline;
+    pipeline.impl_ = std::make_unique<ComputePipeline::Impl>(&state(), shader.bindings, shader.push_constant_bytes, state().backend->create_pipeline(shader));
+    return pipeline;
+}
+DescriptorTable ComputeDevice::create_descriptor_table(const ComputePipeline& pipeline, std::span<const BufferRange> buffers) const {
+    require(pipeline.impl_ && pipeline.impl_->state == &state(), "GPU descriptor table requires a pipeline from this device");
+    require(buffers.size() == pipeline.impl_->bindings.size(), "GPU descriptor table binding count differs from the pipeline");
+    std::vector<detail::BackendRange> ranges;
+    ranges.reserve(buffers.size());
+    for (const auto& binding : buffers) {
+        require(binding.buffer && binding.buffer->impl_ && binding.buffer->impl_->state == &state(), "GPU descriptor table mixes devices or contains an empty buffer");
+        const auto& buffer = *binding.buffer;
+        require(buffer.impl_->memory == BufferMemory::Device, "GPU descriptor table requires device storage buffers");
+        check_range(buffer.size(), binding.offset, binding.size);
+        const size_t size = binding.size ? binding.size : buffer.size() - binding.offset;
+        require(size && size <= limits().storage_buffer_bytes && binding.offset % limits().buffer_offset_alignment == 0,
+            "GPU descriptor buffer exceeds device range or alignment limits");
+        ranges.push_back({ buffer.impl_->resource.get(), binding.offset, size });
+    }
+    DescriptorTable table;
+    table.impl_ = std::make_unique<DescriptorTable::Impl>(&state(), pipeline.impl_->bindings,
+        state().backend->create_descriptor_table(*pipeline.impl_->resource, ranges));
+    return table;
+}
+CommandList ComputeDevice::create_commands() const {
+    CommandList list;
+    list.impl_ = std::make_unique<CommandList::Impl>();
+    list.impl_->device = &state();
+    list.impl_->commands = state().backend->create_commands();
+    return list;
+}
+Queue& ComputeDevice::default_queue() const {
+    auto& device = state();
+    if (!device.queue) {
+        auto queue = std::make_unique<Queue>();
+        queue->state_ = std::make_unique<detail::QueueState>();
+        queue->state_->device = &device;
+        queue->state_->queue = device.backend->create_queue();
+        device.queue = std::move(queue);
+    }
+    return *device.queue;
+}
+Fence ComputeDevice::create_fence(uint64_t initial_value) const {
+    Fence result;
+    result.state_ = std::make_unique<detail::FenceState>();
+    result.state_->device = &state();
+    result.state_->fence = state().backend->create_fence(initial_value);
+    result.state_->submitted_value = initial_value;
+    result.state_->completed_value = initial_value;
+    return result;
 }
 } // namespace splat_transform::gpu
