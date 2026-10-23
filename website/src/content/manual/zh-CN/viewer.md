@@ -17,8 +17,30 @@ order: 7
 - 左侧面板用于导入支持的格式数据和配置相机
     > 支持导入本地文件，url和剪贴板数据(url)，如果使用本地数据，仅支持完整的单个数据，不支持`chunk-lod`形式的数据。
     >
-    > 相机提供可3种可切换的坐标系: OpenCV(-Y为上方向，点云坐标系)，OpenGL(+Y为上方向，常规模型坐标系)，Aholo(+Z为上方向，aholo平台数据默认坐标系)。
+    > 相机提供 3 种世界上方向预设：OpenCV（-Y 为上方向），OpenGL（+Y 为上方向），Aholo（+Z 为上方向）。切换预设会重置相机视角，不会转换已导入模型的坐标。
 - 右侧面板用于控制`3DGS`相关功能和管线配置，可以参考[`3dgs-preset-config`](./3dgs-preset-config.md)
+
+### 复制相机位姿
+
+加载文件后，点击画布左上角的“复制位姿”，将当前相机到世界的位姿 JSON 复制到剪贴板。成功显示绿色提示，未加载文件时显示红色提示；提示在 3 秒内渐隐，也可以点击叉号关闭。重复点击会刷新同一条提示。浏览器拒绝剪贴板访问时，查看器会显示错误信息。
+
+```json
+{
+    "type": "camera-pose",
+    "convention": "camera-to-world",
+    "coordinateSystem": "opencv",
+    "worldUpPreset": "opencv",
+    "cameraAxes": { "right": "+X", "up": "+Y", "forward": "-Z" },
+    "position": { "x": 0, "y": 0, "z": 0 },
+    "quaternion": { "x": 0, "y": 0, "z": 0, "w": 1 }
+}
+```
+
+`position` 和 `quaternion` 原样取自当前渲染相机，四元数按 `x, y, z, w` 排列，将相机局部坐标旋转到当前场景的世界坐标。相机局部轴固定为右 `+X`、上 `+Y`、前 `-Z`。
+
+`worldUpPreset` 是界面选中的 `opencv`、`opengl` 或 `aholo` 世界上方向预设。`coordinateSystem` 为兼容旧版保留，与 `worldUpPreset` 相同；它不声明相机轴约定。即使选择 `opencv`，导出也不是原生 OpenCV 的右 `+X`、下 `+Y`、前 `+Z` 相机基底。导出不会转换相机或模型坐标，也不包含相机内参。
+
+侧栏的“复制状态”和“粘贴状态”仍用于完整浏览状态（包括欧拉角、上方向、视场角和裁剪面），不使用上述位姿格式。
 
 ## 本地搭建快速验证平台
 

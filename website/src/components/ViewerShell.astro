@@ -22,12 +22,18 @@ const labels =
         files: '导入文件',
         emptyFiles: '尚未导入文件',
         camera: '相机',
-        coordSystem: '坐标系',
+        coordSystem: '世界上方向',
+        coordSystemHint: '切换世界上方向并重置视角，不会转换模型坐标',
         far: '远裁剪面',
         useOrbit: '环绕',
         copyCamera: '复制状态',
         pasteCamera: '粘贴状态',
         resetCamera: '重置视角',
+        copyPose: '复制位姿',
+        copyPoseHint: '复制相机到世界的位姿 JSON（相机局部轴：右 +X，上 +Y，前 -Z）',
+        copiedPose: '已复制位姿',
+        poseNoFile: '没有加载任何文件',
+        dismissPoseNotice: '关闭提示',
         settings: '渲染参数',
         preset: '预设',
         presetCustom: '自定义',
@@ -63,12 +69,18 @@ const labels =
         files: 'Imported Files',
         emptyFiles: 'No imported files',
         camera: 'Camera',
-        coordSystem: 'Coordinate System',
+        coordSystem: 'World Up',
+        coordSystemHint: 'Select world up and reset the view without transforming model coordinates',
         far: 'Far Plane',
         useOrbit: 'Orbit',
         copyCamera: 'Copy State',
         pasteCamera: 'Paste State',
         resetCamera: 'Reset View',
+        copyPose: 'Copy pose',
+        copyPoseHint: 'Copy camera-to-world pose JSON (camera axes: right +X, up +Y, forward -Z)',
+        copiedPose: 'Camera pose copied',
+        poseNoFile: 'No file is loaded',
+        dismissPoseNotice: 'Dismiss notification',
         settings: 'Render Settings',
         preset: 'Preset',
         presetCustom: 'Custom',
@@ -124,6 +136,32 @@ const supportedFormats = '.ply,.spz,.splat,.ksplat,.zip,.sog,.esz,.json';
 <main class="viewer-shell" data-viewer data-left-collapsed="auto" data-right-collapsed="auto">
   <section class="viewer-stage" aria-label={t.viewer.title} data-viewer-stage>
     <div class="viewer-render-surface" data-render-surface></div>
+    <button
+      class="viewer-pose-copy"
+      type="button"
+      aria-label={labels.copyPose}
+      title={labels.copyPoseHint}
+      data-camera-pose-copy
+    >
+      {labels.copyPose}
+    </button>
+    <div
+      class="viewer-pose-toast"
+      role="status"
+      aria-live="polite"
+      data-pose-toast
+      data-state="success"
+      data-visible="false"
+    >
+      <span data-pose-toast-message></span>
+      <button
+        class="viewer-pose-toast-close"
+        type="button"
+        aria-label={labels.dismissPoseNotice}
+        title={labels.dismissPoseNotice}
+        data-pose-toast-close
+      >×</button>
+    </div>
     <div class="viewer-status" data-status data-state="ready" aria-live="polite"></div>
     <output class="viewer-stats" aria-label={labels.statsFps} data-stat-fps>0</output>
   </section>
@@ -205,7 +243,7 @@ const supportedFormats = '.ply,.spz,.splat,.ksplat,.zip,.sog,.esz,.json';
       <div class="viewer-field-grid">
         <div class="viewer-field">
           <label for="viewer-coord">{labels.coordSystem}</label>
-          <select id="viewer-coord" data-camera-coord>
+          <select id="viewer-coord" title={labels.coordSystemHint} data-camera-coord>
             <option value="aholo">Aholo</option>
             <option value="opengl">OpenGL</option>
             <option value="opencv" selected>OpenCV</option>
