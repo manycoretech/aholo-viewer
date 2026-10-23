@@ -458,11 +458,11 @@ try {
 }
 ```
 
-`run()` 返回 `Promise<void>`。`enumerateAdapters({ cwd, signal })` 返回 Vulkan 设备数组，包含 `index`、`name`、`backend: "vulkan"`、`vendorId`、`deviceId`、`apiVersion` 和 `uuid`；枚举本身需要 Vulkan 1.2+ loader，实际计算能力在 GPU 任务初始化时检查。
+`run()` 返回 `Promise<void>`。`enumerateAdapters({ cwd, signal })` 返回 `DeviceInfo[]`，包含 `index`、`name`、数值枚举 `api`、原始数值 `apiVersion`、`vendorId`、`deviceId` 和 `uuid`。`index` 从 `0` 开始跨 API 连续分配；同一硬件经不同 API 暴露时保留独立下标，下标只对应当前枚举顺序。目前仅实现 Vulkan，`ApiType.Vulkan = 0` 与原生枚举一致。`apiVersion` 保留设备报告的 API 版本编码，由 JS 根据 `api` 解析；`list:gpu` 显示 API 名称和解析后的版本。原 `backend` 字符串字段改为 `api`，`apiVersion` 仍为原始数值。枚举本身需要 Vulkan 1.2+ loader，实际计算能力在 GPU 任务初始化时检查。
 
 `PipelineError` 表示子进程以非零状态或信号退出；启动失败和 `AbortSignal` 取消也可能以普通 Error / AbortError 拒绝。SIGINT、SIGTERM 会转发给子进程。可使用 `resolveExecutable()` 查询原生程序路径，或通过 `SPLAT_TRANSFORM_EXECUTABLE` 指定本地可执行文件的绝对路径。安装缺少平台程序时，确认 npm optional dependencies 未被禁用。
 
-包导出 `PipelineConfig`、`PipelineTask`、`TaskType`、`RunOptions`、`VulkanAdapter`，以及 `ModifyConfig`、`SelectConfig`、`ReplaceAppendConfig`、`ExtractLodLevelConfig`、`VoxelConfig`。`PipelineTask.config` 仍为 `Record<string, unknown>`，完整参数以上文为准。
+包导出运行时枚举 `ApiType` 和类型 `DeviceInfo`、`PipelineConfig`、`PipelineTask`、`TaskType`、`RunOptions`，以及 `ModifyConfig`、`SelectConfig`、`ReplaceAppendConfig`、`ExtractLodLevelConfig`、`VoxelConfig`。`PipelineTask.config` 仍为 `Record<string, unknown>`，完整参数以上文为准。
 
 ## 迁移与资源建议
 

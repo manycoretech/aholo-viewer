@@ -1,3 +1,4 @@
+#include "gpu/backend.h"
 #include "io/zip_archive.h"
 #include <cmath>
 #include <codec/codec.h>
@@ -20,6 +21,58 @@ static_assert(!AcceptsQuantization<int>);
 static_assert(!AcceptsQuantization<decltype([](const std::string&) { return 1.0; })>);
 static_assert(!AcceptsQuantization<decltype([](double) {})>);
 static_assert(!AcceptsQuantization<decltype([](double) { return std::string(); })>);
+
+void device_registry() {
+    gpu::detail::DeviceRegistry registry;
+    static std::vector<std::pair<uint32_t, uint32_t>> calls;
+    calls.clear();
+    const auto first = [](uint32_t index) -> std::unique_ptr<gpu::detail::BackendDevice> {
+        calls.emplace_back(1, index);
+        return {};
+    };
+    const auto second = [](uint32_t index) -> std::unique_ptr<gpu::detail::BackendDevice> {
+        calls.emplace_back(2, index);
+        return {};
+    };
+    const auto rejects = [&](uint32_t index) {
+        try {
+            registry.create(index);
+        } catch (const std::runtime_error&) {
+            return;
+        }
+        throw std::runtime_error("Device registry accepted an unavailable global index");
+    };
+    if (!registry.devices().empty()) {
+        throw std::runtime_error("Empty device registry reported devices");
+    }
+    rejects(0);
+    // Separate backend batches may report the same hardware. Neither hardware
+    // identifiers nor preexisting indices may merge entries or reset numbering.
+    const gpu::DeviceInfo shared { .index = 99, .name = "shared adapter", .api = gpu::ApiType::Vulkan, .api_version = 4211045, .vendor_id = 4318, .device_id = 12036, .uuid = "shared-id" };
+    registry.append({ shared, shared }, first);
+    registry.append({}, second);
+    registry.append({ shared, shared }, second);
+    const auto devices = registry.devices();
+    if (devices.size() != 4) {
+        throw std::runtime_error("Device registry lost a backend entry");
+    }
+    for (size_t i = 0; i < devices.size(); ++i) {
+        const auto& device = devices[i];
+        if (device.index != i || device.name != shared.name || device.api != shared.api ||
+            device.api_version != shared.api_version || device.vendor_id != shared.vendor_id ||
+            device.device_id != shared.device_id || device.uuid != shared.uuid) {
+            throw std::runtime_error("Device registry changed metadata or failed to assign global indices");
+        }
+    }
+    for (uint32_t index : { 2u, 1u, 3u, 0u }) {
+        registry.create(index);
+    }
+    rejects(4);
+    rejects(std::numeric_limits<uint32_t>::max());
+    if (calls != std::vector<std::pair<uint32_t, uint32_t>> { { 2, 0 }, { 1, 1 }, { 2, 1 }, { 1, 0 } }) {
+        throw std::runtime_error("Global device selection reached the wrong backend or local index");
+    }
+}
 
 void half_values() {
     for (uint32_t bits = 0; bits <= UINT16_MAX; ++bits) {
@@ -155,6 +208,7 @@ int main() {
             }
         }
         half_values();
+        device_registry();
         quantization();
         codec_numeric();
         bool truncated = false;

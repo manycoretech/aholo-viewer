@@ -30,14 +30,19 @@ vk::raii::Instance create_instance(vk::raii::Context& context) {
     info.setFlags(flags).setPApplicationInfo(&application).setPEnabledExtensionNames(extensions);
     return context.createInstance(info);
 }
-DeviceInfo describe(const vk::raii::PhysicalDevice& physical, uint32_t index) {
+DeviceInfo describe(const vk::raii::PhysicalDevice& physical) {
     const auto properties = physical.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
     const auto& base = properties.get<vk::PhysicalDeviceProperties2>().properties;
     std::ostringstream uuid;
     for (auto byte : properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID) {
         uuid << std::hex << std::setw(2) << std::setfill('0') << unsigned(byte);
     }
-    return { index, base.deviceName.data(), base.vendorID, base.deviceID, base.apiVersion, uuid.str() };
+    return { .name = base.deviceName.data(),
+        .api = ApiType::Vulkan,
+        .api_version = base.apiVersion,
+        .vendor_id = base.vendorID,
+        .device_id = base.deviceID,
+        .uuid = uuid.str() };
 }
 
 } // namespace
@@ -51,7 +56,7 @@ Device::Device(uint32_t index) : instance_(create_instance(context_)) {
     if (physical_.getProperties().apiVersion < VK_API_VERSION_1_2) {
         throw std::runtime_error("Selected device must support Vulkan 1.2 or newer");
     }
-    const auto description = describe(physical_, index);
+    const auto description = describe(physical_);
     utility::logger().info("Vulkan device: ", description.name, " vendor=", description.vendor_id, " device=", description.device_id, " uuid=", description.uuid);
     const auto properties = physical_.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceMaintenance3Properties>();
     limits_ = properties.get<vk::PhysicalDeviceProperties2>().properties.limits;
@@ -356,8 +361,8 @@ std::vector<DeviceInfo> enumerate_vulkan_devices() {
     auto instance = vulkan::create_instance(context);
     auto physical = instance.enumeratePhysicalDevices();
     std::vector<DeviceInfo> result;
-    for (uint32_t i = 0; i < physical.size(); ++i) {
-        result.push_back(vulkan::describe(physical[i], i));
+    for (const auto& device : physical) {
+        result.push_back(vulkan::describe(device));
     }
     return result;
 }

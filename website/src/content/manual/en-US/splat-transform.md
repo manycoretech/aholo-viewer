@@ -458,11 +458,11 @@ try {
 }
 ```
 
-`run()` returns `Promise<void>`. `enumerateAdapters({ cwd, signal })` returns Vulkan devices with `index`, `name`, `backend: "vulkan"`, `vendorId`, `deviceId`, `apiVersion`, and `uuid`. Enumeration itself requires a Vulkan 1.2+ loader; compute capabilities are checked when a GPU task initializes the device.
+`run()` returns `Promise<void>`. `enumerateAdapters({ cwd, signal })` returns `DeviceInfo[]` with `index`, `name`, numeric enum `api`, raw numeric `apiVersion`, `vendorId`, `deviceId`, and `uuid`. Indices start at zero and increase across APIs; the same hardware exposed through different APIs retains separate indices, which belong to the current enumeration order. Only Vulkan is implemented, with `ApiType.Vulkan = 0` matching the native enum. `apiVersion` preserves the device-reported API version encoding for JavaScript to decode according to `api`; `list:gpu` displays the API name and decoded version. The former `backend` string is replaced by `api`, while `apiVersion` remains a raw number. Enumeration itself requires a Vulkan 1.2+ loader; compute capabilities are checked when a GPU task initializes the device.
 
 `PipelineError` represents a nonzero child exit or termination signal. Process-start failures and `AbortSignal` cancellation can reject with a regular Error / AbortError. SIGINT and SIGTERM are forwarded to the child. Use `resolveExecutable()` to locate the native executable or set `SPLAT_TRANSFORM_EXECUTABLE` to an absolute local build path. If a platform executable is missing, check that npm optional dependencies are enabled.
 
-The package exports `PipelineConfig`, `PipelineTask`, `TaskType`, `RunOptions`, `VulkanAdapter`, and `ModifyConfig`, `SelectConfig`, `ReplaceAppendConfig`, `ExtractLodLevelConfig`, and `VoxelConfig`. `PipelineTask.config` remains `Record<string, unknown>`; use the reference above for complete parameters.
+The package exports the runtime `ApiType` enum and the types `DeviceInfo`, `PipelineConfig`, `PipelineTask`, `TaskType`, `RunOptions`, `ModifyConfig`, `SelectConfig`, `ReplaceAppendConfig`, `ExtractLodLevelConfig`, and `VoxelConfig`. `PipelineTask.config` remains `Record<string, unknown>`; use the reference above for complete parameters.
 
 ## Migration and Resource Guidance
 

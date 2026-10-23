@@ -2,7 +2,7 @@
 import yargs from 'yargs/yargs';
 import { hideBin } from 'yargs/helpers';
 import packageJson from '../package.json' with { type: 'json' };
-import { run, enumerateAdapters, PipelineError } from '../dist/index.js';
+import { run, enumerateAdapters, ApiType, PipelineError } from '../dist/index.js';
 import { execute } from '../dist/process.js';
 
 const ExtraText = `
@@ -212,7 +212,15 @@ const cli = yargs(hideBin(process.argv))
             const adapters = await enumerateAdapters();
             const alignment = Math.ceil(Math.log10(adapters.length));
             for (const adapter of adapters) {
-                console.log(`Adapter ${adapter.index.toString().padStart(alignment, ' ')}: ${adapter.name}`);
+                const apiName = ApiType[adapter.api]?.toLowerCase() ?? String(adapter.api);
+                const version = adapter.apiVersion;
+                const apiVersion =
+                    adapter.api === ApiType.Vulkan
+                        ? `${(version >>> 22) & 0x7f}.${(version >>> 12) & 0x3ff}.${version & 0xfff}`
+                        : String(version);
+                console.log(
+                    `Adapter ${adapter.index.toString().padStart(alignment, ' ')}: ${adapter.name} (${apiName} ${apiVersion})`,
+                );
             }
         },
     });

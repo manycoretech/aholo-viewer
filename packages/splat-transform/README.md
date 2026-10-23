@@ -33,7 +33,7 @@ splat-transform list:gpu
 splat-transform pipeline.json
 ```
 
-GPU indices now identify Vulkan devices. Run list:gpu again when migrating a saved configuration: indices from the former Dawn backend can include D3D12 adapters and are not interchangeable.
+GPU indices start at zero and increase across all graphics APIs in enumeration order. Currently only Vulkan is implemented. Run list:gpu again when migrating a saved configuration: indices from the former Dawn backend can include D3D12 adapters and are not interchangeable. Indices are not persistent hardware identifiers.
 
 Use ESZ for chunk LOD output. `lod:auto`, `lod:auto-chunk`, and `split` accept `--split-normal None|X|Y|Z` or `0|1|2|3`; a reference axis keeps blocks unsplit along that axis. `lod:flex --score` reads little-endian float32 scores in input-point order. Use individual command help, such as `splat-transform lod:flex --help`, or the [complete task and CLI reference](https://aholojs.dev/en-US/manual/splat-transform/) ([中文](https://aholojs.dev/zh-CN/manual/splat-transform/)).
 
@@ -79,17 +79,18 @@ LOD output metadata includes optional `voxels: string[]` when the same pipeline 
 ## JavaScript API
 
 ```js
-import { run, enumerateAdapters } from '@manycore/aholo-splat-transform';
+import { run, enumerateAdapters, ApiType } from '@manycore/aholo-splat-transform';
 
 await run({ version: 1, tasks: [] });
 const adapters = await enumerateAdapters();
+const vulkan = adapters.filter(adapter => adapter.api === ApiType.Vulkan);
 ```
 
-`run` accepts optional `cwd` and `AbortSignal` options. Nonzero child exits reject with `PipelineError`, which exposes `exitCode` and `signal`; process-start failures and cancellation can reject with a regular Error or AbortError. SIGINT and SIGTERM are forwarded to the child process. `enumerateAdapters` accepts the same options and returns device index, name, Vulkan backend, vendor/device IDs, API version, and UUID. Use `resolveExecutable()` to locate the platform executable, or set `SPLAT_TRANSFORM_EXECUTABLE` to an absolute local CMake build path. If no platform executable is installed, enable npm optional dependencies.
+`run` accepts optional `cwd` and `AbortSignal` options. Nonzero child exits reject with `PipelineError`, which exposes `exitCode` and `signal`; process-start failures and cancellation can reject with a regular Error or AbortError. SIGINT and SIGTERM are forwarded to the child process. `enumerateAdapters` accepts the same options and returns `DeviceInfo[]` with global `index`, `name`, numeric `api`, raw numeric `apiVersion`, `vendorId`, `deviceId`, and `uuid`. `ApiType.Vulkan = 0` matches the native enum. `apiVersion` is the device-supported version in that API's encoding; JavaScript callers decode it according to `api`. `list:gpu` displays the API name and decoded version. The former `backend` string is replaced by `api`; `apiVersion` retains its raw numeric encoding. Use `resolveExecutable()` to locate the platform executable, or set `SPLAT_TRANSFORM_EXECUTABLE` to an absolute local CMake build path. If no platform executable is installed, enable npm optional dependencies.
 
 Version 2 removes injectCustomTask, SplatData and other in-memory processing APIs, and deep module imports. Pipeline data stays inside the native process. CLI commands and version 1 pipeline files remain the supported processing interface.
 
-The package exports `ModifyConfig`, `SelectConfig`, `ReplaceAppendConfig`, `ExtractLodLevelConfig`, and `VoxelConfig` for typed task construction, alongside `PipelineConfig`, `PipelineTask`, `TaskType`, `RunOptions`, and `VulkanAdapter`. `PipelineTask.config` remains `Record<string, unknown>`; the manual lists complete task parameters and cancellation examples.
+The package exports the runtime `ApiType` enum and `DeviceInfo` type, plus `ModifyConfig`, `SelectConfig`, `ReplaceAppendConfig`, `ExtractLodLevelConfig`, and `VoxelConfig` for typed task construction, alongside `PipelineConfig`, `PipelineTask`, `TaskType`, and `RunOptions`. `PipelineTask.config` remains `Record<string, unknown>`; the manual lists complete task parameters and cancellation examples.
 
 ## Native builds
 

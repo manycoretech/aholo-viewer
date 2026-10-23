@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
         std::string pipeline_file;
         bool list_gpu = false;
         auto* input = app.add_option("pipeline", pipeline_file, "Pipeline JSON file, or '-' to read from stdin")->type_name("FILE");
-        app.add_flag("--list-gpu", list_gpu, "List Vulkan adapters as JSON")
+        app.add_flag("--list-gpu", list_gpu, "List GPU devices and API information as JSON")
             ->excludes(input)
             ->disable_flag_override()
             ->multi_option_policy(CLI::MultiOptionPolicy::Throw);
@@ -33,8 +33,9 @@ int main(int argc, char** argv) {
         if (list_gpu) {
             auto devices = splat_transform::io::Json::array();
             for (const auto& device : splat_transform::gpu::enumerate_devices()) {
-                devices.push_back({ { "index", device.index }, { "name", device.name }, { "backend", "vulkan" },
-                    { "vendorId", device.vendor_id }, { "deviceId", device.device_id }, { "apiVersion", device.api_version }, { "uuid", device.uuid } });
+                devices.push_back({ { "index", device.index }, { "name", device.name },
+                    { "api", static_cast<uint32_t>(device.api) }, { "apiVersion", device.api_version },
+                    { "vendorId", device.vendor_id }, { "deviceId", device.device_id }, { "uuid", device.uuid } });
             }
             std::cout << devices.dump() << '\n';
             return 0;

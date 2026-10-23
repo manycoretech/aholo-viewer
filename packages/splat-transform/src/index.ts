@@ -1,17 +1,18 @@
 import { execute, type RunOptions } from './process.js';
-import type { PipelineConfig, VulkanAdapter } from './pipeline.js';
+import type { DeviceInfo, PipelineConfig } from './pipeline.js';
 
 export type {
     PipelineConfig,
     PipelineTask,
     TaskType,
-    VulkanAdapter,
+    DeviceInfo,
     ModifyConfig,
     SelectConfig,
     ReplaceAppendConfig,
     ExtractLodLevelConfig,
     VoxelConfig,
 } from './pipeline.js';
+export { ApiType } from './pipeline.js';
 export { PipelineError, resolveExecutable, type RunOptions } from './process.js';
 
 /** Execute a JSON pipeline in the standalone C++ process. */
@@ -21,7 +22,7 @@ export async function run(config: PipelineConfig, options?: RunOptions): Promise
     await execute(['-'], { ...options, input });
 }
 
-/** List Vulkan devices using the same backend and indices as pipeline execution. */
-export async function enumerateAdapters(options?: RunOptions): Promise<VulkanAdapter[]> {
+/** List devices with API information and the global indices used by pipelines. */
+export async function enumerateAdapters(options?: RunOptions): Promise<DeviceInfo[]> {
     return JSON.parse(await execute(['--list-gpu'], { ...options, capture: true }));
 }

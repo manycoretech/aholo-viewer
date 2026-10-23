@@ -89,6 +89,8 @@ Vulkan-Hpp loads the user-provided Vulkan loader when a GPU task starts. GPU gen
 
 `src/gpu/backend.h` defines the adapter contracts. `src/gpu/vulkan_context.h` and `.cpp` implement them with Vulkan-Hpp and VMA. The adapter owns native resource creation, descriptor allocation, barriers, queue synchronization, and completion waits. `src/gpu/context.cpp` owns one lazily initialized context through `unique_ptr`; the top-level `DeviceGuard` releases it when the pipeline ends. Clustering data packing, memory-budget scheduling, and streaming slots live in `src/spatial/cluster_gpu.cpp`; candidate generation, voxel dispatch splitting, and dilation passes live in `src/voxel/compute.cpp`.
 
+`DeviceInfo` reports the global `index`, `name`, numeric `ApiType api`, raw `uint32_t api_version`, vendor/device IDs, and UUID. `ApiType::Vulkan = 0` matches the JavaScript enum; Vulkan is the only implemented API. The version comes directly from the device's `apiVersion` property. The JavaScript CLI handles API names and version decoding. `DeviceRegistry` appends each backend's enumeration in order, assigns contiguous indices across all APIs, and maps selection back to the owning factory and backend-local index. The same hardware exposed by multiple APIs remains separate entries. Indices belong to the current enumeration and are not persistent hardware identifiers.
+
 Record bindings separately from dispatch:
 
 ```cpp

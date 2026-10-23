@@ -138,6 +138,12 @@ int main(int argc, char** argv) {
         if (devices.empty()) {
             throw std::runtime_error("GPU tests require a Vulkan compute device");
         }
+        for (size_t i = 0; i < devices.size(); ++i) {
+            const auto& device = devices[i];
+            if (device.index != i || device.api != gpu::ApiType::Vulkan || device.api_version == 0 || device.name.empty() || device.uuid.empty()) {
+                throw std::runtime_error("GPU enumeration returned incomplete metadata or non-global indices");
+            }
+        }
         {
             splat::Splat points(512, 0);
             for (size_t i = 0; i < points.size(); ++i) {

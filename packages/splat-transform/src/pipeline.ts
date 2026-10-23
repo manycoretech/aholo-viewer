@@ -65,19 +65,27 @@ export interface PipelineTask {
 
 export interface PipelineConfig {
     version: 1;
-    /** Index from enumerateAdapters(); indices belong to the Vulkan backend. */
+    /** Global index from enumerateAdapters(), shared across graphics APIs. */
     gpu?: number;
     /** Positive worker count; capped at max(1, hardware_concurrency() - 1). Omit for automatic sizing. */
     cpuWorkers?: number;
     tasks: PipelineTask[];
 }
 
-export interface VulkanAdapter {
+/** Serialized values must match gpu::ApiType in the native executable. */
+export enum ApiType {
+    Vulkan = 0,
+}
+
+export interface DeviceInfo {
+    /** Zero-based index across all APIs in this enumeration. */
     index: number;
     name: string;
-    backend: 'vulkan';
+    api: ApiType;
+    /** API-specific raw version supported by the device; decode according to api. */
+    apiVersion: number;
     vendorId: number;
     deviceId: number;
-    apiVersion: number;
+    /** Backend-reported identifier; use index for device selection. */
     uuid: string;
 }

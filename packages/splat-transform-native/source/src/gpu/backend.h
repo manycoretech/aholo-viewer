@@ -68,6 +68,23 @@ public:
     virtual std::unique_ptr<BackendQueue> create_queue() = 0;
     virtual std::unique_ptr<BackendFence> create_fence(uint64_t initial_value) = 0;
 };
+// Each backend contributes devices in its native enumeration order. Only this
+// registry assigns public indices and translates them back for device creation.
+class DeviceRegistry {
+public:
+    using Factory = std::unique_ptr<BackendDevice> (*)(uint32_t);
+    void append(std::vector<DeviceInfo> devices, Factory factory);
+    std::vector<DeviceInfo> devices() const;
+    std::unique_ptr<BackendDevice> create(uint32_t index) const;
+
+private:
+    struct Entry {
+        DeviceInfo info;
+        uint32_t backend_index;
+        Factory factory;
+    };
+    std::vector<Entry> entries_;
+};
 struct DeviceState {
     explicit DeviceState(std::unique_ptr<BackendDevice> device) : backend(std::move(device)), limits(backend->limits()) {}
     // The top-level DeviceGuard controls this context's lifetime. Views borrow it.
@@ -78,5 +95,6 @@ struct DeviceState {
 DeviceState& context();
 // Backend selection stays here; tasks never include this header.
 std::unique_ptr<BackendDevice> create_vulkan_device(uint32_t index);
+// Native enumeration order; public indices are assigned by DeviceRegistry.
 std::vector<DeviceInfo> enumerate_vulkan_devices();
 } // namespace splat_transform::gpu::detail
