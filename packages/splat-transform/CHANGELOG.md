@@ -4,12 +4,21 @@
 
 - reuse Voxel GPU buffers within each task and release them when the task completes, reducing retained memory during subsequent pipeline tasks
 - separate task buffers from shared Vulkan device and kernel resources so Voxel and SOG clustering sessions manage their allocations independently
+- release task-owned GPU resources before destroying the pipeline's GPU device
+- require Vulkan 1.2 and `timelineSemaphore` support for GPU processing
+- replace the exported `VulkanAdapter` type with `DeviceInfo` and its `backend` field with numeric `api: ApiType`; export `ApiType` with `Vulkan = 0`
+- use global GPU device indices in `enumerateAdapters()` and pipeline `gpu`, and display API names and versions in `list:gpu`
+- limit nanoflann KD-tree construction to one thread per LOD block while retaining parallel block processing through the shared CPU pool
 
 ## 2.0.2
 
 - support top-level pipeline `cpuWorkers` for the shared CPU pool, capped at hardware concurrency minus one with a minimum of one worker
 - remove per-Write `parallelCounts`; limit concurrent bundle writes to the shared CPU pool's worker count
 - build voxel octrees from Morton-sorted contiguous arrays while preserving node order and serialized output
+- recompute block offsets and counts after `Modify` deletes Gaussians, preserving empty block slots and correct local indices for subsequent edits
+- preserve input order and repeated entries when identifying `Read` sources for LOD and voxel metadata association
+- avoid rewriting LOD metadata when voxel paths only change order, and repair duplicate voxel references
+- use hash-based containers for order-independent native lookups in pipeline resources, LOD assembly, and voxel processing
 
 ## 2.0.1
 
