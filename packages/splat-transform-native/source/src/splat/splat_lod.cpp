@@ -1,6 +1,5 @@
 #include <Eigen/Dense>
 #include <algorithm>
-#include <bit>
 #include <cmath>
 #include <iterator>
 #include <nanoflann.hpp>
@@ -8,7 +7,6 @@
 #include <ranges>
 #include <splat/splat.h>
 #include <splat/splat_lod.h>
-#include <thread>
 #include <tuple>
 #include <utility/logger.h>
 #include <vector>
@@ -19,6 +17,8 @@ constexpr double TWO_PI_POW_1_5 = 0x1.f7fccep+3;
 constexpr double EPS_COV = 1e-8;
 constexpr double LOG_2PI = 1.8378771;
 constexpr float OPACITY_PRUNE_THRESHOLD = 0.005f;
+// LOD blocks already run in parallel on the shared CPU pool.
+constexpr uint32_t KD_TREE_BUILD_THREADS = 1;
 
 class GaussianCloud {
 public:
@@ -280,7 +280,7 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
         KDTree tree(3, cloud,
             nanoflann::KDTreeSingleIndexAdaptorParams(
                 10, nanoflann::KDTreeSingleIndexAdaptorFlags::None,
-                std::max(std::bit_floor(std::thread::hardware_concurrency()) / 2u, 1u)));
+                KD_TREE_BUILD_THREADS));
 
         auto k_eff = std::min<uint32_t>(std::max<uint32_t>(1, knn_k), std::max<uint32_t>(1, current.gaussians.size() - 1));
         size_t query_count = static_cast<size_t>(std::min<size_t>(current.gaussians.size(), k_eff + 1));
