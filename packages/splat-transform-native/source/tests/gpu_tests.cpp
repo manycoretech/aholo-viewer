@@ -163,6 +163,33 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        {
+            // More than 4096 candidates across many bins exercises parallel
+            // sorting. Interleaved point order must still produce one occupied
+            // voxel in every isolated bin, including the final partial chunk.
+            constexpr size_t bins = 257, copies = 32;
+            splat::Splat points(bins * copies, 0);
+            for (size_t i = 0; i < points.size(); ++i) {
+                auto& g = points.gaussians[i];
+                g.mean = { float(i % bins) * 1.6f + 0.05f, 0.05f, 0.05f };
+                g.scale.setConstant(0.005f);
+                g.rotation.setIdentity();
+                g.opacity = 0.02f;
+            }
+            const auto prepared = voxel::prepare(points);
+            const auto backend = voxel::gpu_backend();
+            for (size_t repeat = 0; repeat < 2; ++repeat) {
+                const auto grid = backend->voxelize(prepared, Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f(bins * 1.6f, 0.4f, 0.4f)), 0.1f, 0.2f);
+                if (grid.voxel_count() != bins) {
+                    throw std::runtime_error("Parallel candidate sorting changed voxel occupancy");
+                }
+                for (size_t bin = 0; bin < bins; ++bin) {
+                    if (!grid.get({ int(bin * 16), 0, 0 })) {
+                        throw std::runtime_error("Parallel candidate sorting lost a dense bin or tail");
+                    }
+                }
+            }
+        }
         for (unsigned degree : { 1u, 2u, 3u }) {
             const auto columns = splat::SH_COUNTS[degree];
             Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> points(257, columns), centroids(129, columns);
@@ -202,6 +229,39 @@ int main(int argc, char** argv) {
                     }
                 }
             }
+            spatial::ClusterSession batched(spatial::FeatureView(input), static_cast<size_t>(centroids.rows()), 128);
+            std::vector<uint32_t> labels(actual.size(), UINT32_MAX);
+            size_t previous = 0, callbacks = 0;
+            batched.assign(centroids, labels, [&](size_t ready) {
+                if (ready <= previous || ready > labels.size() || ready - previous > 128 ||
+                    !std::equal(labels.begin(), labels.begin() + ready, actual.begin()) ||
+                    !std::all_of(labels.begin() + ready, labels.end(), [](auto label) { return label == UINT32_MAX; })) {
+                    throw std::runtime_error("Clustering callback exposed incomplete or unordered labels");
+                }
+                previous = ready;
+                ++callbacks;
+            });
+            if (labels != actual || previous != labels.size() || callbacks != 3) {
+                throw std::runtime_error("Clustering callbacks lost a partial final batch");
+            }
+            bool rejected = false;
+            try {
+                batched.assign(centroids, std::span(labels).first(labels.size() - 1), {});
+            } catch (const std::runtime_error& error) {
+                rejected = std::string_view(error.what()) == "GPU label count differs";
+            }
+            if (!rejected) {
+                throw std::runtime_error("Clustering accepted an undersized caller output");
+            }
+            bool interrupted = false;
+            try {
+                batched.assign(centroids, labels, [](size_t) { throw std::runtime_error("Consumer failed"); });
+            } catch (const std::runtime_error& error) {
+                interrupted = std::string_view(error.what()) == "Consumer failed";
+            }
+            if (!interrupted || batched.assign(centroids) != actual) {
+                throw std::runtime_error("Clustering failed to drain and recover after a callback exception");
+            }
         }
         {
             constexpr size_t ROWS = 200003, COLUMNS = 45, CENTROIDS = 129;
@@ -216,7 +276,7 @@ int main(int argc, char** argv) {
             }
             {
                 const auto input = feature_splats(points, 3);
-                spatial::ClusterSession session(spatial::FeatureView(input), CENTROIDS);
+                spatial::ClusterSession session(spatial::FeatureView(input), CENTROIDS, 8192);
                 auto rotating = centroids;
                 for (size_t iteration = 0; iteration < 3; ++iteration) {
                     const auto labels = session.assign(rotating);
@@ -247,6 +307,35 @@ int main(int argc, char** argv) {
             }
         }
         if (large_tests) {
+            {
+                // Exercise first-iteration tile selection, cached recordings,
+                // and an incomplete batch with exactly distinguishable centers.
+                constexpr size_t rows = 1024 * 1024 + 3, count = 32768, columns = 45;
+                splat::Splat input(rows, 3);
+                Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> centroids(count, columns);
+                for (size_t row = 0; row < rows; ++row) {
+                    for (size_t c = 0; c < columns; ++c) {
+                        const float value = ((row % count) >> (c % 15)) & 1 ? 0.25f : -0.25f;
+                        input.gaussians[row].sh[3 + (c % 15) * 3 + c / 15] = value;
+                        if (row < count) {
+                            centroids(row, c) = value;
+                        }
+                    }
+                }
+                spatial::ClusterSession session(spatial::FeatureView(input), count, 131072);
+                for (size_t repeat = 0; repeat < 2; ++repeat) {
+                    const auto labels = session.assign(centroids);
+                    for (size_t row = 0; row < rows; ++row) {
+                        const auto original = row % count;
+                        const auto expected = repeat && original < 2 ? 1 - original : original;
+                        if (labels[row] != expected) {
+                            throw std::runtime_error("Tile selection changed labels or retained stale centroid bindings");
+                        }
+                    }
+                    centroids.row(0).swap(centroids.row(1));
+                }
+                std::cout << "Large clustering tile selection and repeated assignment passed\n";
+            }
             {
                 voxel::VoxelSession session;
                 std::vector<voxel::Gaussian> large(65535 * 128 + 1);

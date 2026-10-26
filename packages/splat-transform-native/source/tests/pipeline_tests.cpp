@@ -180,6 +180,10 @@ int main() {
             } else {
                 require(!schedule.streaming_slots && schedule.cached_batches == 1 && schedule.batch_rows == 200003, "Clustering split input that fits in one device buffer");
             }
+            const auto batched = spatial::cluster_schedule(200003, 129, 48, { 128 * 1024 * 1024, 65535, budget }, 8192);
+            const auto batched_bytes = (129 + batched.batch_rows * (batched.cached_batches + batched.streaming_slots)) * 49 * sizeof(float);
+            require(batched.batch_rows == 8192 && batched_bytes <= budget, "Callback batching exceeded the row or memory budget");
+            require((budget == 32 * 1024 * 1024) == (batched.streaming_slots != 0), "Callback batching changed cached/streaming budget selection");
         }
         bool rejected = false;
         try {

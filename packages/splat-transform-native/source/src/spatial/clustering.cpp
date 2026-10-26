@@ -139,26 +139,41 @@ Clustering k_means(FeatureView points, size_t count, size_t iterations) {
         partial.sums.resize(count * points.dimensions());
         partial.counts.resize(count);
     }
-    ClusterSession session(points, count);
+    auto setup_time = utility::logger().time("kmeans setup");
+    // Match dispatches to the existing CPU partitions so completed labels can
+    // be reduced while later batches are still on the GPU. Keep each partition's
+    // row order and the final merge order unchanged for identical centroids.
+    ClusterSession session(points, count, (per_thread + 127) / 128 * 128);
+    setup_time.finish();
     for (size_t step = 0; step < iterations; ++step) {
+        result.labels.resize(rows);
         utility::logger().info("kmeans iteration ", step + 1);
-        result.labels = session.assign(result.centroids);
+        auto assign_time = utility::logger().time("kmeans assign");
         threading::TaskGroup<void> tasks(pool, threads);
-        for (size_t thread = 0; thread < threads; ++thread) {
-            const size_t begin = std::min(rows, thread * per_thread), end = std::min(rows, begin + per_thread);
-            tasks.submit([&, begin, end, thread] {
-                auto& part = partials[thread];
-                std::fill(part.sums.begin(), part.sums.end(), 0.0f);
-                std::fill(part.counts.begin(), part.counts.end(), 0);
-                for (size_t row = begin; row < end; ++row) {
-                    const auto label = result.labels[row];
-                    ++part.counts[label];
-                    for (size_t c = 0; c < points.dimensions(); ++c) {
-                        part.sums[size_t(label) * points.dimensions() + c] += points(row, c);
-                    }
+        size_t next_thread = 0;
+        session.assign(result.centroids, result.labels, [&](size_t ready) {
+            while (next_thread < threads) {
+                const size_t begin = std::min(rows, next_thread * per_thread), end = std::min(rows, begin + per_thread);
+                if (end > ready) {
+                    break;
                 }
-            });
-        }
+                const size_t thread = next_thread++;
+                tasks.submit([&, begin, end, thread] {
+                    auto& part = partials[thread];
+                    std::fill(part.sums.begin(), part.sums.end(), 0.0f);
+                    std::fill(part.counts.begin(), part.counts.end(), 0);
+                    for (size_t row = begin; row < end; ++row) {
+                        const auto label = result.labels[row];
+                        ++part.counts[label];
+                        for (size_t c = 0; c < points.dimensions(); ++c) {
+                            part.sums[size_t(label) * points.dimensions() + c] += points(row, c);
+                        }
+                    }
+                });
+            }
+        });
+        assign_time.finish();
+        auto update_time = utility::logger().time("kmeans update tail");
         for (size_t i = 0; i < tasks.size(); ++i) {
             tasks.get(i);
         }

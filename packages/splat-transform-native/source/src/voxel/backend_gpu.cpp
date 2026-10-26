@@ -1,5 +1,8 @@
 #include "voxelize.h"
 #include <algorithm>
+#include <atomic>
+#include <utility/logger.h>
+#include <utility/thread_pool.h>
 
 namespace splat_transform::voxel {
 namespace {
@@ -13,24 +16,61 @@ struct Batches {
     std::vector<Batch> batches;
     std::vector<uint32_t> indices;
 };
+void sort_candidates(CandidateBins& candidates) {
+    const auto sort = [&](size_t begin, size_t end) {
+        for (size_t key = begin; key < end; ++key) {
+            const auto count = candidates.counts[key];
+            if (count > 1) {
+                const auto first = candidates.indices.begin() + candidates.offsets[key];
+                std::sort(first, first + count);
+            }
+        }
+    };
+    const size_t bins = candidates.counts.size();
+    const size_t grain = bins < 4096 ? 1 : 32;
+    if (bins <= grain || candidates.indices.size() < 4096) {
+        sort(0, bins);
+        return;
+    }
+    auto& pool = threading::default_pool();
+    const size_t workers = std::min(pool.thread_count(), (bins + grain - 1) / grain);
+    std::atomic<size_t> next { 0 };
+    threading::TaskGroup<void> tasks(pool, workers);
+    for (size_t worker = 0; worker < workers; ++worker) {
+        tasks.submit([&] {
+            for (;;) {
+                const auto begin = next.fetch_add(grain, std::memory_order_relaxed);
+                if (begin >= bins) {
+                    return;
+                }
+                sort(begin, std::min(begin + grain, bins));
+            }
+        });
+    }
+    for (size_t worker = 0; worker < tasks.size(); ++worker) {
+        tasks.get(worker);
+    }
+}
 Batches build_batches(VoxelSession& session, const PreparedData& data, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
     Eigen::Vector3i count;
     for (int a = 0; a < 3; ++a) {
         count[a] = (grid.blocks[a] + 3) / 4;
     }
     const float batch_size = 16 * resolution;
+    auto candidates_time = utility::logger().time("Voxel GPU candidates");
     auto candidates = session.candidates(data.gaussians, { float(bounds.min()[0]), float(bounds.min()[1]), float(bounds.min()[2]) }, float(batch_size),
         { uint32_t(count[0]), uint32_t(count[1]), uint32_t(count[2]) });
+    candidates_time.finish();
+    auto sort_time = utility::logger().time("Voxel GPU candidate sorting");
+    // Each bin owns a disjoint range. Parallel sorting preserves the exact
+    // ascending accumulation order without serializing all scene candidates.
+    sort_candidates(candidates);
     std::vector<Batch> output;
     output.reserve(std::ranges::count_if(candidates.counts, [](auto size) { return size != 0; }));
     for (size_t key = 0; key < candidates.counts.size(); ++key) {
         if (!candidates.counts[key]) {
             continue;
         }
-        const auto start = candidates.indices.begin() + candidates.offsets[key];
-        // Keep deterministic accumulation order without copying each bin and
-        // subsequently flattening all of those copies into another buffer.
-        std::sort(start, start + candidates.counts[key]);
         Eigen::Vector3i origin { int(key % count[0]) * 4, int(key / count[0] % count[1]) * 4, int(key / (uint64_t(count[0]) * count[1])) * 4 };
         Eigen::Vector3i dimensions;
         for (int a = 0; a < 3; ++a) {
@@ -57,7 +97,9 @@ public:
         // The voxel session splits for device storage/dispatch limits and retains the
         // full Gaussian input across splits. Fixed 256-batch calls re-uploaded the
         // entire scene on every call, even though only the batch descriptors changed.
+        auto dispatch_time = utility::logger().time("Voxel GPU dispatch");
         const auto masks = session_.voxelize(data.gaussians, indices, specs, resolution, cutoff, 64);
+        dispatch_time.finish();
         for (size_t j = 0; j < batches.size(); ++j) {
             const auto& b = batches[j];
             for (int z = 0; z < b.dimensions[2]; ++z) {

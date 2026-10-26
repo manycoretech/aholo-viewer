@@ -15,7 +15,7 @@ struct ClusterSchedule {
     size_t streaming_slots;
 };
 
-inline ClusterSchedule cluster_schedule(size_t rows, size_t centroids, size_t stride, ClusterLimits limits) {
+inline ClusterSchedule cluster_schedule(size_t rows, size_t centroids, size_t stride, ClusterLimits limits, size_t max_batch_rows = 0) {
     if (!rows || !centroids || !stride) {
         throw std::runtime_error("Invalid GPU clustering dimensions");
     }
@@ -24,6 +24,9 @@ inline ClusterSchedule cluster_schedule(size_t rows, size_t centroids, size_t st
         throw std::runtime_error("Insufficient GPU memory budget for clustering centroids and one batch");
     }
     size_t batch_rows = std::min(limits.storage_buffer_bytes / (stride * sizeof(float)), limits.workgroups * 128);
+    if (max_batch_rows) {
+        batch_rows = std::min(batch_rows, max_batch_rows);
+    }
     batch_rows = std::min(rows, std::max<size_t>(128, batch_rows / 128 * 128));
     // Cache a single batch when it fits. Streaming needs up to two reusable slots.
     while (batch_rows > 128 && fixed + batch_rows * (stride + 1) * sizeof(float) * (batch_rows < rows ? 2 : 1) > limits.memory_bytes) {

@@ -1,7 +1,9 @@
 # Changelog
 
-## DEV
+## 2.1.0
 
+- overlap SOG label readback with CPU centroid reduction, reuse caller-owned labels, and select a shared-memory tile from bounded samples for large resident clustering sessions
+- distribute voxel candidate sorting across the shared CPU pool while preserving per-bin accumulation order
 - reuse Voxel GPU buffers within each task and release them when the task completes, reducing retained memory during subsequent pipeline tasks
 - separate task buffers from shared Vulkan device and kernel resources so Voxel and SOG clustering sessions manage their allocations independently
 - release task-owned GPU resources before destroying the pipeline's GPU device
