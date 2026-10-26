@@ -15,6 +15,7 @@ import {
 } from '@manycore/aholo-viewer';
 import { Pane } from 'tweakpane';
 import { CameraControl } from './camera-control.js';
+import { mountCameraRotation } from './camera-rotation.js';
 import {
     abortable as abortableWithMessage,
     syncCameraAspect,
@@ -75,6 +76,9 @@ interface ViewerLabels {
     unsupportedFileType: string;
     emptyFiles: string;
     removeFile: string;
+    orbitAxisX: string;
+    orbitAxisY: string;
+    orbitAxisZ: string;
 }
 
 type Source =
@@ -305,7 +309,6 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
     const fileList = query<HTMLElement>(root, '[data-file-list]');
     const coordSelect = query<HTMLSelectElement>(root, '[data-camera-coord]');
     const farInput = query<HTMLInputElement>(root, '[data-camera-far]');
-    const useOrbitInput = query<HTMLInputElement>(root, '[data-camera-use-orbit]');
     const copyCameraButton = query<HTMLButtonElement>(root, '[data-camera-copy]');
     const pasteCameraButton = query<HTMLButtonElement>(root, '[data-camera-paste]');
     const resetCameraButton = query<HTMLButtonElement>(root, '[data-camera-reset]');
@@ -317,7 +320,11 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
     const viewer = createViewer(`aholo-viewer-page-${Date.now()}`, surface, { antialiasing: false });
     const scene = new Scene3D();
     const camera = new PerspectiveCamera(60, 1, 0.1, Number(farInput.value) || 2000);
-    const control = new CameraControl(camera, surface, { enabled: true });
+    const control = new CameraControl(camera, surface, {
+        enabled: true,
+        lookSpeed: 0.0015,
+        navigationSpace: 'camera-local',
+    });
 
     let disposed = false;
     let rafId: number | undefined;
@@ -331,6 +338,18 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
     const lodSplats: LodSplatInstance[] = [];
     const records: FileRecord[] = [];
     const estimateFps = createFpsEstimator();
+    const cameraRotation = mountCameraRotation({
+        root,
+        container: stage,
+        camera,
+        control,
+        labels: {
+            x: config.labels.orbitAxisX,
+            y: config.labels.orbitAxisY,
+            z: config.labels.orbitAxisZ,
+        },
+        onChange: requestRender,
+    });
 
     configureFileInputForPlatform(fileInput);
 
@@ -417,10 +436,6 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
             camera.updateProjectionMatrix();
             requestRender();
         }
-    });
-    useOrbitInput.addEventListener('change', () => {
-        control.setOptions({ useOrbit: useOrbitInput.checked });
-        requestRender();
     });
     copyCameraButton.addEventListener('click', () => {
         void navigator.clipboard.writeText(JSON.stringify(serializeCamera(camera)));
@@ -831,6 +846,7 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
         if (rafId !== undefined) {
             window.cancelAnimationFrame(rafId);
         }
+        cameraRotation.dispose();
         control.dispose();
         clearScene();
         fullscreenMode.dispose();

@@ -1,4 +1,4 @@
-interface CameraControlVector3 {
+export interface CameraControlVector3 {
     x: number;
     y: number;
     z: number;
@@ -17,7 +17,7 @@ interface CameraControlMatrix4 {
     _elements: Float32Array;
 }
 
-interface CameraControlCamera {
+export interface CameraControlCamera {
     position: CameraControlVector3;
     rotation: CameraControlEuler;
     up?: CameraControlVector3;
@@ -30,6 +30,8 @@ interface CameraControlOptions {
     pointerEnabled?: boolean;
     orbitEnabled?: boolean;
     useOrbit?: boolean;
+    /** Keep shared controls world-up by default; Viewer opts into its camera-local frame. */
+    navigationSpace?: 'world-up' | 'camera-local';
     orbitCenter?: CameraControlVector3;
     orbitMinDistance?: number;
     moveSpeed?: number;
@@ -76,6 +78,7 @@ const DEFAULT_OPTIONS: Required<CameraControlOptions> = {
     pointerEnabled: true,
     orbitEnabled: true,
     useOrbit: false,
+    navigationSpace: 'world-up',
     orbitCenter: { x: 0, y: 0, z: 0 },
     orbitMinDistance: 0.01,
     moveSpeed: 0.4,
@@ -120,6 +123,7 @@ export class CameraControl {
     pointerEnabled: boolean;
     orbitEnabled: boolean;
     useOrbit: boolean;
+    navigationSpace: 'world-up' | 'camera-local';
     orbitMinDistance: number;
     moveSpeed: number;
     lookSpeed: number;
@@ -163,6 +167,7 @@ export class CameraControl {
         this.pointerEnabled = resolved.pointerEnabled;
         this.orbitEnabled = resolved.orbitEnabled;
         this.useOrbit = resolved.useOrbit;
+        this.navigationSpace = resolved.navigationSpace;
         this.orbitMinDistance = Math.max(EPSILON, resolved.orbitMinDistance);
         this.setOrbitCenter(resolved.orbitCenter);
         this.moveSpeed = resolved.moveSpeed;
@@ -213,6 +218,30 @@ export class CameraControl {
         this.#orbitCenter.x = center.x;
         this.#orbitCenter.y = center.y;
         this.#orbitCenter.z = center.z;
+    }
+
+    /** Rotate orientation about a world-space axis without moving the camera. */
+    rotateAroundWorldAxis(axis: CameraControlVector3, angle: number) {
+        if (this.#disposed || !this.enabled || !Number.isFinite(angle) || Math.abs(angle) < EPSILON) {
+            return false;
+        }
+
+        const axisLength = lengthVector(axis);
+        if (!Number.isFinite(axisLength) || axisLength < EPSILON) {
+            return false;
+        }
+        const unitAxis = multiplyVector(axis, 1 / axisLength);
+
+        const basis = getCameraOrientationBasis(this.#camera);
+        const rotatedForward = normalizeVector(rotateVectorAroundAxis(basis.forward, unitAxis, angle));
+        const rotatedViewUp = normalizeVector(rotateVectorAroundAxis(basis.viewUp, unitAxis, angle));
+
+        if (!rotatedForward || !rotatedViewUp) {
+            return false;
+        }
+
+        setCameraLookBasis(this.#camera, rotatedForward, rotatedViewUp);
+        return true;
     }
 
     stop() {
@@ -455,15 +484,16 @@ export class CameraControl {
 
         if (movementLength > 0) {
             const scale = (this.moveSpeed * multiplier * deltaSeconds) / Math.max(1, movementLength);
-            const basis = getCameraBasis(this.#camera);
+            const basis = this.#getNavigationBasis();
+            const vertical = this.navigationSpace === 'camera-local' ? basis.viewUp : basis.up;
             const position = this.#camera.position;
 
             position.x +=
-                (basis.forward.x * forwardInput + basis.right.x * strafeInput + basis.up.x * verticalInput) * scale;
+                (basis.forward.x * forwardInput + basis.right.x * strafeInput + vertical.x * verticalInput) * scale;
             position.y +=
-                (basis.forward.y * forwardInput + basis.right.y * strafeInput + basis.up.y * verticalInput) * scale;
+                (basis.forward.y * forwardInput + basis.right.y * strafeInput + vertical.y * verticalInput) * scale;
             position.z +=
-                (basis.forward.z * forwardInput + basis.right.z * strafeInput + basis.up.z * verticalInput) * scale;
+                (basis.forward.z * forwardInput + basis.right.z * strafeInput + vertical.z * verticalInput) * scale;
             updated = true;
         }
 
@@ -493,7 +523,8 @@ export class CameraControl {
             return false;
         }
 
-        rotateCamera(this.#camera, -deltaX * this.lookSpeed, -deltaY * this.lookSpeed);
+        const rotate = this.navigationSpace === 'camera-local' ? rotateCameraLocal : rotateCamera;
+        rotate(this.#camera, -deltaX * this.lookSpeed, -deltaY * this.lookSpeed);
         return true;
     }
 
@@ -516,7 +547,7 @@ export class CameraControl {
             return false;
         }
 
-        const basis = getCameraBasis(this.#camera);
+        const basis = this.#getNavigationBasis();
         const position = this.#camera.position;
         const x = deltaX * this.panSpeed;
         const y = -deltaY * this.panSpeed;
@@ -556,6 +587,12 @@ export class CameraControl {
         }
 
         return multiplier;
+    }
+
+    #getNavigationBasis() {
+        return this.navigationSpace === 'camera-local'
+            ? getCameraOrientationBasis(this.#camera)
+            : getCameraBasis(this.#camera);
     }
 
     #getPointerMode(pointerType: string, button: number): PointerMode {
@@ -599,6 +636,25 @@ function rotateCamera(camera: CameraControlCamera, yawDelta: number, pitchDelta:
     }
 
     setCameraLookBasis(camera, forward, getViewUpWithRoll(forward, basis.up, rollAngle));
+}
+
+function rotateCameraLocal(camera: CameraControlCamera, yawDelta: number, pitchDelta: number) {
+    const basis = getCameraOrientationBasis(camera);
+    const yawedForward = normalizeVector(rotateVectorAroundAxis(basis.forward, basis.viewUp, yawDelta));
+    const yawedRight = normalizeVector(rotateVectorAroundAxis(basis.right, basis.viewUp, yawDelta));
+
+    if (!yawedForward || !yawedRight) {
+        return;
+    }
+
+    const forward = normalizeVector(rotateVectorAroundAxis(yawedForward, yawedRight, pitchDelta));
+    const viewUp = normalizeVector(rotateVectorAroundAxis(basis.viewUp, yawedRight, pitchDelta));
+
+    if (!forward || !viewUp) {
+        return;
+    }
+
+    setCameraLookBasis(camera, forward, viewUp);
 }
 
 function orbitCamera(
@@ -664,7 +720,7 @@ function getCameraBasis(camera: CameraControlCamera) {
     };
 }
 
-function getCameraOrientationBasis(camera: CameraControlCamera) {
+export function getCameraOrientationBasis(camera: CameraControlCamera) {
     const up = getCameraUp(camera);
     const matrix = getCameraRotationMatrix(camera);
     const elements = matrix._elements;
