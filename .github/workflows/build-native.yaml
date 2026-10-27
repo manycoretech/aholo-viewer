@@ -290,11 +290,34 @@ jobs:
             aholo-native-linux:22.04 \
             bash -lc 'cmake --workflow --preset ${{ matrix.preset }}'
 
-      - name: Build splat-transform native
-        if: ${{ !startsWith(matrix.os, 'ubuntu') }}
+      - name: Build splat-transform native (Windows)
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        working-directory: packages/splat-transform-native/source
         run: |
-          cd packages/splat-transform-native/source
-          cmake --workflow --preset ${{ matrix.preset }}
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -property installationPath
+          if (!$vsPath) { throw 'Visual Studio installation not found' }
+
+          $vsArch = if ($env:RUNNER_ARCH -eq 'ARM64') { 'arm64' } else { 'x64' }
+
+          Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vsPath `
+            -SkipAutomaticLocation `
+            -DevCmdArguments "-arch=$vsArch -host_arch=$vsArch"
+
+          Get-Command cl.exe, ninja.exe
+
+          $PSNativeCommandUseErrorActionPreference = $true
+          cmake --preset ${{ matrix.preset }} -G Ninja
+          cmake --build build --parallel
+          cmake --install build --config Release
+          ctest --preset ${{ matrix.preset }}
+
+      - name: Build splat-transform native (macOS)
+        if: startsWith(matrix.os, 'macos')
+        working-directory: packages/splat-transform-native/source
+        run: cmake --workflow --preset ${{ matrix.preset }}
 
       - name: Print native build failure logs
         if: failure()
