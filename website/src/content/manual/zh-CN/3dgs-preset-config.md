@@ -81,6 +81,8 @@ order: 4
 | 极限性能 0 | 机器配置极低，或场景规模极大时。                                                                            |
 | 极限性能 1 | 机器配置极低或场景规模极大，并且原始数据格式为 sog 时。满足条件时更建议使用这个配置，可打开更大的场景规模。 |
 
+高斯衰减统一使用归一化的 `fastExp` 公式，预设不再配置 `normalizedFalloff`。`detailCullingAlphaEnabled` 默认关闭；需要计入透明度时单独启用。
+
 ### 极限效果
 
 ```typescript
@@ -105,7 +107,6 @@ setViewerConfig(viewer, {
                 cameraRelativeEnabled: false,
             },
             raster: {
-                normalizedFalloff: true,
                 detailCullingThreshold: 0,
             },
             sort: {
@@ -309,7 +310,7 @@ setViewerConfig(viewer, {
 | `composite.enabled`                            | 开启离屏合成与色调映射。     | 默认关闭。使用曲线、曝光或高精度中间缓冲前需开启。                                                                                                                                                                                                    |
 | `composite.toneMapping` / `composite.exposure` | 控制色调映射曲线与曝光。     | 默认 `ToneMapping.Linear` 和 `1`。原 `Splatting.toneMapping` 配置迁移到此处，详见[配置迁移](./config.md)。                                                                                                                                            |
 | `composite.highPrecisionEnabled`               | 是否开启高精度渲染缓冲。     | 场景中出现水波扩散状条纹时可以考虑开启；对效果要求较高时也可开启；会增加显存开销。                                                                                                                                                                    |
-| `raster.normalizedFalloff`                     | 开启高斯函数结果归一化曲线。 | 大多数场景差异不明显。除非追求最佳效果，否则不建议开启。                                                                                                                                                                                              |
+| `raster.detailCullingAlphaEnabled`             | 细节剔除计入高斯透明度。     | 默认 `false`。开启后，低透明度高斯更容易被剔除；与 `detailCullingThreshold` 配合评估画面和性能。                                                                                                                                                      |
 | `raster.preBlurAmount` / `raster.blurAmount`   | 控制模糊参数。               | 非 AA 训练结果通常使用 `0.3 / 0`；AA 训练结果通常使用 `0 / 0.3`。不建议设置其他值。                                                                                                                                                                   |
 | `raster.focalAdjustment`                       | 调整 splat 扩散缩放。        | 设置为 `2` 更接近参考结果。                                                                                                                                                                                                                           |
 | `raster.detailCullingThreshold`                | 近似细节剔除。               | 通常值在 `[0, 4]`。一般设置 `1` 对画面损失极小，具体性能收益取决于方案精细程度。                                                                                                                                                                      |
@@ -331,8 +332,3 @@ viewer.render();
 ```
 
 `[0]` 表示第一个高斯的索引。调用 `operator.setState([0], SplatState.DisableSH, true)` 可移除此状态位并恢复 SH 颜色，之后重新渲染。该操作不会删除已加载的 SH 数据，也不会改变其他高斯的状态；`pack.precalculateEnabled` 仍控制整体 SH 预计算。
-
-### normalizedFalloff 对比
-
-![normalizedFalloff 关闭](../assets/3dgs-preset-config/normalized-falloff-off.png)
-![normalizedFalloff 开启](../assets/3dgs-preset-config/normalized-falloff-on.png)

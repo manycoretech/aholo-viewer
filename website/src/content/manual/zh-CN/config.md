@@ -58,14 +58,17 @@ setViewerConfig(viewer, {
 
 ## Splatting 配置迁移
 
-| 旧配置                                   | 迁移方式                                 |
-| ---------------------------------------- | ---------------------------------------- |
-| `Splatting.toneMapping.enabled`          | 改为 `Splatting.composite.enabled`。     |
-| `Splatting.toneMapping.toneMapping`      | 改为 `Splatting.composite.toneMapping`。 |
-| `Splatting.toneMapping.exposure`         | 改为 `Splatting.composite.exposure`。    |
-| `Splatting.pack.sortedLayoutEnabled`     | 已移除，从配置和预设中删除。             |
-| `Splatting.sort.frustumCullingEnabled`   | 上游已移除，删除旧集成中的此项。         |
-| `Splatting.sort.frustumCullingClipScale` | 上游已移除，删除旧集成中的此项。         |
+高斯衰减现在统一使用归一化的 `fastExp` 公式，原 `raster.normalizedFalloff` 开关已移除。新增 `raster.detailCullingAlphaEnabled`，默认 `false`；开启后细节剔除会计入高斯透明度，与 `raster.detailCullingThreshold` 配合使用。WebGL 与 WebGPU 使用相同配置。
+
+| 旧配置                                   | 迁移方式                                         |
+| ---------------------------------------- | ------------------------------------------------ |
+| `Splatting.toneMapping.enabled`          | 改为 `Splatting.composite.enabled`。             |
+| `Splatting.toneMapping.toneMapping`      | 改为 `Splatting.composite.toneMapping`。         |
+| `Splatting.toneMapping.exposure`         | 改为 `Splatting.composite.exposure`。            |
+| `Splatting.pack.sortedLayoutEnabled`     | 已移除，从配置和预设中删除。                     |
+| `Splatting.raster.normalizedFalloff`     | 已移除，从配置和预设中删除；衰减公式统一归一化。 |
+| `Splatting.sort.frustumCullingEnabled`   | 上游已移除，删除旧集成中的此项。                 |
+| `Splatting.sort.frustumCullingClipScale` | 上游已移除，删除旧集成中的此项。                 |
 
 旧版 tone mapping 会隐式使用浮点中间缓冲；迁移时需显式设置 `composite.highPrecisionEnabled: true` 才能保留该精度。不要保留独立的 `Splatting.toneMapping` 对象。
 

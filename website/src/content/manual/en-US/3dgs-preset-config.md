@@ -81,6 +81,8 @@ Choose the preset according to product constraints first, then tune only the mos
 | Extreme Performance 0 | Use on extremely low-end devices or for extremely large scenes.                                                                                                              |
 | Extreme Performance 1 | Use on extremely low-end devices or for extremely large scenes when the source data is sog. Prefer this preset when the condition is met, because it can open larger scenes. |
 
+Gaussian falloff always uses the normalized `fastExp` formula, so presets no longer configure `normalizedFalloff`. `detailCullingAlphaEnabled` defaults to `false`; enable it separately to account for opacity.
+
 ### Max Quality
 
 ```typescript
@@ -105,7 +107,6 @@ setViewerConfig(viewer, {
                 cameraRelativeEnabled: false,
             },
             raster: {
-                normalizedFalloff: true,
                 detailCullingThreshold: 0,
             },
             sort: {
@@ -309,7 +310,7 @@ setViewerConfig(viewer, {
 | `composite.enabled`                            | Enables offscreen composition and tone mapping.   | Disabled by default. Enable it to use a tone curve, exposure, or a high-precision intermediate buffer.                                                                                                                                                                                                                         |
 | `composite.toneMapping` / `composite.exposure` | Controls the tone curve and exposure.             | Defaults to `ToneMapping.Linear` and `1`. Move the former `Splatting.toneMapping` settings here; see [configuration migration](./config.md).                                                                                                                                                                                   |
 | `composite.highPrecisionEnabled`               | Enables a high-precision render attachment.       | Consider enabling it when the scene shows ripple-like banding artifacts, or when quality is important. It increases GPU memory usage.                                                                                                                                                                                          |
-| `raster.normalizedFalloff`                     | Enables normalized Gaussian falloff.              | Most scenes show little difference. Do not enable it unless you need the best possible quality.                                                                                                                                                                                                                                |
+| `raster.detailCullingAlphaEnabled`             | Includes Gaussian opacity in detail culling.      | Defaults to `false`. Enabling it makes low-opacity Gaussians more likely to be culled; evaluate it together with `detailCullingThreshold`.                                                                                                                                                                                     |
 | `raster.preBlurAmount` / `raster.blurAmount`   | Controls blur parameters.                         | Non-AA training results usually use `0.3 / 0`; AA training results usually use `0 / 0.3`. Other values are not recommended.                                                                                                                                                                                                    |
 | `raster.focalAdjustment`                       | Adjusts splat spread scale.                       | `2` is closer to the reference result.                                                                                                                                                                                                                                                                                         |
 | `raster.detailCullingThreshold`                | Approximate detail culling.                       | Usually in `[0, 4]`. Setting it to `1` usually causes minimal visual loss; the performance gain depends on scene detail.                                                                                                                                                                                                       |
@@ -331,8 +332,3 @@ viewer.render();
 ```
 
 `[0]` is the index of the first Gaussian. Call `operator.setState([0], SplatState.DisableSH, true)` to clear the bit and restore SH color, then render again. This does not remove loaded SH data or change other Gaussians' states. `pack.precalculateEnabled` still controls SH precalculation for the entire pipeline.
-
-### normalizedFalloff Comparison
-
-![normalizedFalloff off](../assets/3dgs-preset-config/normalized-falloff-off.png)
-![normalizedFalloff on](../assets/3dgs-preset-config/normalized-falloff-on.png)

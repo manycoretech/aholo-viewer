@@ -262,7 +262,11 @@ export interface ISplattingPluginConfig {
         maxStdDev?: number;
         maxPixelRadius?: number;
         detailCullingThreshold?: number;
-        normalizedFalloff?: boolean;
+        /**
+         * Include Gaussian opacity in detail culling.
+         * @default `false`
+         */
+        detailCullingAlphaEnabled?: boolean;
         selectedColor?: Vector4;
     };
     /**

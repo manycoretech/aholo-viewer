@@ -110,7 +110,7 @@ interface ViewerParams {
     cameraRelativeEnabled: boolean;
     autoFreeResourceOnGpuPacked: boolean;
     renderAttachHighPrecisionEnabled: boolean;
-    normalizedFalloff: boolean;
+    detailCullingAlphaEnabled: boolean;
     preBlurAmount: number;
     blurAmount: number;
     focalAdjustment: number;
@@ -172,7 +172,7 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             autoFreeResourceOnGpuPacked: true,
             compositeEnabled: true,
             renderAttachHighPrecisionEnabled: true,
-            normalizedFalloff: true,
+            detailCullingAlphaEnabled: false,
             preBlurAmount: 0.3,
             blurAmount: 0,
             focalAdjustment: 2,
@@ -193,7 +193,7 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             autoFreeResourceOnGpuPacked: true,
             compositeEnabled: false,
             renderAttachHighPrecisionEnabled: false,
-            normalizedFalloff: false,
+            detailCullingAlphaEnabled: false,
             preBlurAmount: 0.3,
             blurAmount: 0,
             focalAdjustment: 2,
@@ -214,7 +214,7 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             autoFreeResourceOnGpuPacked: false,
             compositeEnabled: false,
             renderAttachHighPrecisionEnabled: false,
-            normalizedFalloff: false,
+            detailCullingAlphaEnabled: false,
             preBlurAmount: 0.3,
             blurAmount: 0,
             focalAdjustment: 2,
@@ -235,7 +235,7 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             autoFreeResourceOnGpuPacked: true,
             compositeEnabled: false,
             renderAttachHighPrecisionEnabled: false,
-            normalizedFalloff: false,
+            detailCullingAlphaEnabled: false,
             preBlurAmount: 0.3,
             blurAmount: 0,
             focalAdjustment: 2,
@@ -256,7 +256,7 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             autoFreeResourceOnGpuPacked: true,
             compositeEnabled: false,
             renderAttachHighPrecisionEnabled: false,
-            normalizedFalloff: false,
+            detailCullingAlphaEnabled: false,
             preBlurAmount: 0.3,
             blurAmount: 0,
             focalAdjustment: 2,
@@ -277,7 +277,7 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             autoFreeResourceOnGpuPacked: true,
             compositeEnabled: false,
             renderAttachHighPrecisionEnabled: false,
-            normalizedFalloff: false,
+            detailCullingAlphaEnabled: false,
             preBlurAmount: 0.3,
             blurAmount: 0,
             focalAdjustment: 2,
@@ -580,20 +580,23 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
         record.format = getFileTypeLabel(type);
         const input = archive ?? (source.kind === 'url' ? source.url : source.file);
         const data = await parseSourceData(input, type, signal);
+        throwIfAborted(signal);
         applyImportedSplatDefaults(data);
-        const splat = await abortable(createSplat(data), signal);
+        const splat = await createSplat(data);
+        if (signal.aborted) {
+            splat.destroy();
+            throwIfAborted(signal);
+        }
         splat.autoFreeResourceOnGpuPacked = params.autoFreeResourceOnGpuPacked;
         scene.add(splat as Object3D);
     }
 
     async function parseSourceData(input: File | string | Uint8Array, type: SplatFileTypeValue, signal: AbortSignal) {
-        return abortable(
-            parseSplatData(type, input, params.splatPackType, {
-                maxShDegree: params.maxSh,
-                maxTextureSize: 8192,
-            }),
+        return parseSplatData(type, input, params.splatPackType, {
+            maxShDegree: params.maxSh,
+            maxTextureSize: 8192,
             signal,
-        );
+        });
     }
 
     function applyImportedSplatDefaults(data: { readonly shDegree: number }) {
@@ -625,11 +628,14 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
                 schedulerMinDuration: 0,
             },
             createViewerContext(viewer),
-            async (url: string) => {
+            async (url: string, resourceSignal?: AbortSignal) => {
+                const combinedSignal = resourceSignal ? AbortSignal.any([signal, resourceSignal]) : signal;
                 try {
-                    return await loadLodResource(url, baseUrl, signal);
+                    return await loadLodResource(url, baseUrl, combinedSignal);
                 } catch (error) {
-                    rejectResourceError(error);
+                    if (!combinedSignal.aborted) {
+                        rejectResourceError(error);
+                    }
                     throw error;
                 }
             },
@@ -656,7 +662,8 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
             throw new Error(`Unsupported LOD resource: ${resourceUrl}`);
         }
 
-        const data = await abortable(parseSplatData(type, resourceUrl, SplatPackType.Compressed), signal);
+        const data = await parseSplatData(type, resourceUrl, SplatPackType.Compressed, { signal });
+        throwIfAborted(signal);
         applyImportedSplatDefaults(data);
         return data;
     }
@@ -853,7 +860,7 @@ function createDefaultParams(): ViewerParams {
         cameraRelativeEnabled: true,
         autoFreeResourceOnGpuPacked: false,
         renderAttachHighPrecisionEnabled: false,
-        normalizedFalloff: false,
+        detailCullingAlphaEnabled: false,
         preBlurAmount: 0.3,
         blurAmount: 0,
         focalAdjustment: 2,
@@ -998,7 +1005,7 @@ function setupConfigPanel(
         handleSplattingParamChange,
     );
     raster
-        .addBinding(params, 'normalizedFalloff', { label: 'Normalized falloff' })
+        .addBinding(params, 'detailCullingAlphaEnabled', { label: 'Cull by alpha' })
         .on('change', handleSplattingParamChange);
     raster
         .addBinding(params, 'preBlurAmount', { label: 'Pre blur', min: 0, max: 1, step: 0.1 })
@@ -1125,7 +1132,7 @@ function applyViewerConfig(viewer: Viewer, params: ViewerParams) {
                     cameraRelativeEnabled: params.cameraRelativeEnabled,
                 },
                 raster: {
-                    normalizedFalloff: params.normalizedFalloff,
+                    detailCullingAlphaEnabled: params.detailCullingAlphaEnabled,
                     preBlurAmount: params.preBlurAmount,
                     blurAmount: params.blurAmount,
                     focalAdjustment: params.focalAdjustment,

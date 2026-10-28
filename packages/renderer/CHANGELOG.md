@@ -1,5 +1,22 @@
 # ChangeLOG
 
+## DEV
+
+1. Features
+    - add `retainData`, `chunkBytes`, and `signal` options to `SplatLoader.parseSplatData()`. CPU data is retained by default; `retainData: false` returns metadata and a single-consumer stream with `readChunks()`, `collect()`, and `cancel()`.
+    - support streaming uploads through `SplatUtils.createSplat(data, renderer)` to WebGL2 textures or WebGPU source buffers, including image-by-image decoding for native SOG packing.
+    - add `Splat.stream` and `Splat.readback()` to restore CPU source data on demand for editing, export, and GPU resource recreation. GPU-only sources must be reloaded after resource release or context/device loss if they have not been read back.
+    - add `Splatting.raster.detailCullingAlphaEnabled`, disabled by default, to include Gaussian opacity in detail culling on WebGL and WebGPU.
+2. Fixes
+    - update the bundled splat worker factory patch for the upstream streaming loader.
+    - handle concurrent readback and resources released during readback without restoring stale source data.
+    - cancel parsing and release readers, worker tasks, and partially created GPU resources when streaming loads fail or are aborted.
+3. Changes
+    - read files and URLs in parsing workers and reuse internal encoding buffers to reduce temporary allocations and copies.
+    - require `await splat.readback()` before `SplatUtils.createSplatData(splat)` accesses a GPU-only source; existing CPU-backed loading remains the default.
+4. Breaking Changes
+    - remove `Splatting.raster.normalizedFalloff`; delete it from configuration and presets. Gaussian falloff now always uses the normalized `fastExp` formula.
+
 ## 1.11.0
 
 1. Features

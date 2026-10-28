@@ -58,14 +58,17 @@ For offscreen composition without a nonlinear tone curve, use `ToneMapping.Linea
 
 ## Splatting Configuration Migration
 
-| Previous Setting                         | Migration                                               |
-| ---------------------------------------- | ------------------------------------------------------- |
-| `Splatting.toneMapping.enabled`          | Use `Splatting.composite.enabled`.                      |
-| `Splatting.toneMapping.toneMapping`      | Use `Splatting.composite.toneMapping`.                  |
-| `Splatting.toneMapping.exposure`         | Use `Splatting.composite.exposure`.                     |
-| `Splatting.pack.sortedLayoutEnabled`     | Removed. Delete it from configuration and presets.      |
-| `Splatting.sort.frustumCullingEnabled`   | Removed upstream. Delete it from existing integrations. |
-| `Splatting.sort.frustumCullingClipScale` | Removed upstream. Delete it from existing integrations. |
+Gaussian falloff now always uses the normalized `fastExp` formula. The `raster.normalizedFalloff` toggle has been removed. The new `raster.detailCullingAlphaEnabled` option defaults to `false`; enable it to include Gaussian opacity in detail culling alongside `raster.detailCullingThreshold`. WebGL and WebGPU use the same setting.
+
+| Previous Setting                         | Migration                                                                        |
+| ---------------------------------------- | -------------------------------------------------------------------------------- |
+| `Splatting.toneMapping.enabled`          | Use `Splatting.composite.enabled`.                                               |
+| `Splatting.toneMapping.toneMapping`      | Use `Splatting.composite.toneMapping`.                                           |
+| `Splatting.toneMapping.exposure`         | Use `Splatting.composite.exposure`.                                              |
+| `Splatting.pack.sortedLayoutEnabled`     | Removed. Delete it from configuration and presets.                               |
+| `Splatting.raster.normalizedFalloff`     | Removed. Delete it from configuration and presets; falloff is always normalized. |
+| `Splatting.sort.frustumCullingEnabled`   | Removed upstream. Delete it from existing integrations.                          |
+| `Splatting.sort.frustumCullingClipScale` | Removed upstream. Delete it from existing integrations.                          |
 
 Tone mapping previously selected a floating-point intermediate buffer implicitly. Set `composite.highPrecisionEnabled: true` explicitly to retain that precision. Remove the separate `Splatting.toneMapping` object.
 

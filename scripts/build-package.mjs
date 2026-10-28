@@ -36,7 +36,7 @@ const workerBundles = [
         factorySourceFilter: /loaders[\\/]splat-loader[\\/]index\.ts$/,
         factoryName: 'WorkerFactor',
         blobUrlName: 'SplatWorkerBlobUrl',
-        nextStatement: 'const poll =',
+        nextStatement: 'const pool =',
     }),
     createWorkerBundle({
         entry: 'external/egs-core/packages/loaders/texture-loader/ktx2/basis/worker/transcoder.worker.ts',
@@ -54,7 +54,7 @@ const workerBundles = [
         factorySourceFilter: /utils[\\/]splat-utils[\\/]sort\.ts$/,
         factoryName: 'WorkerFactor',
         blobUrlName: 'SplatSortWorkerBlobUrl',
-        nextStatement: 'const poll =',
+        nextStatement: 'const pool =',
     }),
 ];
 

@@ -20,10 +20,14 @@ export default async function runner({ renderer, control, loading, configPanel, 
     const data = await loadSplatData(
         'https://holo-cos.aholo3d.cn/aholo-opensource/gs_file/bear/bear.3d71a266.sog',
         indexedDB,
+        signal,
     );
     throwIfAborted(signal);
     const splat = await SplatUtils.createSplat(data);
-    throwIfAborted(signal);
+    if (signal.aborted) {
+        splat.destroy();
+        throwIfAborted(signal);
+    }
     scene.add(splat);
 
     renderer.frame(({ delta }) => control.update(delta));
@@ -46,7 +50,7 @@ function throwIfAborted(signal: AbortSignal) {
 function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel) {
     const params = {
         precalculateEnabled: true,
-        normalizedFalloff: false,
+        detailCullingAlphaEnabled: false,
         preBlurAmount: 0.3,
         blurAmount: 0,
         focalAdjustment: 2,
@@ -65,7 +69,7 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel) {
                         precalculateEnabled: params.precalculateEnabled,
                     },
                     raster: {
-                        normalizedFalloff: params.normalizedFalloff,
+                        detailCullingAlphaEnabled: params.detailCullingAlphaEnabled,
                         preBlurAmount: params.preBlurAmount,
                         blurAmount: params.blurAmount,
                         focalAdjustment: params.focalAdjustment,
@@ -86,7 +90,7 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel) {
 
     const pane = configPanel.createPane({ title: 'Splatting' });
     pane.addBinding(params, 'precalculateEnabled', { label: 'Precalculate SH' }).on('change', applyConfig);
-    pane.addBinding(params, 'normalizedFalloff', { label: 'Normalized falloff' }).on('change', applyConfig);
+    pane.addBinding(params, 'detailCullingAlphaEnabled', { label: 'Cull by alpha' }).on('change', applyConfig);
     pane.addBinding(params, 'preBlurAmount', { label: 'Pre blur', max: 1, min: 0, step: 0.1 }).on(
         'change',
         applyConfig,
@@ -127,15 +131,21 @@ type ISplatData = ReturnType<SplatLoader.SplatData['serialize']>;
 
 const CACHE_KEY = 'splatting-basic:bear';
 const CACHE_VERSION = 0;
-async function loadSplatData(url: string, db: RuntimeIndexedDBStorage) {
+async function loadSplatData(url: string, db: RuntimeIndexedDBStorage, signal: AbortSignal) {
     const cached = await db.get<ISplatData>(CACHE_KEY, { version: CACHE_VERSION });
+    throwIfAborted(signal);
     if (cached) {
         const data = new SplatLoader.SuperCompressedSplatData();
         data.deserialize(cached);
         return data;
     }
 
-    const data = await SplatLoader.parseSplatData(SplatLoader.SplatFileType.SOG, url);
+    const data = await SplatLoader.parseSplatData(
+        SplatLoader.SplatFileType.SOG,
+        url,
+        SplatLoader.SplatPackType.SuperCompressed,
+        { signal },
+    );
     await db.set(CACHE_KEY, data.serialize(), { version: CACHE_VERSION });
     return data;
 }

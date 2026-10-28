@@ -55,11 +55,9 @@ npm install --save-dev vite typescript # TypeScript is recommended.
         const viewer = createViewer('example-viewer', container, {});
         const camera = new PerspectiveCamera(60, 1, 0.1, 2000);
 
-        const resp = await fetch(SPLAT_URL);
-        const buffer = await resp.arrayBuffer();
         const data = await SplatLoader.parseSplatData(
             SplatLoader.SplatFileType.SOG,
-            new Uint8Array(buffer),
+            SPLAT_URL,
             SplatLoader.SplatPackType.Compressed,
         );
         const splat = await SplatUtils.createSplat(data);
@@ -125,3 +123,55 @@ press h + enter to show help
 ```
 
 ![Example](../assets/getting-started/example.png)
+
+## Loading, Stream Consumption, and Cancellation
+
+[`SplatLoader.parseSplatData()`](api:SplatLoader.parseSplatData) accepts a URL, `File`, `Uint8Array`, or `{ stream, contentLength }`. URLs and files are read in a worker. Pass an existing URL directly to avoid downloading the entire file on the main thread first. Complete encoded CPU data is retained by default for `serialize()` caching and existing editing APIs.
+
+The fourth argument supports these options:
+
+| Option       | Default            | Description                                                                                                                     |
+| ------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `retainData` | `true`             | Retains complete encoded CPU data. Set to `false` to receive metadata and a single-consumer stream.                             |
+| `chunkBytes` | `16 * 1024 * 1024` | Encoded chunk byte budget. Must be a positive safe integer. It does not affect rendering precision or cap total parsing memory. |
+| `signal`     | None               | An `AbortSignal` that cancels parsing and stream consumption, releasing related worker tasks and readers.                       |
+
+```typescript
+const controller = new AbortController();
+const data = await SplatLoader.parseSplatData(
+    SplatLoader.SplatFileType.SOG,
+    SPLAT_URL,
+    SplatLoader.SplatPackType.Compressed,
+    { signal: controller.signal },
+);
+const splat = await SplatUtils.createSplat(data);
+if (controller.signal.aborted) {
+    splat.destroy();
+    controller.signal.throwIfAborted();
+}
+viewer.getScene().add(splat);
+viewer.render();
+```
+
+Call `controller.abort()` when switching assets or disposing the loading UI. With `retainData: false`, choose one consumption path:
+
+- `await data.collect()`: collect complete CPU data, then call `createSplat(data)` or `serialize()`.
+- `await data.readChunks(async chunk => { ... })`: process encoded chunks directly. `chunk.samplers` contains sampler indices, byte offsets, and chunk data. The caller owns the chunk buffers by default.
+- `await SplatUtils.createSplat(data, renderer)`: provide the backend renderer from the host integration to upload chunks to WebGL2 or WebGPU. Native SOG is decoded and uploaded one image at a time.
+
+A stream can only be consumed once. Call `data.cancel()` if it will not be consumed. After GPU upload or `readChunks()` consumption, `collect()` cannot collect the same stream again. `createSplat()` resolves after the upload finishes; this does not provide progressive display of partially downloaded Gaussians. The current public Viewer interface has no backend renderer accessor, so ordinary integrations can use the default CPU path or call `collect()` first.
+
+### Restore CPU Data on Demand
+
+[`Splat.stream`](api:Splat) is `true` while encoded source data is retained only on the GPU. Read it back before editing, export, or GPU resource recreation:
+
+```typescript
+await splat.readback();
+// Applies to Compressed and SuperCompressed splats.
+const cpuData = SplatUtils.createSplatData(splat);
+const operator = new SplatUtils.SplatOperator(splat, cpuData);
+```
+
+After readback, `splat.stream` becomes `false` and the splat retains its encoded CPU data. Use the newly retrieved `cpuData` for CPU operations instead of the consumed stream object. `createSplatData()` supports `Compressed` and `SuperCompressed`, but not native SOG.
+
+GPU-only sources depend on their original graphics context. If resources are released or the context/device is lost before readback, reload the original asset. `autoFreeResourceOnGpuPacked` preserves encoded source textures while they remain GPU-only.
