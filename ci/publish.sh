@@ -6,4 +6,4 @@ corepack enable
 corepack install
 
 pnpm install
-node scripts/publish-packages.mjs
+node scripts/publish-packages.mjs "$@"

@@ -1,101 +1,125 @@
 import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { resolveCatalogs, applyCatalogs } from '@internal/utils/catalogs.js';
 import { getReleaseConfig } from './release-config.mjs';
 
-const packages = JSON.parse(
-    child_process.execSync('pnpm list --filter=@manycore/* -r --depth -1 --json', { stdio: 'pipe' }).toString('utf-8'),
-).filter(item => !item.private);
+const splatTransformName = '@manycore/aholo-splat-transform';
 
-// update splat-transform sub packages version.
-{
-    const splatTransformSubPackages = packages.filter(
-        item =>
-            item.name.startsWith('@manycore/aholo-splat-transform') && item.name !== '@manycore/aholo-splat-transform',
-    );
-    const splatTransformMainPackage = packages.find(item => item.name === '@manycore/aholo-splat-transform');
-    const splatTransformMainPackageJson = JSON.parse(
-        fs.readFileSync(path.resolve(splatTransformMainPackage.path, 'package.json'), 'utf-8'),
-    );
-    // Validate every artifact before mutating versions or publishing any package.
-    for (const p of splatTransformSubPackages) {
-        const executable = path.join(p.path, p.name.includes('-win32-') ? 'splat-transform.exe' : 'splat-transform');
-        if (!fs.statSync(executable).isFile() || fs.statSync(executable).size === 0) {
-            throw new Error(`Missing native executable: ${executable}`);
-        }
-        fs.accessSync(path.join(p.path, 'THIRD_PARTY_LICENSES.txt'));
-        // GitHub artifact downloads do not preserve Unix executable permissions.
-        if (!p.name.includes('-win32-')) fs.chmodSync(executable, 0o755);
-    }
-    for (const p of splatTransformSubPackages) {
-        const packageJson = JSON.parse(fs.readFileSync(path.resolve(p.path, 'package.json'), 'utf-8'));
-        p.version = splatTransformMainPackageJson.version;
-        packageJson.version = splatTransformMainPackageJson.version;
-        splatTransformMainPackageJson.optionalDependencies[p.name] = splatTransformMainPackageJson.version;
-        fs.writeFileSync(path.resolve(p.path, 'package.json'), JSON.stringify(packageJson, undefined, 2), 'utf-8');
-    }
-    fs.writeFileSync(
-        path.resolve(splatTransformMainPackage.path, 'package.json'),
-        JSON.stringify(splatTransformMainPackageJson, undefined, 2),
-        'utf-8',
-    );
+function isNativePackage(name) {
+    return name.startsWith(`${splatTransformName}-`);
 }
 
-// Classify synchronized package versions before publishing any package.
-const releaseConfigs = new Map(packages.map(p => [p.name, getReleaseConfig(p.version)]));
-const publishedPackages = [];
-
-const catalogs = resolveCatalogs();
-
-for (const p of packages) {
-    const cwd = p.path;
-    const { distTag, prerelease } = releaseConfigs.get(p.name);
-    const packageJson = JSON.parse(fs.readFileSync(path.resolve(cwd, 'package.json'), 'utf-8'));
-    const hiddenBuildCommand = packageJson.scripts?.['.build'];
-    let published = false;
+function isPublished(p) {
     try {
-        child_process.execSync(`npm view ${p.name}@${p.version}`, { stdio: 'ignore' });
-        published = true;
-    } catch {
-        // assume not found. should publish.
-    }
-    if (!published) {
-        const clonedPackageJson = structuredClone(packageJson);
-        if (hiddenBuildCommand) {
-            // hidden build command exists, add build commands to call .build
-            clonedPackageJson.scripts.build = 'pnpm run .build';
-            fs.writeFileSync(
-                path.resolve(cwd, 'package.json'),
-                JSON.stringify(clonedPackageJson, undefined, 2),
-                'utf-8',
-            );
+        child_process.execSync(`npm view ${p.name}@${p.version} version --json --registry=https://registry.npmjs.org`, {
+            stdio: 'pipe',
+        });
+        return true;
+    } catch (error) {
+        let code;
+        try {
+            code = JSON.parse(error.stdout?.toString('utf-8') ?? '').error?.code;
+        } catch {
+            // Non-JSON failures must not be mistaken for an unpublished version.
         }
-        // run build command if exists
-        child_process.execSync('pnpm run --if-present build', { stdio: 'inherit', cwd });
-
-        // cleanup & resolve package.json before publish
-        delete clonedPackageJson.scripts;
-        delete clonedPackageJson.devDependencies;
-        applyCatalogs(clonedPackageJson, ['dependencies', 'peerDependencies', 'optionalDependencies'], catalogs);
-
-        fs.writeFileSync(path.resolve(cwd, 'package.json'), JSON.stringify(clonedPackageJson, undefined, 2), 'utf-8');
-        const publishCommand = prerelease
-            ? `npm publish --access public --tag ${distTag}`
-            : 'npm publish --access public';
-        child_process.execSync(publishCommand, { stdio: 'inherit', cwd });
-        // restore package.json
-        fs.writeFileSync(path.resolve(cwd, 'package.json'), JSON.stringify(packageJson, undefined, 2), 'utf-8');
-        publishedPackages.push({
-            name: p.name,
-            version: p.version,
+        if (code === 'E404') return false;
+        throw new Error(`Unable to check npm publish status for ${p.name}@${p.version}${code ? ` (${code})` : ''}.`, {
+            cause: error,
         });
     }
 }
 
-if (publishedPackages.length > 0) {
-    console.log('published:');
-    for (const p of publishedPackages) {
-        console.log(`\t${p.name}@${p.version}`);
+export function publishPackages({ planOnly = false, githubOutput = process.env.GITHUB_OUTPUT } = {}) {
+    const packages = JSON.parse(
+        child_process
+            .execSync('pnpm list --filter=@manycore/* -r --depth -1 --json', { stdio: 'pipe' })
+            .toString('utf-8'),
+    ).filter(item => !item.private);
+    const splatTransform = packages.find(p => p.name === splatTransformName);
+
+    // Resolve effective versions without changing workspace manifests. Native packages
+    // use the main package version, even though their checked-in version is 0.0.0.
+    const releasePackages = packages.map(p => {
+        const native = isNativePackage(p.name);
+        if (native && !splatTransform) throw new Error(`Missing workspace package: ${splatTransformName}`);
+        const version = native ? splatTransform.version : p.version;
+        return { ...p, version, native, ...getReleaseConfig(version) };
+    });
+    const pendingPackages = releasePackages.filter(p => !isPublished(p));
+    const nativePackages = pendingPackages.filter(p => p.native);
+
+    console.log('Pending packages:');
+    for (const p of pendingPackages) console.log(`\t${p.name}@${p.version}`);
+    if (pendingPackages.length === 0) console.log('\t(none)');
+    console.log(`Native artifacts required: ${nativePackages.length > 0}`);
+
+    if (planOnly) {
+        if (githubOutput) fs.appendFileSync(githubOutput, `needs_native=${nativePackages.length > 0}\n`);
+        return pendingPackages;
     }
+
+    // Check every required artifact before building, changing manifests, or publishing.
+    // Already-published native packages do not need local artifacts.
+    for (const p of nativePackages) {
+        const executable = path.join(p.path, p.name.includes('-win32-') ? 'splat-transform.exe' : 'splat-transform');
+        for (const artifact of [executable, path.join(p.path, 'THIRD_PARTY_LICENSES.txt')]) {
+            const stat = fs.statSync(artifact, { throwIfNoEntry: false });
+            if (!stat?.isFile() || stat.size === 0) throw new Error(`Missing or empty native artifact: ${artifact}`);
+        }
+        // GitHub artifact downloads do not preserve Unix executable permissions.
+        if (!p.name.includes('-win32-')) fs.chmodSync(executable, 0o755);
+    }
+
+    if (pendingPackages.length === 0) return [];
+    const catalogs = resolveCatalogs();
+    const publishedPackages = [];
+    // Publish native dependencies before the CLI that references them. A retry then
+    // needs artifacts only for the platform versions that are still unpublished.
+    pendingPackages.sort((a, b) => Number(b.native) - Number(a.native));
+    for (const p of pendingPackages) {
+        const cwd = p.path;
+        const packageJsonPath = path.join(cwd, 'package.json');
+        const originalPackageJson = fs.readFileSync(packageJsonPath, 'utf-8');
+        const packageJson = JSON.parse(originalPackageJson);
+        packageJson.version = p.version;
+        if (p.name === splatTransformName) {
+            for (const name of Object.keys(packageJson.optionalDependencies ?? {})) {
+                if (isNativePackage(name)) packageJson.optionalDependencies[name] = p.version;
+            }
+        }
+        if (packageJson.scripts?.['.build']) packageJson.scripts.build = 'pnpm run .build';
+
+        try {
+            fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, undefined, 2), 'utf-8');
+            child_process.execSync('pnpm run --if-present build', { stdio: 'inherit', cwd });
+
+            delete packageJson.scripts;
+            delete packageJson.devDependencies;
+            applyCatalogs(packageJson, ['dependencies', 'peerDependencies', 'optionalDependencies'], catalogs);
+            fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, undefined, 2), 'utf-8');
+            const publishCommand = p.prerelease
+                ? `npm publish --access public --tag ${p.distTag}`
+                : 'npm publish --access public';
+            child_process.execSync(publishCommand, { stdio: 'inherit', cwd });
+            publishedPackages.push({ name: p.name, version: p.version });
+        } finally {
+            fs.writeFileSync(packageJsonPath, originalPackageJson, 'utf-8');
+        }
+    }
+
+    if (publishedPackages.length > 0) {
+        console.log('published:');
+        for (const p of publishedPackages) console.log(`\t${p.name}@${p.version}`);
+    }
+    return publishedPackages;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+    const args = process.argv.slice(2);
+    if (args.length > 1 || (args.length === 1 && args[0] !== '--plan')) {
+        throw new Error('Usage: node scripts/publish-packages.mjs [--plan]');
+    }
+    publishPackages({ planOnly: args[0] === '--plan' });
 }

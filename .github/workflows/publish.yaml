@@ -28,20 +28,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
-      - name: Check splat-transform publish status
-        id: splat-transform
-        run: |
-          package_name="$(node -p "require('./packages/splat-transform/package.json').name")"
-          package_version="$(node -p "require('./packages/splat-transform/package.json').version")"
-          if npm view "${package_name}@${package_version}" version --registry=https://registry.npmjs.org --silent >/dev/null 2>&1; then
-            echo "${package_name}@${package_version} already exists on npm."
-            echo "needs_publish=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "${package_name}@${package_version} is not published yet."
-            echo "needs_publish=true" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Plan package publish
+        id: publish-plan
+        run: bash ./ci/publish.sh --plan
       - name: Resolve latest native build
-        if: steps.splat-transform.outputs.needs_publish == 'true'
+        if: steps.publish-plan.outputs.needs_native == 'true'
         id: native-build
         env:
           GH_TOKEN: ${{ github.token }}
@@ -53,7 +44,7 @@ jobs:
           fi
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
       - name: Download native packages
-        if: steps.splat-transform.outputs.needs_publish == 'true'
+        if: steps.publish-plan.outputs.needs_native == 'true'
         uses: actions/download-artifact@v8
         with:
           pattern: splat-transform-*
@@ -67,8 +58,7 @@ jobs:
         run: |
           set -o pipefail
           publish_log="$(mktemp)"
-          chmod a+x ./ci/publish.sh
-          ./ci/publish.sh | tee "$publish_log"
+          node scripts/publish-packages.mjs | tee "$publish_log"
           if grep -q '^published:$' "$publish_log"; then
             echo "has_published=true" >> "$GITHUB_OUTPUT"
           else
