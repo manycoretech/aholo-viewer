@@ -20,6 +20,7 @@ export default defineConfig({
         'external/splat-dev-server/**',
     ],
     rules: {
+        curly: 'error',
         'no-console': 'off',
         'guard-for-in': 'off',
         'no-shadow': 'off',

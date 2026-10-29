@@ -11,10 +11,10 @@
     ".clean": "node scripts/clean.mjs"
   },
   "dependencies": {
-    "@astrojs/markdown-satteri": "^0.4.4",
+    "@astrojs/markdown-satteri": "^0.4.5",
     "@manycore/aholo-viewer": "workspace:*",
     "@tweakpane/plugin-essentials": "^0.2.1",
-    "astro": "^7.4.1",
+    "astro": "^7.4.2",
     "lz-string": "^1.5.0",
     "monaco-editor": "^0.57.0",
     "tslib": "catalog:",
@@ -22,7 +22,7 @@
     "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.11",
+    "@astrojs/check": "^0.9.12",
     "@tweakpane/core": "^2.0.5",
     "@types/node": "^22.20.0",
     "typescript": "catalog:",

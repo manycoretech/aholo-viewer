@@ -6,7 +6,9 @@ const require = createRequire(import.meta.url);
 
 /** Locate the platform executable, or use an explicitly supplied local build. */
 export function resolveExecutable(): string {
-    if (process.env.SPLAT_TRANSFORM_EXECUTABLE) return path.resolve(process.env.SPLAT_TRANSFORM_EXECUTABLE);
+    if (process.env.SPLAT_TRANSFORM_EXECUTABLE) {
+        return path.resolve(process.env.SPLAT_TRANSFORM_EXECUTABLE);
+    }
     const suffix = process.platform === 'win32' ? '-msvc' : process.platform === 'linux' ? '-gnu' : '';
     const packageName = '@manycore/aholo-splat-transform-' + process.platform + '-' + process.arch + suffix;
     const filename = process.platform === 'win32' ? 'splat-transform.exe' : 'splat-transform';
@@ -82,8 +84,9 @@ export function execute(args: string[], options: ExecuteOptions = {}): Promise<s
         });
         child.once('close', (code, signal) => {
             clean();
-            if (code === 0) resolve(stdout);
-            else
+            if (code === 0) {
+                resolve(stdout);
+            } else {
                 reject(
                     new PipelineError(
                         'splat-transform exited with ' + (signal ?? code),
@@ -91,6 +94,7 @@ export function execute(args: string[], options: ExecuteOptions = {}): Promise<s
                         signal,
                     ),
                 );
+            }
         });
         child.stdin?.on('error', error => {
             // Native failures may close stdin early; close reports their exit code.

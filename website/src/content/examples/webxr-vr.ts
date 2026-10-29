@@ -55,10 +55,14 @@ export default async function runner({ renderer, loading, configPanel, indexedDB
         scene.add(environment);
 
         const response = await fetch(LOD_URL, { signal });
-        if (!response.ok) throw new Error(`LOD metadata: HTTP ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`LOD metadata: HTTP ${response.status}`);
+        }
         const meta = (await response.json()) as SplatUtils.LodMeta;
         throwIfAborted();
-        if (meta.magicCode !== 2500660 || meta.type !== 'lod-splat') throw new Error('Invalid LOD metadata.');
+        if (meta.magicCode !== 2500660 || meta.type !== 'lod-splat') {
+            throw new Error('Invalid LOD metadata.');
+        }
         lod = new SplatUtils.LodSplat(
             meta,
             {
@@ -99,7 +103,9 @@ export default async function runner({ renderer, loading, configPanel, indexedDB
     }
 
     async function enterVR() {
-        if (entering || plugin || signal.aborted) return;
+        if (entering || plugin || signal.aborted) {
+            return;
+        }
         entering = true;
         enterButton.disabled = true;
         state.status = 'Starting VR';
@@ -155,13 +161,17 @@ export default async function runner({ renderer, loading, configPanel, indexedDB
 
     function onSessionEnd() {
         // egs-xr calls end() again during destroy. The session has already ended here.
-        if (plugin) plugin.session.end = () => Promise.resolve();
+        if (plugin) {
+            plugin.session.end = () => Promise.resolve();
+        }
         leaveVR();
     }
 
     function leaveVR() {
         const current = plugin;
-        if (!current) return;
+        if (!current) {
+            return;
+        }
         plugin = undefined;
         current.session.removeEventListener('end', onSessionEnd);
         // For production, destroy and recreate the Viewer when exiting VR.
@@ -169,7 +179,9 @@ export default async function runner({ renderer, loading, configPanel, indexedDB
         // currently unstable and is not recommended for production use.
         // egs-xr implements the method, but its published plugin type omits it.
         (current as XRPlugin & { unregisterFromViewer(): void }).unregisterFromViewer();
-        if (signal.aborted) return;
+        if (signal.aborted) {
+            return;
+        }
         viewer.clearViewport();
         const preview = viewer.createViewport('preview');
         preview.camera = camera;
@@ -194,7 +206,9 @@ export default async function runner({ renderer, loading, configPanel, indexedDB
     }
 
     function throwIfAborted() {
-        if (signal.aborted) throw new DOMException('The WebXR VR sample was aborted.', 'AbortError');
+        if (signal.aborted) {
+            throw new DOMException('The WebXR VR sample was aborted.', 'AbortError');
+        }
     }
 
     async function loadResource(path: string) {
@@ -207,11 +221,15 @@ export default async function runner({ renderer, loading, configPanel, indexedDB
             return data;
         }
         const response = await fetch(url, { signal });
-        if (!response.ok) throw new Error(`Splat resource: HTTP ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`Splat resource: HTTP ${response.status}`);
+        }
         const bytes = new Uint8Array(await response.arrayBuffer());
         throwIfAborted();
         const type = SplatLoader.detectSplatFileType(url, bytes);
-        if (type === undefined) throw new Error(`Unsupported splat: ${url}`);
+        if (type === undefined) {
+            throw new Error(`Unsupported splat: ${url}`);
+        }
         const data = await SplatLoader.parseSplatData(type, bytes, SplatLoader.SplatPackType.Compressed);
         throwIfAborted();
         await indexedDB.set(url, data.serialize(), { version: 0 });

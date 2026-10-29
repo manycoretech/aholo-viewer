@@ -81,7 +81,9 @@ export default async function runner({ renderer, control, loading, signal }: Ren
         scene.removeObjects(sceneObjects);
         pointLights.flatMap(light => light.removeAllChildren()).forEach(child => child.destroy());
 
-        for (const object of sceneObjects) object.destroy();
+        for (const object of sceneObjects) {
+            object.destroy();
+        }
         for (const resource of [
             floorGeometry,
             floorMaterial,
