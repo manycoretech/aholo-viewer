@@ -1,5 +1,5 @@
 {
-  "js/ts.tsdk.path": "node_modules\\typescript\\lib",
+  "js/ts.tsdk.path": "node_modules/typescript/lib",
   "[typescript]": {
     "editor.defaultFormatter": "oxc.oxc-vscode",
   },
@@ -22,5 +22,6 @@
     "oxfmt"
   ],
   "C_Cpp.default.cppStandard": "c++20",
-  "cmake.autoDetectSourceDirectory": false
+  "cmake.autoDetectSourceDirectory": false,
+  "cmake.sourceDirectory": "${workspaceFolder}/packages/splat-transform-native/source"
 }
