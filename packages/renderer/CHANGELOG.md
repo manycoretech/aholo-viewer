@@ -1,6 +1,6 @@
 # ChangeLOG
 
-## DEV
+## 1.12.0
 
 1. Features
     - add `retainData`, `chunkBytes`, and `signal` options to `SplatLoader.parseSplatData()`. CPU data is retained by default; `retainData: false` returns metadata and a single-consumer stream with `readChunks()`, `collect()`, and `cancel()`.
