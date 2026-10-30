@@ -1,14 +1,10 @@
-import { existsSync, statSync } from 'node:fs';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { basename, dirname, extname, isAbsolute, relative, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { rollup } from '@internal/utils/dts-rollup.js';
 import {
-    readJsonFile,
     readPackageJson,
-    workspaceRoot,
-    listFiles,
     resolvePackagePath,
     resolvePackageRoot,
     resolveWorkspacePath,
@@ -27,7 +23,6 @@ const runtimeDir = resolvePackagePath(packageRoot, 'dist', 'runtime output');
 const declarationOutput = resolvePackagePath(packageRoot, 'dist/index.d.ts', 'declaration output');
 const declarationDir = dirname(declarationOutput);
 const tempTypesDir = resolve(packageRoot, 'build');
-const egsPackagesRoot = resolveWorkspacePath('external/egs-core/packages', 'EGS packages root');
 const workerBundles = [
     createWorkerBundle({
         entry: 'external/egs-core/packages/loaders/splat-loader/worker.ts',
@@ -56,17 +51,6 @@ const workerBundles = [
         blobUrlName: 'SplatSortWorkerBlobUrl',
         nextStatement: 'const pool =',
     }),
-];
-
-const declareOnlyClasses = [
-    { name: 'Viewer', exported: 'export declare class Viewer', unexported: 'declare class Viewer' },
-    { name: 'Viewport', exported: 'export declare class Viewport', unexported: 'declare class Viewport' },
-    {
-        name: 'Material',
-        exported: 'export declare abstract class Material',
-        unexported: 'declare abstract class Material',
-    },
-    { name: 'Light', exported: 'export declare abstract class Light', unexported: 'declare abstract class Light' },
 ];
 
 await mkdir(runtimeDir, { recursive: true });
@@ -177,62 +161,6 @@ async function stripPrivateTypingsImports() {
     if (rewritten !== source) {
         await writeFile(declarationOutput, rewritten);
     }
-}
-
-function getPackageJsonPaths(dir) {
-    return listFiles(dir, { skipDirectories: ['build', 'dist', 'node_modules'] }).filter(
-        filePath => basename(filePath) === 'package.json',
-    );
-}
-
-function isInsidePackage(filePath) {
-    const relativePath = relative(packageRoot, filePath);
-
-    return relativePath === '' || (!!relativePath && !relativePath.startsWith('..') && !isAbsolute(relativePath));
-}
-
-function getInheritedConfigPaths(configPaths, fallbackPaths) {
-    const paths = Array.isArray(configPaths) && configPaths.length > 0 ? configPaths : fallbackPaths;
-
-    return paths.map(configPath => toRelativeConfigPath(relative(tempTypesDir, resolve(packageRoot, configPath))));
-}
-
-function toRelativeConfigPath(filePath) {
-    const posixPath = toPosixPath(filePath) || '.';
-
-    return posixPath.startsWith('.') ? posixPath : `./${posixPath}`;
-}
-
-function replaceExtension(filePath, replacementExtension) {
-    const currentExtension = extname(filePath);
-
-    return currentExtension
-        ? `${filePath.slice(0, -currentExtension.length)}${replacementExtension}`
-        : `${filePath}${replacementExtension}`;
-}
-
-function sanitizePathSegment(value) {
-    return value
-        .replace(/^@/, '')
-        .replace(/[\\/]/g, '-')
-        .replace(/[^a-zA-Z0-9._-]/g, '-');
-}
-
-function splitNamedSpecifiers(specifierText) {
-    return specifierText
-        .split(',')
-        .map(specifier => specifier.trim())
-        .filter(Boolean);
-}
-
-function getNamedSpecifierName(specifier) {
-    return removeTypeModifier(specifier)
-        .split(/\s+as\s+/u)[0]
-        .trim();
-}
-
-function removeTypeModifier(specifier) {
-    return specifier.replace(/^type\s+/u, '').trim();
 }
 
 function createWorkerBundle(config) {

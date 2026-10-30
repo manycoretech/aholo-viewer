@@ -388,7 +388,7 @@ async function writeApiManifest(entries) {
         categories,
         namespaces,
         kinds,
-        entries: entries.map(({ html, sourcePath, sourceOrder, ...entry }) => entry),
+        entries: entries.map(({ html: _html, sourcePath: _sourcePath, sourceOrder: _sourceOrder, ...entry }) => entry),
     };
     const content = [
         'export const apiManifest = ',
@@ -807,7 +807,7 @@ function extractTypeDocHtmlHeadings(content) {
         )
         .filter(heading => heading.text)
         .sort((left, right) => left.index - right.index)
-        .map(({ index, ...heading }) => heading);
+        .map(({ index: _index, ...heading }) => heading);
 }
 
 function typeDocHeadingText(content) {

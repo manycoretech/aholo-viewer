@@ -15,7 +15,7 @@ const targetDirs = getCleanTargetDirs(packageJson).map(target =>
     resolvePackagePath(packageRoot, target, 'clean target'),
 );
 
-for (const targetDir of [...new Set(targetDirs.map(dir => resolve(dir)))]) {
+for (const targetDir of new Set(targetDirs.map(dir => resolve(dir)))) {
     assertInsideDir(packageRoot, targetDir, 'Clean target');
 
     if (resolve(targetDir) === resolve(packageRoot)) {
