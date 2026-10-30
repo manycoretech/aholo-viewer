@@ -579,7 +579,9 @@ function htmlToMarkdown(html, { rewriteLink } = {}) {
 
     working = working.replace(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/g, (_match, level, inner) => {
         const text = decodeHtmlEntities(stripTags(inner)).trim();
-        if (!text) return '';
+        if (!text) {
+            return '';
+        }
         return `\n\n${'#'.repeat(Number(level))} ${text}\n\n`;
     });
 

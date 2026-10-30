@@ -12,7 +12,6 @@ export default defineConfig({
         '**/build/**',
         '**/dist/**',
         '**/bin/**',
-        '**/scripts/**',
         // website
         '**/.astro/**',
         '**/.generated/**',

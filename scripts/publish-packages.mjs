@@ -24,7 +24,9 @@ function isPublished(p) {
         } catch {
             // Non-JSON failures must not be mistaken for an unpublished version.
         }
-        if (code === 'E404') return false;
+        if (code === 'E404') {
+            return false;
+        }
         throw new Error(`Unable to check npm publish status for ${p.name}@${p.version}${code ? ` (${code})` : ''}.`, {
             cause: error,
         });
@@ -43,7 +45,9 @@ export function publishPackages({ planOnly = false, githubOutput = process.env.G
     // use the main package version, even though their checked-in version is 0.0.0.
     const releasePackages = packages.map(p => {
         const native = isNativePackage(p.name);
-        if (native && !splatTransform) throw new Error(`Missing workspace package: ${splatTransformName}`);
+        if (native && !splatTransform) {
+            throw new Error(`Missing workspace package: ${splatTransformName}`);
+        }
         const version = native ? splatTransform.version : p.version;
         return { ...p, version, native, ...getReleaseConfig(version) };
     });
@@ -51,12 +55,18 @@ export function publishPackages({ planOnly = false, githubOutput = process.env.G
     const nativePackages = pendingPackages.filter(p => p.native);
 
     console.log('Pending packages:');
-    for (const p of pendingPackages) console.log(`\t${p.name}@${p.version}`);
-    if (pendingPackages.length === 0) console.log('\t(none)');
+    for (const p of pendingPackages) {
+        console.log(`\t${p.name}@${p.version}`);
+    }
+    if (pendingPackages.length === 0) {
+        console.log('\t(none)');
+    }
     console.log(`Native artifacts required: ${nativePackages.length > 0}`);
 
     if (planOnly) {
-        if (githubOutput) fs.appendFileSync(githubOutput, `needs_native=${nativePackages.length > 0}\n`);
+        if (githubOutput) {
+            fs.appendFileSync(githubOutput, `needs_native=${nativePackages.length > 0}\n`);
+        }
         return pendingPackages;
     }
 
@@ -66,13 +76,19 @@ export function publishPackages({ planOnly = false, githubOutput = process.env.G
         const executable = path.join(p.path, p.name.includes('-win32-') ? 'splat-transform.exe' : 'splat-transform');
         for (const artifact of [executable, path.join(p.path, 'THIRD_PARTY_LICENSES.txt')]) {
             const stat = fs.statSync(artifact, { throwIfNoEntry: false });
-            if (!stat?.isFile() || stat.size === 0) throw new Error(`Missing or empty native artifact: ${artifact}`);
+            if (!stat?.isFile() || stat.size === 0) {
+                throw new Error(`Missing or empty native artifact: ${artifact}`);
+            }
         }
         // GitHub artifact downloads do not preserve Unix executable permissions.
-        if (!p.name.includes('-win32-')) fs.chmodSync(executable, 0o755);
+        if (!p.name.includes('-win32-')) {
+            fs.chmodSync(executable, 0o755);
+        }
     }
 
-    if (pendingPackages.length === 0) return [];
+    if (pendingPackages.length === 0) {
+        return [];
+    }
     const catalogs = resolveCatalogs();
     const publishedPackages = [];
     // Publish native dependencies before the CLI that references them. A retry then
@@ -86,10 +102,14 @@ export function publishPackages({ planOnly = false, githubOutput = process.env.G
         packageJson.version = p.version;
         if (p.name === splatTransformName) {
             for (const name of Object.keys(packageJson.optionalDependencies ?? {})) {
-                if (isNativePackage(name)) packageJson.optionalDependencies[name] = p.version;
+                if (isNativePackage(name)) {
+                    packageJson.optionalDependencies[name] = p.version;
+                }
             }
         }
-        if (packageJson.scripts?.['.build']) packageJson.scripts.build = 'pnpm run .build';
+        if (packageJson.scripts?.['.build']) {
+            packageJson.scripts.build = 'pnpm run .build';
+        }
 
         try {
             fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, undefined, 2), 'utf-8');
@@ -111,7 +131,9 @@ export function publishPackages({ planOnly = false, githubOutput = process.env.G
 
     if (publishedPackages.length > 0) {
         console.log('published:');
-        for (const p of publishedPackages) console.log(`\t${p.name}@${p.version}`);
+        for (const p of publishedPackages) {
+            console.log(`\t${p.name}@${p.version}`);
+        }
     }
     return publishedPackages;
 }
