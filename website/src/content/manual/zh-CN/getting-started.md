@@ -18,7 +18,7 @@ npm install --save-dev vite typescript # 推荐使用typescript开发
 - `index.html`
 
     ```html
-    <!DOCTYPE html>
+    <!doctype html>
     <html>
         <head>
             <title>My first aholo viewer app</title>

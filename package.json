@@ -40,9 +40,9 @@
     "@manycore/aholo-splat-transform": "workspace:*",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
-    "oxfmt": "^0.75.0",
-    "oxlint": "^1.90.0",
-    "semver": "7.8.5",
+    "oxfmt": "^0.76.0",
+    "oxlint": "^1.91.0",
+    "semver": "7.8.6",
     "typedoc": "^0.28.20",
     "typescript": "catalog:"
   }
