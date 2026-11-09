@@ -27,7 +27,7 @@ name: build native
 
 env:
   NODE_VERSION: 24
-  CMAKE_VERSION: 4.4.2
+  CMAKE_VERSION: 4.4.5
   NINJA_VERSION: 1.13.2
 
 permissions:
@@ -306,7 +306,7 @@ jobs:
             -SkipAutomaticLocation `
             -DevCmdArguments "-arch=$vsArch -host_arch=$vsArch"
 
-          Get-Command cl.exe, ninja.exe
+          Get-Command cl.exe, ninja.exe, cmake.exe
 
           $PSNativeCommandUseErrorActionPreference = $true
           cmake --preset ${{ matrix.preset }} -G Ninja
