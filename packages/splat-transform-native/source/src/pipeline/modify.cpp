@@ -7,6 +7,7 @@
 #include <pipeline/runner.h>
 #include <spatial/sh_rotation.h>
 #include <utility/logger.h>
+#include <utility>
 
 namespace splat_transform::pipeline {
 namespace {
@@ -66,7 +67,7 @@ std::pair<bool, bool> transform(splat::Splat& data, std::span<const uint32_t> in
 }
 } // namespace
 void modify(splat::Splat& data, const io::Json& config) {
-    std::vector<std::tuple<size_t, float>> rgba;
+    std::vector<std::pair<size_t, float>> rgba;
     std::optional<unsigned> max_sh_degree;
     if (config.contains("rgba")) {
         const auto& value = config.at("rgba");
