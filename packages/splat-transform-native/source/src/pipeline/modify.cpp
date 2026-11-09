@@ -1,6 +1,7 @@
 #include "data_support.h"
 #include <Eigen/Dense>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numeric>
 #include <optional>
@@ -67,19 +68,18 @@ std::pair<bool, bool> transform(splat::Splat& data, std::span<const uint32_t> in
 }
 } // namespace
 void modify(splat::Splat& data, const io::Json& config) {
-    std::vector<std::pair<size_t, float>> rgba;
+    std::array<std::optional<float>, 4> rgba;
     std::optional<unsigned> max_sh_degree;
     if (config.contains("rgba")) {
         const auto& value = config.at("rgba");
-        rgba.reserve(4);
-        if (value.is_array() && value.size() == 4) {
-            for (size_t i = 0; i < 4; ++i) {
+        if (value.is_array() && value.size() == rgba.size()) {
+            for (size_t i = 0; i < rgba.size(); ++i) {
                 if (!value[i].is_number()) {
                     throw std::runtime_error("Modify rgba must contain four finite float values");
                 }
                 auto v = value[i].get<float>();
                 if (std::isfinite(v) && v >= 0.0f) {
-                    rgba.emplace_back(i, v);
+                    rgba[i].emplace(v);
                 }
             }
         } else if (value.is_object()) {
@@ -89,9 +89,9 @@ void modify(splat::Splat& data, const io::Json& config) {
                 value.value("b", std::numeric_limits<float>::quiet_NaN()),
                 value.value("a", std::numeric_limits<float>::quiet_NaN()),
             };
-            for (size_t i = 0; i < 4; i++) {
+            for (size_t i = 0; i < rgba.size(); ++i) {
                 if (std::isfinite(v[i]) && v[i] >= 0.0f) {
-                    rgba.emplace_back(i, v[i]);
+                    rgba[i].emplace(v[i]);
                 }
             }
         } else {
@@ -178,10 +178,12 @@ void modify(splat::Splat& data, const io::Json& config) {
         data.block_offsets = std::move(offsets);
         data.block_counts = std::move(counts);
     }
-    if (rgba.size() > 0) {
+    if (std::any_of(rgba.begin(), rgba.end(), [](const auto& item) { return item.has_value(); })) {
         for (auto& gaussian : data.gaussians) {
-            for (auto& [index, value] : rgba) {
-                gaussian.attribute(splat::Red + index) = value;
+            for (size_t i = 0; i < rgba.size(); ++i) {
+                if (rgba[i]) {
+                    gaussian.attribute(splat::Red + i) = *rgba[i];
+                }
             }
         }
     }
