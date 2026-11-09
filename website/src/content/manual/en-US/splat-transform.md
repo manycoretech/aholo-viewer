@@ -154,14 +154,14 @@ Write the same LOD bundle to two directories with `highPrecision: false` and `tr
 
 ### Modify
 
-| Parameter         | Type / default                                 | Description                                                                                              |
-| ----------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `input`, `output` | `string`, required                             | Input and output keys; the output aliases the modified input.                                            |
-| `modifyPaths`     | `string[]` / `[]`                              | Patch JSON files in input-block order; an empty string skips that block.                                 |
-| `rgba`            | `[number, number, number, number]` / unchanged | Internal float RGBA values; must be finite and fit in float, without clamping or color-space conversion. |
-| `maxShDegree`     | `0 \| 1 \| 2 \| 3` / unchanged                 | Truncates to the smaller of the current and requested degree.                                            |
+| Parameter         | Type / default                                                        | Description                                                                                                            |
+| ----------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `input`, `output` | `string`, required                                                    | Input and output keys; the output aliases the modified input.                                                          |
+| `modifyPaths`     | `string[]` / `[]`                                                     | Patch JSON files in input-block order; an empty string skips that block.                                               |
+| `rgba`            | `[number, number, number, number]` / `{ r?, g?, b?, a? }` / unchanged | Internal float RGBA values; only finite non-negative channels are written, without clamping or color-space conversion. |
+| `maxShDegree`     | `0 \| 1 \| 2 \| 3` / unchanged                                        | Truncates to the smaller of the current and requested degree.                                                          |
 
-Validates `rgba` / `maxShDegree`, applies patch transforms and deletions, then sets RGBA and truncates SH on the remaining points. Patch files use this structure:
+Reads `rgba` and validates `maxShDegree`, applies patch transforms and deletions, then sets RGBA and truncates SH on the remaining points. `rgba` accepts `[r, g, b, a]` or an object with optional `r`, `g`, `b`, and `a` channels: omitted channels keep their current values; negative and non-finite values are not written, and unknown object fields are ignored; arrays must contain exactly four entries, and other forms or channel values that cannot be read as numbers (for example strings or null) fail the task. Patch files use this structure:
 
 ```typescript
 interface ModifyPatch {

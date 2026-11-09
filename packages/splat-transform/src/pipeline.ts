@@ -17,8 +17,15 @@ export interface ModifyConfig extends Record<string, unknown> {
     input: string;
     output: string;
     modifyPaths?: string[];
-    /** Internal RGBA values; no clamping or color-space conversion. */
-    rgba?: [number, number, number, number];
+    /** RGBA tuple, or optional channels. Omitted channels keep their values; only finite non-negative values are written. */
+    rgba?:
+        | [number, number, number, number]
+        | {
+              r?: number;
+              g?: number;
+              b?: number;
+              a?: number;
+          };
     /** Truncate existing SH bands without creating higher bands. */
     maxShDegree?: 0 | 1 | 2 | 3;
 }

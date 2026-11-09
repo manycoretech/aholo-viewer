@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.1
+
+- Modify `rgba` also accepts an object with optional `r`, `g`, `b`, and `a` channels; omitted channels keep their current values
+- Modify writes only finite non-negative RGBA channels; negative and non-finite values are ignored instead of being written or rejected
+
 ## 2.1.0
 
 - overlap SOG label readback with CPU centroid reduction, reuse caller-owned labels, and select a shared-memory tile from bounded samples for large resident clustering sessions

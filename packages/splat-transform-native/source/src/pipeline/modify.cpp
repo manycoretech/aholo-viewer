@@ -66,27 +66,35 @@ std::pair<bool, bool> transform(splat::Splat& data, std::span<const uint32_t> in
 }
 } // namespace
 void modify(splat::Splat& data, const io::Json& config) {
-    std::optional<std::array<float, 4>> rgba;
+    std::vector<std::tuple<size_t, float>> rgba;
     std::optional<unsigned> max_sh_degree;
     if (config.contains("rgba")) {
         const auto& value = config.at("rgba");
-        if (!value.is_array() || value.size() != 4) {
-            throw std::runtime_error("Modify rgba must contain four finite float values");
-        }
-        rgba.emplace();
-        for (size_t i = 0; i < 4; ++i) {
-            if (!value[i].is_number()) {
-                throw std::runtime_error("Modify rgba must contain four finite float values");
+        rgba.reserve(4);
+        if (value.is_array() && value.size() == 4) {
+            for (size_t i = 0; i < 4; ++i) {
+                if (!value[i].is_number()) {
+                    throw std::runtime_error("Modify rgba must contain four finite float values");
+                }
+                auto v = value[i].get<float>();
+                if (std::isfinite(v) && v >= 0.0f) {
+                    rgba.emplace_back(i, v);
+                }
             }
-            // Validate the JSON number before narrowing to the attribute's float representation.
-            const auto number = value[i].get<double>();
-            if (!std::isfinite(number) || std::abs(number) > std::numeric_limits<float>::max()) {
-                throw std::runtime_error("Modify rgba value is outside the finite float range");
+        } else if (value.is_object()) {
+            std::array<float, 4> v = {
+                value.value("r", std::numeric_limits<float>::quiet_NaN()),
+                value.value("g", std::numeric_limits<float>::quiet_NaN()),
+                value.value("b", std::numeric_limits<float>::quiet_NaN()),
+                value.value("a", std::numeric_limits<float>::quiet_NaN()),
+            };
+            for (size_t i = 0; i < 4; i++) {
+                if (std::isfinite(v[i]) && v[i] >= 0.0f) {
+                    rgba.emplace_back(i, v[i]);
+                }
             }
-            (*rgba)[i] = static_cast<float>(number);
-            if (number != 0 && (*rgba)[i] == 0) {
-                throw std::runtime_error("Modify rgba value underflows the float range");
-            }
+        } else {
+            throw std::runtime_error("Modify rgba must contain four finite float values or an object");
         }
     }
     if (config.contains("maxShDegree")) {
@@ -169,10 +177,10 @@ void modify(splat::Splat& data, const io::Json& config) {
         data.block_offsets = std::move(offsets);
         data.block_counts = std::move(counts);
     }
-    if (rgba) {
+    if (rgba.size() > 0) {
         for (auto& gaussian : data.gaussians) {
-            for (size_t i = 0; i < 4; ++i) {
-                gaussian.attribute(splat::Red + i) = (*rgba)[i];
+            for (auto& [index, value] : rgba) {
+                gaussian.attribute(splat::Red + index) = value;
             }
         }
     }

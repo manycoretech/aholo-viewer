@@ -1,9 +1,11 @@
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <codec/codec.h>
 #include <iostream>
 #include <numeric>
+#include <optional>
 #include <pipeline/runner.h>
 #include <pipeline/task.h>
 
@@ -87,8 +89,21 @@ void modify_contracts(const std::filesystem::path& directory) {
     const Json transform = Json::array({ 1, 0, 0, 10, 0, 1, 0, 20, 0, 0, 1, 30, 0, 0, 0, 1 });
     save_json(patch, { { "transform", transform }, { "deletedIndices", { 2 } },
                          { "indicesTransform", Json::array({ { { "indices", { 2 } }, { "transform", Json::array({ 0, -2, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1 }) } } }) } });
+    struct Extension {
+        Json config;
+        std::array<std::optional<float>, 4> rgba;
+    };
+    const std::vector<Extension> extensions {
+        { Json::object(), {} },
+        { Json { { "rgba", { 0.5, 0.25, 2.0, 1.25 } } }, { 0.5f, 0.25f, 2.0f, 1.25f } },
+        { Json { { "rgba", Json::object({ { "r", 0.5 }, { "a", 1.25 } }) } }, { 0.5f, std::nullopt, std::nullopt, 1.25f } },
+        { Json { { "rgba", Json::object() } }, {} },
+        { Json { { "rgba", Json::object({ { "x", 1 } }) } }, {} },
+        { Json { { "maxShDegree", 0 } }, {} },
+        { Json { { "rgba", { 0, 0, 0, 1 } }, { "maxShDegree", 1 } }, { 0.0f, 0.0f, 0.0f, 1.0f } },
+    };
     for (unsigned degree = 0; degree <= 3; ++degree) {
-        for (const Json& extension : { Json::object(), Json { { "rgba", { -0.5, 0.25, 2.0, 1.25 } } }, Json { { "maxShDegree", 0 } }, Json { { "rgba", { 0, 0, 0, 1 } }, { "maxShDegree", 1 } } }) {
+        for (const auto& extension : extensions) {
             auto source = cloud(4, degree);
             pipeline::TaskContext context;
             put_resource(context, "source", source);
@@ -96,18 +111,18 @@ void modify_contracts(const std::filesystem::path& directory) {
             auto expected = *source;
             const Json original { { "input", "source" }, { "output", "result" }, { "modifyPaths", { io::path_utf8(patch) } } };
             pipeline::modify(expected, original);
-            if (extension.contains("rgba")) {
-                for (auto& point : expected.gaussians) {
-                    for (size_t c = 0; c < 4; ++c) {
-                        point.attribute(splat::Red + c) = extension.at("rgba")[c].get<float>();
+            for (auto& point : expected.gaussians) {
+                for (size_t c = 0; c < extension.rgba.size(); ++c) {
+                    if (extension.rgba[c]) {
+                        point.attribute(splat::Red + c) = *extension.rgba[c];
                     }
                 }
             }
-            if (extension.contains("maxShDegree")) {
-                expected.limit_sh_degree(extension.at("maxShDegree").get<unsigned>());
+            if (extension.config.contains("maxShDegree")) {
+                expected.limit_sh_degree(extension.config.at("maxShDegree").get<unsigned>());
             }
             auto config = original;
-            config.update(extension);
+            config.update(extension.config);
             task("Modify", config, context);
             require(get(context, "source") == source && get(context, "alias") == source && get(context, "result") == source, "Modify lost in-place alias semantics");
             equal_data(*source, expected);
@@ -120,16 +135,43 @@ void modify_contracts(const std::filesystem::path& directory) {
         task("Modify", { { "input", "source" }, { "output", "source" }, { "maxShDegree", 3 } }, context);
         require(source->sh_degree == degree, "Modify generated new SH bands");
         const auto unchanged = *source;
-        for (const Json& invalid : { Json { { "rgba", { 0, 1, 2 } } }, Json { { "rgba", { 0, 0, "bad", 1 } } },
-                 Json { { "rgba", { 0, 0, true, 1 } } }, Json { { "rgba", { 0, 0, 1e100, 1 } } }, Json { { "rgba", { 0, 0, 1e-100, 1 } } },
-                 Json { { "rgba", { 0, 0, std::numeric_limits<double>::infinity(), 1 } } }, Json { { "rgba", { 0, 0, std::numeric_limits<double>::quiet_NaN(), 1 } } },
-                 Json { { "maxShDegree", -1 } }, Json { { "maxShDegree", 1.5 } }, Json { { "maxShDegree", 4 } }, Json { { "maxShDegree", true } },
-                 Json { { "maxShDegree", nullptr } }, Json { { "rgba", { 0, 0, 0, 1 } }, { "maxShDegree", 99 } } }) {
+        for (const Json& invalid : { Json { { "rgba", { 0, 1, 2 } } }, Json { { "rgba", Json::array() } }, Json { { "rgba", nullptr } },
+                 Json { { "rgba", 1 } }, Json { { "rgba", "rgba" } }, Json { { "rgba", { 0, 0, "bad", 1 } } },
+                 Json { { "rgba", { 0, 0, true, 1 } } }, Json { { "rgba", Json::object({ { "r", "bad" } }) } },
+                 Json { { "rgba", Json::object({ { "a", nullptr } }) } }, Json { { "maxShDegree", -1 } }, Json { { "maxShDegree", 1.5 } },
+                 Json { { "maxShDegree", 4 } }, Json { { "maxShDegree", true } }, Json { { "maxShDegree", nullptr } },
+                 Json { { "rgba", { 0, 0, 0, 1 } }, { "maxShDegree", 99 } } }) {
             Json config { { "input", "source" }, { "output", "bad" }, { "modifyPaths", { io::path_utf8(patch) } } };
             config.update(invalid);
             rejects([&] { task("Modify", config, context); });
             equal_data(*source, unchanged);
             rejects([&] { context.input({ { "input", "bad" } }); });
+        }
+        // Only finite nonnegative channels are applied; omitted, negative, and non-finite channels stay unchanged.
+        {
+            auto filtered = cloud(4, degree);
+            auto expected = cloud(4, degree);
+            pipeline::TaskContext filtered_context;
+            put_resource(filtered_context, "source", filtered);
+            task("Modify",
+                { { "input", "source" }, { "output", "source" },
+                    { "rgba", Json::array({ -0.5, 0.25, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN() }) } },
+                filtered_context);
+            for (auto& point : expected->gaussians) {
+                point.attribute(splat::Green) = 0.25f;
+            }
+            equal_data(*filtered, *expected);
+        }
+        {
+            auto filtered = cloud(4, degree);
+            auto expected = cloud(4, degree);
+            pipeline::TaskContext filtered_context;
+            put_resource(filtered_context, "source", filtered);
+            task("Modify", { { "input", "source" }, { "output", "source" }, { "rgba", Json::object({ { "r", -0.5 }, { "a", 1.25 } }) } }, filtered_context);
+            for (auto& point : expected->gaussians) {
+                point.attribute(splat::Alpha) = 1.25f;
+            }
+            equal_data(*filtered, *expected);
         }
     }
 }
