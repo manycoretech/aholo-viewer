@@ -37,7 +37,7 @@ permissions:
 jobs:
   compile-shaders:
     name: Compile shared SPIR-V shaders (Windows)
-    runs-on: windows-2025-vs2026
+    runs-on: windows-latest
     defaults:
       run:
         shell: pwsh
@@ -178,12 +178,12 @@ jobs:
           - target: win32-x64-msvc
             preset: x64-windows-static
             executable: splat-transform.exe
-            os: windows-2025-vs2026
+            os: windows-latest
             shell: pwsh
           - target: win32-arm64-msvc
             preset: arm64-windows-static
             executable: splat-transform.exe
-            os: windows-11-vs2026-arm
+            os: windows-11-arm
             shell: pwsh
           - target: linux-x64-gnu
             preset: x64-linux
@@ -200,7 +200,7 @@ jobs:
           - target: darwin-arm64
             preset: arm64-osx
             executable: splat-transform
-            os: macos-26
+            os: macos-latest
             shell: bash
     defaults:
       run:
