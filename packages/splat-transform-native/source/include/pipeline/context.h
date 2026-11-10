@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <io/file.h>
+#include <io/json.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>

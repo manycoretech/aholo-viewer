@@ -135,7 +135,7 @@ void formats() {
     }
     for (const auto extension : { ".ply", ".spz", ".uspz", ".esz" }) {
         for (bool variant : { false, true }) {
-            auto file = io::create_file(extension, { { "version", variant ? 4 : 3 }, { "highPrecision", variant } }, io::FileOperation::Write);
+            auto file = io::create_file(extension, { .spz_version = variant ? 4 : 3, .high_precision = variant }, io::FileOperation::Write);
             const auto bytes = file->write(source, indices);
             const auto full = file->read({ {}, bytes, 3 });
             for (unsigned degree : { 0u, 1u, 2u }) {

@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include <span>
 #include <splat/splat.h>
 #include <stdexcept>
@@ -16,13 +15,7 @@
 
 namespace splat_transform::io {
 using Bytes = std::vector<uint8_t>;
-using Json = nlohmann::ordered_json;
 using Archive = std::unordered_map<std::string, Bytes>;
-
-inline Json bounds_json(const Eigen::AlignedBox3f& bounds) {
-    return { { "min", { bounds.min().x(), bounds.min().y(), bounds.min().z() } },
-        { "max", { bounds.max().x(), bounds.max().y(), bounds.max().z() } } };
-}
 
 class ByteReader {
 public:
@@ -73,13 +66,18 @@ std::string path_utf8(const std::filesystem::path& path);
 std::string filesystem_error_message(const std::filesystem::filesystem_error& error);
 Bytes read_bytes(const std::filesystem::path& path);
 void write_bytes(const std::filesystem::path& path, std::span<const uint8_t> bytes);
-Json read_json(const std::filesystem::path& path);
 Bytes zip(const Archive& files);
 float from_half(uint16_t value);
 uint16_t to_half(float value);
 
 splat::Splat read_splat(const std::filesystem::path& path, unsigned max_sh_degree = 3);
-void write_splat(const std::filesystem::path& path, const splat::Splat& data, const Json& options = Json::object());
+struct FileOptions {
+    int spz_version = 3;
+    int spz_compress_level = 6;
+    bool high_precision = false;
+    bool enable_morton_sort = true;
+};
+void write_splat(const std::filesystem::path& path, const splat::Splat& data, const FileOptions& options = {});
 
 struct FileInput {
     std::filesystem::path path;
@@ -108,6 +106,6 @@ enum class FileOperation {
     Read,
     Write,
 };
-std::unique_ptr<IFile> create_file(std::string_view extension, const Json& options = Json::object(), FileOperation operation = FileOperation::Read);
+std::unique_ptr<IFile> create_file(std::string_view extension, const FileOptions& options = {}, FileOperation operation = FileOperation::Read);
 splat::Splat read_splat(const FileInput& input);
 } // namespace splat_transform::io

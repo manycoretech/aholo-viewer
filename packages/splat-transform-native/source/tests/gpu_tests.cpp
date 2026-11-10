@@ -518,7 +518,7 @@ int main(int argc, char** argv) {
         if (empty.voxel_count()) {
             throw std::runtime_error("An empty GPU result must stay empty");
         }
-        auto backend = voxel::resolve_backend({ { "backend", "gpu" } });
+        auto backend = voxel::resolve_backend(voxel::BackendType::Gpu);
         if (!backend->requires_gpu() || backend->voxelize(prepared, box, 0.1, 0.1).masks != grid.masks) {
             throw std::runtime_error("Available GPU did not retain its backend and occupancy");
         }
@@ -541,12 +541,12 @@ int main(int argc, char** argv) {
         // Release every resource before changing the single device context.
         backend.reset();
         gpu::select_device(std::numeric_limits<uint32_t>::max());
-        if (voxel::resolve_backend({ { "backend", "gpu" } })->requires_gpu()) {
+        if (voxel::resolve_backend(voxel::BackendType::Gpu)->requires_gpu()) {
             throw std::runtime_error("Unavailable device did not resolve a new task to CPU");
         }
         gpu::select_device(selected);
         {
-            const auto recovered = voxel::resolve_backend({ { "backend", "gpu" } });
+            const auto recovered = voxel::resolve_backend(voxel::BackendType::Gpu);
             if (!recovered->requires_gpu() || recovered->voxelize(prepared, box, 0.1, 0.1).masks != grid.masks ||
                 recovered->dilate(single, { 1, 2, 1 }).voxel_count() != 45) {
                 throw std::runtime_error("Recreated device context changed voxel results");
@@ -564,7 +564,7 @@ int main(int argc, char** argv) {
                 point.opacity = 1;
             }
             const Eigen::AlignedBox3f cluster_box(Eigen::Vector3f::Zero(), Eigen::Vector3f(4, 2, 2));
-            const io::Json options { { "voxelResolution", 0.1 }, { "opacityCutoff", 0.1 }, { "seed", { { "x", 2.55 }, { "y", 0.55 }, { "z", 0.55 } } } };
+            const voxel::FilterClusterOptions options { .voxel_resolution = 0.1f, .opacity_cutoff = 0.1f, .seed = Eigen::Vector3f(2.55f, 0.55f, 0.55f) };
             auto selected = voxel::prepare(clusters);
             const auto* allocation = selected.gaussians.data();
             const auto cluster_backend = voxel::gpu_backend();

@@ -15,23 +15,22 @@ namespace {
 struct Format {
     std::string_view extension;
     bool writable;
-    std::unique_ptr<IFile> (*create)(const Json&);
+    std::unique_ptr<IFile> (*create)(const FileOptions&);
 };
 template<typename T>
-std::unique_ptr<IFile> make_file(const Json&) {
+std::unique_ptr<IFile> make_file(const FileOptions&) {
     return std::make_unique<T>();
 }
 const std::array FORMATS {
     Format { ".ply", true, make_file<PlyFile> },
-    Format { ".spz", true, [](const Json& config) -> std::unique_ptr<IFile> {
-                const auto version = config.value("version", 3);
-                return std::make_unique<SpzFile>(version, config.value("compressLevel", version == 3 ? 6 : 7));
+    Format { ".spz", true, [](const FileOptions& options) -> std::unique_ptr<IFile> {
+                return std::make_unique<SpzFile>(options.spz_version, options.spz_compress_level);
             } },
-    Format { ".uspz", true, [](const Json&) -> std::unique_ptr<IFile> { return std::make_unique<SpzFile>(3, -1); } },
+    Format { ".uspz", true, [](const FileOptions&) -> std::unique_ptr<IFile> { return std::make_unique<SpzFile>(3, -1); } },
     Format { ".splat", true, make_file<SplatFile> },
     Format { ".sog", true, make_file<SogFile> },
     Format { ".json", false, make_file<SogFile> },
-    Format { ".esz", true, [](const Json& config) -> std::unique_ptr<IFile> { return std::make_unique<EszFile>(config.value("highPrecision", false)); } },
+    Format { ".esz", true, [](const FileOptions& options) -> std::unique_ptr<IFile> { return std::make_unique<EszFile>(options.high_precision); } },
     Format { ".ksplat", false, make_file<KsplatFile> },
     Format { ".lcc", false, make_file<LccFile> },
     Format { ".lcc2", false, make_file<Lcc2File> },
@@ -76,7 +75,7 @@ splat::Splat IFile::read(const std::filesystem::path& path, unsigned max_sh_degr
     const auto bytes = read_bytes(path);
     return read({ path, bytes, max_sh_degree });
 }
-std::unique_ptr<IFile> create_file(std::string_view extension, const Json& options, FileOperation operation) {
+std::unique_ptr<IFile> create_file(std::string_view extension, const FileOptions& options, FileOperation operation) {
     const auto normalized = lower(std::string(extension));
     const auto found = std::ranges::find(FORMATS, normalized, &Format::extension);
     if (found == FORMATS.end() || (operation == FileOperation::Write && !found->writable)) {
@@ -101,10 +100,10 @@ splat::Splat read_splat(const std::filesystem::path& path, unsigned max_sh_degre
     auto bytes = read_bytes(path);
     return read_splat({ path, bytes, max_sh_degree });
 }
-void write_splat(const std::filesystem::path& path, const splat::Splat& splat, const Json& options) {
+void write_splat(const std::filesystem::path& path, const splat::Splat& splat, const FileOptions& options) {
     auto format = create_file(path.extension().string(), options, FileOperation::Write);
     std::vector<uint32_t> indices;
-    if (options.value("enableMortonSort", true)) {
+    if (options.enable_morton_sort) {
         indices = splat::morton_order(splat);
     } else {
         indices.resize(splat.size());

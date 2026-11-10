@@ -3,8 +3,11 @@
 #include <chrono>
 #include <cmath>
 #include <io/file.h>
+#include <io/spz.h>
 #include <iostream>
+#include <numeric>
 #include <pipeline/runner.h>
+#include <pipeline/tasks/write.h>
 #include <random>
 #include <voxel/voxel.h>
 
@@ -18,6 +21,42 @@ void require(bool condition, const char* message) {
 void save_json(const std::filesystem::path& path, const io::Json& json) {
     const auto text = json.dump();
     io::write_bytes(path, std::span(reinterpret_cast<const uint8_t*>(text.data()), text.size()));
+}
+void write_options(const std::filesystem::path& directory, const splat::Splat& source) {
+    pipeline::TaskContext context;
+    context.set({ { "output", "source" } }, std::make_shared<splat::Splat>(source));
+    std::vector<uint32_t> indices(source.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    for (int version : { 3, 4 }) {
+        for (int level : { 0, 1, 9 }) {
+            const auto path = directory / "options.spz";
+            io::Json config { { "input", "source" }, { "output", io::path_utf8(path) }, { "version", version }, { "enableMortonSort", false } };
+            if (level) {
+                config["compressLevel"] = level;
+            }
+            pipeline::WriteTask().exec(config, context);
+            const auto expected = io::SpzFile(version, level ? level : 6).write(source, indices);
+            require(io::read_bytes(path) == expected, "Pipeline lost SPZ version, compression level, or row order");
+        }
+    }
+}
+void write_gpu_requirements() {
+    pipeline::TaskContext context;
+    auto source = std::make_shared<splat::Splat>(1, 0);
+    context.set({ { "output", "source" } }, source);
+    pipeline::WriteTask task;
+    // Encoding options are validated by exec, not by GPU requirement queries.
+    io::Json config { { "input", "source" }, { "version", "unused" }, { "compressLevel", "unused" }, { "highPrecision", "unused" }, { "enableMortonSort", "unused" } };
+    for (const auto extension : { ".ply", ".spz", ".uspz", ".splat", ".esz", ".SOG" }) {
+        config["output"] = std::string("output") + extension;
+        require(task.requires_gpu(config, context) == (std::string_view(extension) == ".SOG"), "GPU query parsed encoding options or misclassified an output format");
+    }
+    context.set({ { "output", "bundle" } }, std::vector<pipeline::SingleFile> { { "metadata.sog", std::string("metadata") }, { "data.esz", source } });
+    config["input"] = "bundle";
+    config["output"] = "bundle-directory";
+    require(!task.requires_gpu(config, context), "Text bundle entries must not require GPU encoding");
+    context.set({ { "output", "bundle" } }, std::vector<pipeline::SingleFile> { { "data.esz", source }, { "data.SOG", source } });
+    require(task.requires_gpu(config, context), "GPU query missed a SOG entry in a mixed bundle");
 }
 void filter_neighborhoods() {
     std::mt19937_64 random(0x8193);
@@ -90,10 +129,12 @@ int main() {
                 points.gaussians[i].attribute(splat::ShOffset + c) = float(std::sin(i + c) * 0.1);
             }
         }
-        io::write_splat(directory / "input.ply", points, { { "enableMortonSort", false } });
+        write_gpu_requirements();
+        write_options(directory, points);
+        io::write_splat(directory / "input.ply", points, { .enable_morton_sort = false });
         for (const std::string extension : { "ply", "spz", "uspz", "splat", "esz" }) {
             const auto path = directory / ("roundtrip." + extension);
-            io::write_splat(path, points, { { "enableMortonSort", false } });
+            io::write_splat(path, points, { .enable_morton_sort = false });
             const auto decoded = io::read_splat(path);
             require(decoded.size() == points.size(), "Format roundtrip lost splats");
             require(decoded.sh_degree == (extension == "splat" ? 0u : 3u), "Format roundtrip lost SH bands");
@@ -103,16 +144,16 @@ int main() {
                 }
             }
         }
-        io::write_splat(directory / "v4.spz", points, { { "version", 4 }, { "enableMortonSort", false } });
+        io::write_splat(directory / "v4.spz", points, { .spz_version = 4, .enable_morton_sort = false });
         require(io::read_splat(directory / "v4.spz").size() == points.size(), "SPZ v4 roundtrip failed");
-        io::write_splat(directory / "high.esz", points, { { "highPrecision", true }, { "enableMortonSort", false } });
+        io::write_splat(directory / "high.esz", points, { .high_precision = true, .enable_morton_sort = false });
         const auto high = io::read_splat(directory / "high.esz");
         for (size_t i = 0; i < points.size(); ++i) {
             require(high.gaussians[i].mean.x() == points.gaussians[i].mean.x(), "High precision ESZ positions changed");
         }
         auto without_sh = points;
         without_sh.limit_sh_degree(0);
-        io::write_splat(directory / "cpu.sog", without_sh, { { "enableMortonSort", false } });
+        io::write_splat(directory / "cpu.sog", without_sh, { .enable_morton_sort = false });
         require(io::read_splat(directory / "cpu.sog").size() == points.size(), "SH0 SOG requires no Vulkan runtime");
         {
             splat::Splat rotations(3, 0);
@@ -126,14 +167,14 @@ int main() {
                     rotations.gaussians[i].attribute(splat::QuatX + c) = i == 2 ? 0 : quaternion[c] * (i == 0 ? 1 : -1);
                 }
             }
-            io::write_splat(directory / "rotations.ply", rotations, { { "enableMortonSort", false } });
+            io::write_splat(directory / "rotations.ply", rotations, { .enable_morton_sort = false });
             const auto canonical = io::read_splat(directory / "rotations.ply");
             require(canonical.gaussians[0].attribute(splat::QuatW) > 0, "Negative-w quaternion was not canonicalized");
             for (size_t c = splat::QuatX; c <= splat::QuatW; ++c) {
                 require(canonical.gaussians[0].attribute(c) == canonical.gaussians[1].attribute(c), "Equivalent quaternion signs produced different values");
                 require(canonical.gaussians[2].attribute(c) == 0, "Zero quaternion changed during input normalization");
             }
-            io::write_splat(directory / "rotations.splat", canonical, { { "enableMortonSort", false } });
+            io::write_splat(directory / "rotations.splat", canonical, { .enable_morton_sort = false });
             const auto encoded = io::read_bytes(directory / "rotations.splat");
             constexpr std::array<uint8_t, 4> EXPECTED { 168, 88, 209, 47 };
             for (size_t c = 0; c < 4; ++c) {

@@ -3,6 +3,7 @@
 #include <codec/quantization.h>
 #include <io/esz.h>
 #include <io/file.h>
+#include <io/json.h>
 #include <utility/logger.h>
 
 namespace splat_transform::io {

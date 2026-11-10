@@ -45,6 +45,7 @@ set(SPLAT_TRANSFORM_SOURCE_FILES
     src/codec/compression.cpp
     src/codec/image.cpp
     src/io/file.cpp
+    src/io/json.cpp
     src/io/file_stream.cpp
     src/io/stream_reader.cpp
     src/io/resource.cpp
@@ -97,6 +98,7 @@ set(SPLAT_TRANSFORM_HEADER_FILES
     include/gpu/context.h
     include/io/esz.h
     include/io/file.h
+    include/io/json.h
     include/io/ksplat.h
     include/io/lcc.h
     include/io/lcc2.h

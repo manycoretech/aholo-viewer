@@ -3,20 +3,13 @@
 #include <voxel/voxel.h>
 
 namespace splat_transform::voxel {
-bool requires_gpu(const io::Json& config) {
+bool requires_gpu(BackendType backend) {
     // Inspect configuration without constructing a session: the pipeline must
     // select its adapter before resolution initializes the task's GPU device.
-    const auto name = config.value("backend", std::string("gpu"));
-    if (name == "cpu") {
-        return false;
-    }
-    if (name == "gpu") {
-        return true;
-    }
-    throw std::runtime_error("Voxel backend must be cpu or gpu");
+    return backend == BackendType::Gpu;
 }
-std::unique_ptr<Backend> resolve_backend(const io::Json& config) {
-    if (!requires_gpu(config)) {
+std::unique_ptr<Backend> resolve_backend(BackendType backend) {
+    if (!requires_gpu(backend)) {
         return cpu_backend();
     }
     try {

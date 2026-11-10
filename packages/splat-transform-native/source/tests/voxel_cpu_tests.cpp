@@ -148,8 +148,9 @@ void pipeline_contracts(const std::filesystem::path& directory) {
     }
     const Eigen::AlignedBox3f box(Eigen::Vector3f::Constant(-1), Eigen::Vector3f::Constant(4));
     auto prepared = voxel::prepare(source);
-    const io::Json selection { { "seed", { { "x", 2.25 }, { "y", 2.25 }, { "z", 2.25 } } }, { "voxelResolution", 0.25 } };
-    voxel::filter_cluster(prepared, selection, box, *voxel::cpu_backend());
+    const io::Json selection { { "seed", { { "x", 2.25 }, { "y", 2.25 }, { "z", 2.25 } } }, { "voxelResolution", 0.25 }, { "opacityCutoff", 0.8 }, { "minContribution", 0.2 } };
+    const voxel::FilterClusterOptions cluster { .voxel_resolution = 0.25f, .opacity_cutoff = 0.8f, .min_contribution = 0.2f, .seed = Eigen::Vector3f::Constant(2.25f) };
+    voxel::filter_cluster(prepared, cluster, box, *voxel::cpu_backend());
     require(prepared.gaussians.size() == 16 && prepared.gaussians.front().values[0] == 2.25f,
         "CPU cluster filtering did not use the requested component");
     pipeline::TaskContext context;
@@ -158,16 +159,55 @@ void pipeline_contracts(const std::filesystem::path& directory) {
     require(task.requires_gpu({ { "backend", "gpu" } }, context), "Explicit GPU backend lost device initialization");
     require(!task.requires_gpu({ { "backend", "cpu" } }, context), "CPU backend requires a GPU");
     auto path = [&](const std::string& file) { return io::path_utf8(directory / file); };
-    io::write_splat(directory / "source.ply", source, { { "enableMortonSort", false } });
+    io::write_splat(directory / "source.ply", source, { .enable_morton_sort = false });
+    const auto decoded = io::read_splat(directory / "source.ply");
+    const auto equal_output = [&](const std::string& name, const voxel::Options& options) {
+        const auto direct = directory / (name + "-direct");
+        voxel::write(decoded, direct, options);
+        const auto expected = io::read_json(direct / "voxel-meta.json");
+        require(io::read_json(directory / name / "voxel-meta.json") == expected, "Pipeline options changed voxel metadata");
+        for (const auto& file : expected.at("files")) {
+            const auto filename = io::utf8_path(file.get<std::string>());
+            require(io::read_bytes(directory / name / filename) == io::read_bytes(direct / filename), "Pipeline options changed voxel occupancy or encoding");
+        }
+        require(std::filesystem::exists(directory / name / "collision.glb") == std::filesystem::exists(direct / "collision.glb"), "Pipeline changed collision mesh enablement");
+        if (std::filesystem::exists(direct / "collision.glb")) {
+            require(io::read_bytes(directory / name / "collision.glb") == io::read_bytes(direct / "collision.glb"), "Pipeline options changed navigation or collision mesh");
+        }
+    };
+    context.set({ { "output", "source" } }, std::make_shared<splat::Splat>(decoded));
+    task.exec({ { "input", "source" }, { "output", path("defaults") }, { "backend", "cpu" } }, context);
+    equal_output("defaults", { .backend = voxel::BackendType::Cpu });
     for (const std::string encoding : { "raw", "compact" }) {
         for (const std::string compression : { "none", "gzip", "zstd" }) {
             const auto name = encoding + '-' + compression;
-            const io::Json config { { "input", "source" }, { "output", path(name) }, { "backend", "cpu" },
+            voxel::Options options;
+            options.backend = voxel::BackendType::Cpu;
+            options.voxel_resolution = 0.125f;
+            options.box = box;
+            options.auto_dense_box.reset();
+            options.filter_cluster = cluster;
+            options.node_encoding = encoding == "raw" ? voxel::NodeEncoding::Raw : voxel::NodeEncoding::Compact;
+            options.compression = compression == "none" ? voxel::Compression::None : compression == "gzip" ? voxel::Compression::Gzip
+                                                                                                           : voxel::Compression::Zstd;
+            options.collision_mesh = encoding == "raw" ? voxel::CollisionMesh::Faces : voxel::CollisionMesh::Smooth;
+            options.navigation = { .floor_fill = true, .floor_dilation = 0.125f, .exterior_radius = 0.125f, .capsule_height = 0.125f, .capsule_radius = 0.125f, .seed = Eigen::Vector3f::Constant(2) };
+            io::Json config { { "input", "source" }, { "output", path(name) }, { "backend", "cpu" },
                 { "voxelResolution", 0.125 }, { "filterCluster", selection }, { "autoDenseBox", false },
+                { "box", { { "minCorner", { -1, -1, -1 } }, { "maxCorner", { 4, 4, 4 } } } },
                 { "nodeEncoding", encoding }, { "compression", compression }, { "collisionMesh", encoding == "raw" ? "faces" : "smooth" },
                 { "floorFill", true }, { "floorFillDilation", 0.125 }, { "navExteriorRadius", 0.125 },
                 { "navSeed", { { "x", 2 }, { "y", 2 }, { "z", 2 } } },
                 { "navCapsule", { { "height", 0.125 }, { "radius", 0.125 } } } };
+            if (compression == "gzip") {
+                config["autoDenseBox"] = true;
+                options.auto_dense_box.emplace();
+            } else if (compression == "zstd") {
+                config["autoDenseBox"] = { { "minimumAxisInflation", 0.5 }, { "minimumVolumeInflation", 0.5 }, { "targetCenterKeepRatio", 0.9 }, { "minimumCenterKeepRatio", 0.8 } };
+                options.auto_dense_box = voxel::DenseBoxOptions { 0.5f, 0.5f, 0.9f, 0.8f };
+                config["collisionMesh"] = true;
+                options.collision_mesh = voxel::CollisionMesh::Smooth;
+            }
             pipeline::run({ { "version", 1 }, { "gpu", std::numeric_limits<uint32_t>::max() },
                 { "tasks", io::Json::array({ { { "type", "Read" }, { "config", { { "inputs", { path("source.ply") } }, { "output", "source" } } } },
                                { { "type", "Voxel" }, { "id", "cpu" }, { "config", config } },
@@ -177,11 +217,12 @@ void pipeline_contracts(const std::filesystem::path& directory) {
             require(metadata.at("nodeEncoding") == encoding && metadata.at("compression") == compression, "CPU voxel output options were lost");
             require(metadata.at("nodeCount").get<size_t>() > 0 && std::filesystem::exists(directory / name / metadata.at("files")[0].get<std::string>()),
                 "CPU pipeline did not write a nonempty octree");
+            equal_output(name, options);
         }
     }
     bool rejected = false;
     try {
-        voxel::write(source, directory / "invalid", { { "backend", "other" } });
+        task.requires_gpu({ { "backend", "other" } }, context);
     } catch (const std::runtime_error& error) {
         rejected = std::string(error.what()).find("backend must be cpu or gpu") != std::string::npos;
     }

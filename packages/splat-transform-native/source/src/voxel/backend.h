@@ -1,8 +1,8 @@
 #pragma once
 #include "grid.h"
-#include <io/file.h>
 #include <memory>
 #include <string_view>
+#include <voxel/voxel.h>
 
 namespace splat_transform::voxel {
 struct PreparedData;
@@ -22,5 +22,5 @@ std::unique_ptr<Backend> cpu_backend();
 std::unique_ptr<Backend> gpu_backend();
 // Resolve once per voxel task so filtering, generation, and navigation share
 // the same backend. Unavailable GPU initialization selects CPU for all phases.
-std::unique_ptr<Backend> resolve_backend(const io::Json& config);
+std::unique_ptr<Backend> resolve_backend(BackendType backend = BackendType::Gpu);
 } // namespace splat_transform::voxel

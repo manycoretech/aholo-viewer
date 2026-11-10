@@ -1,7 +1,6 @@
 #pragma once
 #include "backend.h"
 #include "compute.h"
-#include <io/file.h>
 
 namespace splat_transform::voxel {
 inline constexpr float ALPHA_THRESHOLD = 1.0f / 255;
@@ -18,6 +17,6 @@ struct PreparedData {
 PreparedData prepare(const splat::Splat& data);
 Eigen::AlignedBox3f align_bounds(Eigen::AlignedBox3f bounds, float resolution);
 Grid make_grid(const Eigen::AlignedBox3f& bounds, float resolution);
-void filter_cluster(PreparedData& data, const io::Json& options, const Eigen::AlignedBox3f& box, const Backend& backend);
-Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBox3f& scene, const io::Json& config);
+void filter_cluster(PreparedData& data, const FilterClusterOptions& options, const Eigen::AlignedBox3f& box, const Backend& backend);
+Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBox3f& scene, const Eigen::AlignedBox3f& box, const std::optional<DenseBoxOptions>& options);
 } // namespace splat_transform::voxel

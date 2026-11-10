@@ -5,19 +5,26 @@
 namespace splat_transform::pipeline {
 using io::Json;
 namespace {
+io::FileOptions file_options(const Json& config) {
+    io::FileOptions options;
+    options.spz_version = config.value("version", options.spz_version);
+    options.spz_compress_level = config.value("compressLevel", options.spz_compress_level);
+    options.high_precision = config.value("highPrecision", options.high_precision);
+    options.enable_morton_sort = config.value("enableMortonSort", options.enable_morton_sort);
+    return options;
+}
 struct SplatWrite {
     std::filesystem::path path;
     SplatPtr data;
-    Json options;
+    io::FileOptions options;
     void operator()() const { io::write_splat(path, *data, options); }
 };
-void write_resource(const Resource& resource, const Json& config) {
-    const auto path = io::utf8_path(config.at("output").get<std::string>());
+void write_resource(const Resource& resource, const std::filesystem::path& path, const io::FileOptions& options) {
     const auto output = io::path_utf8(path);
     auto& logger = utility::logger();
     if (const auto* data = std::get_if<SplatPtr>(&resource)) {
         logger.info("writing splat -> file=\"", output, "\" count=", (*data)->size(), " SH=", (*data)->sh_degree);
-        io::write_splat(path, **data, config);
+        io::write_splat(path, **data, options);
         logger.info("writing done");
         return;
     }
@@ -49,10 +56,10 @@ void write_resource(const Resource& resource, const Json& config) {
                 io::write_bytes(destination, { reinterpret_cast<const uint8_t*>(text->data()), text->size() });
                 continue;
             }
-            const auto format = io::create_file(destination.extension().string(), config, io::FileOperation::Write);
-            SplatWrite write { destination, std::get<SplatPtr>(file.content), config };
+            const auto format = io::create_file(destination.extension().string(), options, io::FileOperation::Write);
+            SplatWrite write { destination, std::get<SplatPtr>(file.content), options };
             if (file.preserve_order || format->preserve_bundle_order()) {
-                write.options["enableMortonSort"] = false;
+                write.options.enable_morton_sort = false;
             }
             if (format->requires_gpu()) {
                 gpu_files.push_back(std::move(write));
@@ -77,7 +84,7 @@ void write_resource(const Resource& resource, const Json& config) {
 } // namespace
 void WriteTask::exec(const Json& config, TaskContext& context) const {
     const auto& resource = context.input(config);
-    write_resource(resource, config);
+    write_resource(resource, io::utf8_path(config.at("output").get<std::string>()), file_options(config));
     if (const auto* files = std::get_if<std::vector<SingleFile>>(&resource)) {
         for (const auto& file : *files) {
             if (file.name == "lod-meta.json" && std::holds_alternative<std::string>(file.content)) {
@@ -89,10 +96,10 @@ void WriteTask::exec(const Json& config, TaskContext& context) const {
 bool WriteTask::requires_gpu(const Json& config, const TaskContext& context) const {
     const auto& resource = context.input(config);
     if (std::holds_alternative<SplatPtr>(resource)) {
-        return io::create_file(io::utf8_path(config.at("output").get<std::string>()).extension().string(), config, io::FileOperation::Write)->requires_gpu();
+        return io::create_file(io::utf8_path(config.at("output").get<std::string>()).extension().string(), {}, io::FileOperation::Write)->requires_gpu();
     }
     for (const auto& file : std::get<std::vector<SingleFile>>(resource)) {
-        if (std::holds_alternative<SplatPtr>(file.content) && io::create_file(io::utf8_path(file.name).extension().string(), config, io::FileOperation::Write)->requires_gpu()) {
+        if (std::holds_alternative<SplatPtr>(file.content) && io::create_file(io::utf8_path(file.name).extension().string(), {}, io::FileOperation::Write)->requires_gpu()) {
             return true;
         }
     }

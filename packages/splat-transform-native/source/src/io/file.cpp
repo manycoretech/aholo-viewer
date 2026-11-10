@@ -35,10 +35,6 @@ void write_bytes(const std::filesystem::path& path, std::span<const uint8_t> byt
     stream.write(bytes);
     stream.close();
 }
-Json read_json(const std::filesystem::path& path) {
-    const auto bytes = read_bytes(path);
-    return Json::parse(bytes.begin(), bytes.end());
-}
 Bytes zip(const Archive& files) {
     zip_error_t error;
     zip_error_init(&error);

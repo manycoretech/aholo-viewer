@@ -103,19 +103,10 @@ Grid make_grid(const Eigen::AlignedBox3f& bounds, float resolution) {
     return Grid(dimensions);
 }
 
-Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBox3f& scene, const io::Json& config) {
-    Eigen::AlignedBox3f box(Eigen::Vector3f::Constant(-100), Eigen::Vector3f::Constant(100));
-    if (config.contains("box")) {
-        const auto minimum = config.at("box").at("minCorner").get<std::array<float, 3>>();
-        const auto maximum = config.at("box").at("maxCorner").get<std::array<float, 3>>();
-        box.min() = Eigen::Map<const Eigen::Vector3f>(minimum.data());
-        box.max() = Eigen::Map<const Eigen::Vector3f>(maximum.data());
-    }
-    const auto automatic = config.value("autoDenseBox", io::Json(true));
-    if (automatic == false || data.size() == 0) {
+Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBox3f& scene, const Eigen::AlignedBox3f& box, const std::optional<DenseBoxOptions>& options) {
+    if (!options || data.size() == 0) {
         return box;
     }
-    const auto options = automatic.is_object() ? automatic : io::Json::object();
     const auto center = splat::bounds(data);
     float inflation = 0, center_volume = 1, scene_volume = 1;
     for (int a = 0; a < 3; ++a) {
@@ -124,10 +115,10 @@ Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBo
         center_volume *= c;
         scene_volume *= s;
     }
-    if (inflation < options.value("minimumAxisInflation", 1.5f) && scene_volume / std::max(center_volume, 1e-6f) < options.value("minimumVolumeInflation", 4.0f)) {
+    if (inflation < options->minimum_axis_inflation && scene_volume / std::max(center_volume, 1e-6f) < options->minimum_volume_inflation) {
         return box;
     }
-    auto dense = splat::dense_bounds(data, 1 - options.value("targetCenterKeepRatio", 0.98f));
+    auto dense = splat::dense_bounds(data, 1 - options->target_center_keep_ratio);
     for (int a = 0; a < 3; ++a) {
         dense.min()[a] = std::max(dense.min()[a], box.min()[a]);
         dense.max()[a] = std::min(dense.max()[a], box.max()[a]);
@@ -143,15 +134,15 @@ Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBo
         }
         kept += inside;
     }
-    if (float(kept) / data.size() < options.value("minimumCenterKeepRatio", 0.95f)) {
+    if (float(kept) / data.size() < options->minimum_center_keep_ratio) {
         return box;
     }
     utility::logger().info("autoDenseBox: applied, kept ", kept, '/', data.size(), " centers (", utility::fixed(float(kept) / data.size() * 100), "%)");
     return dense;
 }
-void filter_cluster(PreparedData& prepared, const io::Json& options, const Eigen::AlignedBox3f& box, const Backend& backend) {
+void filter_cluster(PreparedData& prepared, const FilterClusterOptions& options, const Eigen::AlignedBox3f& box, const Backend& backend) {
     auto& logger = utility::logger();
-    const float resolution = options.value("voxelResolution", 1.0f), cutoff = options.value("opacityCutoff", 0.999f), contribution = options.value("minContribution", 0.1f);
+    const float resolution = options.voxel_resolution, cutoff = options.opacity_cutoff, contribution = options.min_contribution;
     if (!(resolution > 0) || !std::isfinite(resolution) || !std::isfinite(cutoff) || cutoff < 0 || cutoff > 1 || !std::isfinite(contribution) || contribution < 0) {
         throw std::runtime_error("Invalid filterCluster options");
     }
@@ -160,11 +151,7 @@ void filter_cluster(PreparedData& prepared, const io::Json& options, const Eigen
         return;
     }
     auto bounds = align_bounds(prepared.scene, resolution);
-    Eigen::Vector3f seed = Eigen::Vector3f::Zero();
-    if (options.contains("seed")) {
-        const auto& s = options.at("seed");
-        seed = { s.at("x").get<float>(), s.at("y").get<float>(), s.at("z").get<float>() };
-    }
+    const Eigen::Vector3f seed = options.seed.value_or(Eigen::Vector3f::Zero());
     for (int a = 0; a < 3; ++a) {
         bounds.min()[a] = std::max(bounds.min()[a], box.min()[a]);
         bounds.max()[a] = std::min(bounds.max()[a], box.max()[a]);
@@ -260,7 +247,7 @@ void filter_cluster(PreparedData& prepared, const io::Json& options, const Eigen
         return selected;
     };
     auto chosen = select(cluster);
-    if (!options.contains("seed") && float(chosen.size()) / count < 0.3f) {
+    if (!options.seed && float(chosen.size()) / count < 0.3f) {
         Grid processed = cluster;
         std::vector<Grid> candidates;
         for (auto index : occupied.active_blocks()) {

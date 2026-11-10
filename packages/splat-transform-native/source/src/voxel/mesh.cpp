@@ -1,6 +1,7 @@
 #include "grid.h"
 #include <algorithm>
 #include <io/file.h>
+#include <io/json.h>
 #include <set>
 #include <unordered_map>
 #include <utility/vector_hash.h>

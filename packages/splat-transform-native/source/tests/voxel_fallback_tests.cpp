@@ -36,12 +36,12 @@ void resolution_contracts() {
         require(task.requires_gpu(io::Json::object(), context), "GPU requirement query performed fallback before pipeline device selection");
         require(task.requires_gpu({ { "backend", "gpu" } }, context), "Explicit GPU request was lost before device selection");
         require(!task.requires_gpu({ { "backend", "cpu" } }, context), "Explicit CPU processing requires GPU initialization");
-        require(!voxel::resolve_backend({ { "backend", "cpu" } })->requires_gpu(), "Explicit CPU backend changed");
+        require(!voxel::resolve_backend(voxel::BackendType::Cpu)->requires_gpu(), "Explicit CPU backend changed");
         require(errors.output.str().empty(), "GPU requirement query or CPU resolution attempted GPU initialization");
     }
-    const auto backend = voxel::resolve_backend(io::Json::object());
+    const auto backend = voxel::resolve_backend();
     require(!backend->requires_gpu(), "Unavailable GPU did not resolve to the CPU backend");
-    require(!voxel::resolve_backend({ { "backend", "gpu" } })->requires_gpu(), "Explicit GPU request did not fall back during resolution");
+    require(!voxel::resolve_backend(voxel::BackendType::Gpu)->requires_gpu(), "Explicit GPU request did not fall back during resolution");
     splat::Splat source(2, 0);
     for (auto& gaussian : source.gaussians) {
         gaussian.mean.setConstant(0.5f);
@@ -63,7 +63,7 @@ void resolution_contracts() {
     }
     bool rejected = false;
     try {
-        voxel::resolve_backend({ { "backend", "other" } });
+        task.requires_gpu({ { "backend", "other" } }, context);
     } catch (const std::runtime_error& error) {
         rejected = std::string_view(error.what()) == "Voxel backend must be cpu or gpu";
     }
@@ -130,7 +130,9 @@ void pipeline_contracts(const std::filesystem::path& directory) {
     }
     bool rejected = false;
     try {
-        voxel::write(source, directory / "invalid", { { "backend", "gpu" }, { "compression", "invalid" } });
+        pipeline::TaskContext context;
+        context.set({ { "output", "source" } }, std::make_shared<splat::Splat>(source));
+        pipeline::VoxelTask().exec({ { "input", "source" }, { "output", path("invalid") }, { "backend", "gpu" }, { "compression", "invalid" } }, context);
     } catch (const std::runtime_error& error) {
         rejected = std::string_view(error.what()) == "Invalid voxel compression";
     }

@@ -29,7 +29,7 @@ void prepare(const std::filesystem::path& directory) {
                 point.sh[c] = c < 3 ? float((i + c) % 4 + 1) * 0.125f : float(std::sin(i + c) * 0.05);
             }
         }
-        io::write_splat(directory / "inputs" / (second ? "second.ply" : "first.ply"), data, { { "enableMortonSort", false } });
+        io::write_splat(directory / "inputs" / (second ? "second.ply" : "first.ply"), data, { .enable_morton_sort = false });
         save_json(directory / "inputs" / (second ? "second.json" : "first.json"),
             { { "transform", { 1, 0, 0, second ? -10 : 10, 0, 1, 0, 20, 0, 0, 1, 30, 0, 0, 0, 1 } }, { "deletedIndices", { second ? 4 : 2 } } });
     }

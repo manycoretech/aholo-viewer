@@ -1,5 +1,6 @@
 #pragma once
 #include <io/file.h>
+#include <io/json.h>
 
 namespace splat_transform::pipeline {
 void run(const io::Json& pipeline);

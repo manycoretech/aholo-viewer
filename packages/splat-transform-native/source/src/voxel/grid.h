@@ -7,6 +7,7 @@
 #include <splat/splat.h>
 #include <unordered_map>
 #include <vector>
+#include <voxel/voxel.h>
 
 namespace splat_transform::voxel {
 class Backend;
@@ -52,16 +53,7 @@ Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool 
 std::optional<Eigen::Vector3i> nearest_cell(const Grid& allowed, Eigen::Vector3i seed, int radius);
 Grid filter_blocks(const Grid& grid);
 void crop_grid(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, bool navigable, int margin);
-void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const struct Navigation& options, const Backend& backend);
-
-struct Navigation {
-    bool floor_fill = false;
-    float floor_dilation = 0;
-    float exterior_radius = 0;
-    float capsule_height = 0;
-    float capsule_radius = 0;
-    std::optional<Eigen::Vector3f> seed;
-};
+void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const Navigation& options, const Backend& backend);
 struct Mesh {
     std::vector<float> positions;
     std::vector<uint32_t> indices;

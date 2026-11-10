@@ -3,6 +3,8 @@
 #include <bit>
 #include <cmath>
 #include <codec/codec.h>
+#include <io/file.h>
+#include <io/json.h>
 #include <utility/logger.h>
 #include <voxel/voxel.h>
 
@@ -162,20 +164,16 @@ float fallback_resolution(float current, float count, float target) {
     return next > current ? next : align(current + 0.01f);
 }
 } // namespace
-void write(const splat::Splat& input, const std::filesystem::path& directory, const io::Json& config) {
+void write(const splat::Splat& input, const std::filesystem::path& directory, const Options& options) {
     auto& logger = utility::logger();
-    const auto backend = resolve_backend(config);
-    const auto compression = config.value("compression", std::string("none"));
-    const auto encoding = config.value("nodeEncoding", std::string("raw"));
-    if (compression != "none" && compression != "gzip" && compression != "zstd") {
-        throw std::runtime_error("Invalid voxel compression");
-    }
-    if (encoding != "raw" && encoding != "compact") {
-        throw std::runtime_error("Invalid voxel nodeEncoding");
-    }
-    float resolution = config.value("voxelResolution", 0.05f);
+    const auto backend = resolve_backend(options.backend);
+    constexpr std::array COMPRESSION_NAMES { "none", "gzip", "zstd" };
+    constexpr std::array ENCODING_NAMES { "raw", "compact" };
+    const std::string compression = COMPRESSION_NAMES[static_cast<size_t>(options.compression)];
+    const std::string encoding = ENCODING_NAMES[static_cast<size_t>(options.node_encoding)];
+    float resolution = options.voxel_resolution;
     const auto requested_resolution = resolution;
-    const float cutoff = config.value("opacityCutoff", 0.1f);
+    const float cutoff = options.opacity_cutoff;
     if (!(resolution > 0) || !std::isfinite(resolution) || !std::isfinite(cutoff) || cutoff < 0 || cutoff > 1) {
         throw std::runtime_error("Invalid voxel resolution or opacityCutoff");
     }
@@ -184,32 +182,20 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
     auto bounds_time = logger.time("Voxel bounding/extents");
     auto prepared = prepare(input);
     bounds_time.finish();
-    const auto box = resolve_box(input, prepared.scene, config);
-    const auto filter = config.value("filterCluster", io::Json(true));
-    if (filter != false) {
+    const auto box = resolve_box(input, prepared.scene, options.box, options.auto_dense_box);
+    if (options.filter_cluster) {
         logger.info("voxel filterCluster enabled");
         auto filter_time = logger.time("Filter clusters");
-        filter_cluster(prepared, filter.is_object() ? filter : io::Json::object(), box, *backend);
+        filter_cluster(prepared, *options.filter_cluster, box, *backend);
     }
     if (!prepared.invalid_extents.empty()) {
         logger.info("voxel: skipped ", prepared.invalid_extents.size(), " gaussians with invalid extent values");
     }
     logger.info("scene extents: (", utility::fixed(prepared.scene.min()[0]), ',', utility::fixed(prepared.scene.min()[1]), ',', utility::fixed(prepared.scene.min()[2]),
         ") - (", utility::fixed(prepared.scene.max()[0]), ',', utility::fixed(prepared.scene.max()[1]), ',', utility::fixed(prepared.scene.max()[2]), ')');
-    Navigation navigation;
-    navigation.floor_fill = config.value("floorFill", false);
-    navigation.floor_dilation = config.value("floorFillDilation", 0.0f);
-    navigation.exterior_radius = config.value("navExteriorRadius", 0.0f);
+    const auto& navigation = options.navigation;
     if (navigation.floor_dilation < 0 || navigation.exterior_radius < 0) {
         throw std::runtime_error("Navigation dilation must be nonnegative");
-    }
-    if (config.contains("navSeed")) {
-        const auto& seed = config.at("navSeed");
-        navigation.seed = Eigen::Vector3f { seed.at("x").get<float>(), seed.at("y").get<float>(), seed.at("z").get<float>() };
-    }
-    if (config.contains("navCapsule")) {
-        navigation.capsule_height = config.at("navCapsule").at("height");
-        navigation.capsule_radius = config.at("navCapsule").at("radius");
     }
     const bool has_exterior = navigation.exterior_radius != 0 && navigation.seed.has_value();
     auto resolve_bounds = [&] {
@@ -271,14 +257,14 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
             continue;
         }
         logger.info("octree: depth=", tree.depth, ", interior=", tree.interiors, ", mixed=", tree.mixed);
-        auto binary = encode_octree(tree, encoding == "compact");
+        auto binary = encode_octree(tree, options.node_encoding == NodeEncoding::Compact);
         const auto raw_bytes = binary.size();
         std::string filename = "voxel.bin";
-        if (compression == "gzip") {
+        if (options.compression == Compression::Gzip) {
             binary = codec::gzip(binary);
             filename += ".gz";
         }
-        if (compression == "zstd") {
+        if (options.compression == Compression::Zstd) {
             binary = codec::zstd_compress(binary, 12);
             filename += ".zst";
         }
@@ -296,16 +282,13 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
         io::write_bytes(directory / "voxel-meta.json", std::span(reinterpret_cast<const uint8_t*>(json.data()), json.size()));
         logger.info("writing '", io::path_utf8(directory / filename), "'...");
         io::write_bytes(directory / filename, binary);
-        const auto shape = config.value("collisionMesh", io::Json(false));
+        const auto shape = options.collision_mesh;
         size_t mesh_bytes = 0;
-        if (shape != false) {
-            if (shape != true && shape != "faces" && shape != "smooth") {
-                throw std::runtime_error("collisionMesh must be true, false, faces, or smooth");
-            }
+        if (shape != CollisionMesh::None) {
             auto mesh_time = logger.time("Build collision mesh");
-            auto mesh = shape == "faces" ? voxel_faces(grid, bounds, resolution) : marching_cubes(grid, bounds, resolution);
-            logger.info(shape == "faces" ? "collision mesh faces: " : "collision mesh smooth: ", mesh.positions.size() / 3, " vertices, ", mesh.indices.size() / 3, " triangles");
-            if (shape != "faces") {
+            auto mesh = shape == CollisionMesh::Faces ? voxel_faces(grid, bounds, resolution) : marching_cubes(grid, bounds, resolution);
+            logger.info(shape == CollisionMesh::Faces ? "collision mesh faces: " : "collision mesh smooth: ", mesh.positions.size() / 3, " vertices, ", mesh.indices.size() / 3, " triangles");
+            if (shape != CollisionMesh::Faces) {
                 const auto original_triangles = mesh.indices.size() / 3;
                 mesh = merge_coplanar(mesh, resolution);
                 logger.info("collision mesh merged: ", mesh.positions.size() / 3, " vertices, ", mesh.indices.size() / 3, " triangles");

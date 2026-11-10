@@ -1,5 +1,6 @@
 #pragma once
 #include <io/file.h>
+#include <io/json.h>
 #include <memory>
 
 namespace splat_transform::io {
