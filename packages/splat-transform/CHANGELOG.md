@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.3
+
+- Standardize native binary buffers, RGBA image storage, compression streams, and shader assets on `std::byte`; adapt pointers at codec library boundaries
+- Use fixed-width integer types throughout native processing, retaining `size_t` for memory sizes and indices
+- Decode byte-valued channels through `std::to_integer<uint8_t>` to preserve efficient MSVC vectorization after the `std::byte` migration
+- Cache voxel compute pipelines in an `unordered_map` keyed by xxHash of static shader identity and pipeline configuration, avoiding bytecode copies and specialization sorting during lookup
+- Add WebP and AVIF roundtrip coverage for RGBA dimensions, channel order, alpha, and lossless WebP output
+
 ## 2.1.2
 
 - Rename the split pipeline task to `Split`; accept the legacy name `SplitSplatTask` only in the native C++ pipeline loader
