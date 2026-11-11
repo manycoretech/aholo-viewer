@@ -1,5 +1,6 @@
 #include "grid.h"
 #include <algorithm>
+#include <cstdint>
 #include <io/file.h>
 #include <io/json.h>
 #include <set>
@@ -8,7 +9,7 @@
 
 namespace splat_transform::voxel {
 namespace {
-Eigen::Vector3i global_point(int axis, int p, int u, int v) {
+Eigen::Vector3i global_point(int32_t axis, int32_t p, int32_t u, int32_t v) {
     if (axis == 0) {
         return { p, u, v };
     }
@@ -17,7 +18,7 @@ Eigen::Vector3i global_point(int axis, int p, int u, int v) {
     }
     return { u, v, p };
 }
-std::array<int, 2> local_point(int axis, Eigen::Vector3i point) {
+std::array<int32_t, 2> local_point(int32_t axis, Eigen::Vector3i point) {
     if (axis == 0) {
         return { point[1], point[2] };
     }
@@ -26,7 +27,7 @@ std::array<int, 2> local_point(int axis, Eigen::Vector3i point) {
     }
     return { point[0], point[1] };
 }
-Eigen::Vector3i line_key(int axis, Eigen::Vector3i p) {
+Eigen::Vector3i line_key(int32_t axis, Eigen::Vector3i p) {
     if (axis == 0) {
         return { axis, p[1], p[2] };
     }
@@ -36,25 +37,25 @@ Eigen::Vector3i line_key(int axis, Eigen::Vector3i p) {
     return { axis, p[0], p[1] };
 }
 struct Rectangle {
-    int bucket, plane, u0, v0, u1, v1;
+    int32_t bucket, plane, u0, v0, u1, v1;
     std::array<Eigen::Vector3i, 4> corners() const {
-        const int axis = bucket / 2;
+        const int32_t axis = bucket / 2;
         return { global_point(axis, plane, u0, v0), global_point(axis, plane, u1, v0), global_point(axis, plane, u1, v1), global_point(axis, plane, u0, v1) };
     }
 };
 } // namespace
 Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
     // Each plane is independent; cells remain sorted to seed greedy rectangles.
-    std::unordered_map<Eigen::Vector2i, std::set<std::array<int, 2>>, utility::VectorHash> planes;
+    std::unordered_map<Eigen::Vector2i, std::set<std::array<int32_t, 2>>, utility::VectorHash> planes;
     for (auto index : grid.active_blocks()) {
         const auto block = grid.block_point(index);
         auto bits = grid.mask(index);
         while (bits) {
-            const int bit = std::countr_zero(bits);
+            const int32_t bit = std::countr_zero(bits);
             bits &= bits - 1;
             Eigen::Vector3i p { block[0] * 4 + bit % 4, block[1] * 4 + bit / 4 % 4, block[2] * 4 + bit / 16 };
-            for (int axis = 0; axis < 3; ++axis) {
-                for (int side = 0; side < 2; ++side) {
+            for (int32_t axis = 0; axis < 3; ++axis) {
+                for (int32_t side = 0; side < 2; ++side) {
                     auto neighbor = p;
                     neighbor[axis] += side ? 1 : -1;
                     if (grid.get(neighbor)) {
@@ -69,13 +70,13 @@ Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float reso
     for (auto& [plane, cells] : planes) {
         while (!cells.empty()) {
             auto [u, v] = *cells.begin();
-            int width = 1, height = 1;
+            int32_t width = 1, height = 1;
             while (cells.contains({ u + width, v })) {
                 ++width;
             }
             while (true) {
                 bool all = true;
-                for (int du = 0; du < width; ++du) {
+                for (int32_t du = 0; du < width; ++du) {
                     if (!cells.contains({ u + du, v + height })) {
                         all = false;
                         break;
@@ -86,8 +87,8 @@ Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float reso
                 }
                 ++height;
             }
-            for (int dv = 0; dv < height; ++dv) {
-                for (int du = 0; du < width; ++du) {
+            for (int32_t dv = 0; dv < height; ++dv) {
+                for (int32_t du = 0; du < width; ++du) {
                     cells.erase({ u + du, v + dv });
                 }
             }
@@ -95,13 +96,13 @@ Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float reso
         }
     }
     // Sorted coordinates are required by the perimeter's range queries below.
-    std::unordered_map<Eigen::Vector3i, std::set<int>, utility::VectorHash> line_points;
+    std::unordered_map<Eigen::Vector3i, std::set<int32_t>, utility::VectorHash> line_points;
     for (const auto& rectangle : rectangles) {
         auto corners = rectangle.corners();
-        for (int edge = 0; edge < 4; ++edge) {
+        for (int32_t edge = 0; edge < 4; ++edge) {
             auto a = corners[edge], b = corners[(edge + 1) % 4];
-            const int axis = a[0] != b[0] ? 0 : a[1] != b[1] ? 1
-                                                             : 2;
+            const int32_t axis = a[0] != b[0] ? 0 : a[1] != b[1] ? 1
+                                                                 : 2;
             auto& points = line_points[line_key(axis, a)];
             points.insert(a[axis]);
             points.insert(b[axis]);
@@ -116,28 +117,28 @@ Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float reso
         }
         const auto index = uint32_t(output.positions.size() / 3);
         vertices[p] = index;
-        for (int axis = 0; axis < 3; ++axis) {
+        for (int32_t axis = 0; axis < 3; ++axis) {
             output.positions.push_back(float(bounds.min()[axis] + p[axis] * resolution));
         }
         return index;
     };
     for (const auto& rectangle : rectangles) {
-        const int plane_axis = rectangle.bucket / 2;
+        const int32_t plane_axis = rectangle.bucket / 2;
         const auto corners = rectangle.corners();
         std::vector<uint32_t> perimeter;
-        std::vector<std::array<int, 2>> uv;
-        for (int edge = 0; edge < 4; ++edge) {
+        std::vector<std::array<int32_t, 2>> uv;
+        for (int32_t edge = 0; edge < 4; ++edge) {
             auto a = corners[edge], b = corners[(edge + 1) % 4];
-            const int axis = a[0] != b[0] ? 0 : a[1] != b[1] ? 1
-                                                             : 2;
+            const int32_t axis = a[0] != b[0] ? 0 : a[1] != b[1] ? 1
+                                                                 : 2;
             const auto& points = line_points.at(line_key(axis, a));
-            std::vector<int> segment;
+            std::vector<int32_t> segment;
             auto begin = points.lower_bound(std::min(a[axis], b[axis])), end = points.upper_bound(std::max(a[axis], b[axis]));
             segment.assign(begin, end);
             if (a[axis] > b[axis]) {
                 std::reverse(segment.begin(), segment.end());
             }
-            for (int t : segment) {
+            for (int32_t t : segment) {
                 auto p = a;
                 p[axis] = t;
                 const auto v = vertex(p);
@@ -188,7 +189,7 @@ Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float reso
     }
     return output;
 }
-std::vector<uint8_t> encode_glb(const Mesh& mesh) {
+std::vector<std::byte> encode_glb(const Mesh& mesh) {
     if (mesh.positions.empty() || mesh.indices.empty()) {
         return {};
     }
@@ -214,7 +215,8 @@ std::vector<uint8_t> encode_glb(const Mesh& mesh) {
     for (auto value : { 0x46546c67u, 2u, uint32_t(28 + json.size() + position_bytes + index_bytes), uint32_t(json.size()), 0x4e4f534au }) {
         io::append(output, value);
     }
-    output.insert(output.end(), json.begin(), json.end());
+    const auto json_bytes = std::as_bytes(std::span(json));
+    output.insert(output.end(), json_bytes.begin(), json_bytes.end());
     io::append(output, uint32_t(position_bytes + index_bytes));
     io::append(output, 0x004e4942u);
     for (auto value : mesh.positions) {

@@ -4,6 +4,7 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/post.hpp>
 #include <boost/asio/thread_pool.hpp>
+#include <cstdint>
 #include <fstream>
 #include <future>
 #include <io/file.h>
@@ -54,7 +55,7 @@ struct FileStream::Impl {
                     FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
                 if (handle == INVALID_HANDLE_VALUE) {
                     const auto error = GetLastError();
-                    throw std::system_error(int(error), std::system_category(), "Cannot open input/output file: " + path_utf8(path));
+                    throw std::system_error(int32_t(error), std::system_category(), "Cannot open input/output file: " + path_utf8(path));
                 }
                 boost::system::error_code error;
                 native->assign(handle, error);
@@ -102,7 +103,7 @@ bool FileStream::uses_native_backend() const noexcept {
     return false;
 #endif
 }
-size_t FileStream::read(std::span<uint8_t> target) {
+size_t FileStream::read(std::span<std::byte> target) {
     if (impl_->access != Access::Read) {
         throw std::runtime_error("File is not readable");
     }
@@ -132,7 +133,7 @@ size_t FileStream::read(std::span<uint8_t> target) {
     impl_->offset += count;
     return count;
 }
-void FileStream::write(std::span<const uint8_t> bytes) {
+void FileStream::write(std::span<const std::byte> bytes) {
     if (impl_->access != Access::Write) {
         throw std::runtime_error("File is not writable");
     }

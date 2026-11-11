@@ -1,4 +1,5 @@
 #include "zip_archive.h"
+#include <cstdint>
 #include <io/esz.h>
 #include <io/ksplat.h>
 #include <io/lcc.h>
@@ -71,7 +72,7 @@ Bytes IFile::write(const splat::Splat&, std::span<const uint32_t>) const {
 void IFile::write(const std::filesystem::path& path, const splat::Splat& splat, std::span<const uint32_t> indices) const {
     write_bytes(path, write(splat, indices));
 }
-splat::Splat IFile::read(const std::filesystem::path& path, unsigned max_sh_degree) const {
+splat::Splat IFile::read(const std::filesystem::path& path, uint32_t max_sh_degree) const {
     const auto bytes = read_bytes(path);
     return read({ path, bytes, max_sh_degree });
 }
@@ -89,7 +90,7 @@ splat::Splat read_splat(const FileInput& input) {
     result.block_counts = { result.size() };
     return result;
 }
-splat::Splat read_splat(const std::filesystem::path& path, unsigned max_sh_degree) {
+splat::Splat read_splat(const std::filesystem::path& path, uint32_t max_sh_degree) {
     const auto extension = lower(path.extension().string());
     if (extension != ".zip") {
         auto result = create_file(extension)->read(path, max_sh_degree);

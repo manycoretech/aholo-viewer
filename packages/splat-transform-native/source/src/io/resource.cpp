@@ -1,11 +1,12 @@
 #include "zip_archive.h"
 #include <algorithm>
+#include <cstdint>
 #include <curl/curl.h>
 #include <io/resource.h>
 
 namespace splat_transform::io {
 std::string lower(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return std::tolower(c); });
+    std::transform(value.begin(), value.end(), value.begin(), [](uint8_t c) { return std::tolower(c); });
     return value;
 }
 std::string normalized(std::string value) {
@@ -18,9 +19,9 @@ struct Resources::Impl {
     std::unique_ptr<ZipArchive> archive;
     std::vector<std::string> entries;
 };
-Resources::Resources(const std::filesystem::path& path, std::span<const uint8_t> bytes, const std::string& format) : impl_(std::make_unique<Impl>()) {
+Resources::Resources(const std::filesystem::path& path, std::span<const std::byte> bytes, const std::string& format) : impl_(std::make_unique<Impl>()) {
     impl_->directory = path.has_parent_path() ? path.parent_path() : std::filesystem::path(".");
-    if (bytes.size() >= 4 && bytes[0] == 'P' && bytes[1] == 'K') {
+    if (bytes.size() >= 4 && bytes[0] == std::byte { 'P' } && bytes[1] == std::byte { 'K' }) {
         impl_->archive = std::make_unique<ZipArchive>(bytes);
         impl_->entries = impl_->archive->entries();
         std::vector<std::string> candidates;
@@ -39,9 +40,9 @@ Resources::Resources(const std::filesystem::path& path, std::span<const uint8_t>
         }
         impl_->metadata = utf8_path(normalized(candidates[0]));
         const auto metadata = impl_->archive->read(candidates[0]);
-        meta = Json::parse(metadata.begin(), metadata.end());
+        meta = Json::parse(std::string_view(reinterpret_cast<const char*>(metadata.data()), metadata.size()));
     } else {
-        meta = Json::parse(bytes.begin(), bytes.end());
+        meta = Json::parse(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
     }
 }
 Resources::~Resources() = default;
@@ -83,7 +84,7 @@ std::string Resources::resolve(const std::string& name) const {
 Bytes Resources::read(const std::string& name) const {
     const auto path = resolve(name);
     if (path.starts_with("https://") || path.starts_with("http://")) {
-        static const int initialized = [] {
+        static const int32_t initialized = [] {
             if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
                 throw std::runtime_error("Cannot initialize HTTP client");
             }
@@ -104,7 +105,8 @@ Bytes Resources::read(const std::string& name) const {
         curl_easy_setopt(handle.get(), CURLOPT_WRITEFUNCTION, +[](char* data, size_t size, size_t count, void* user) -> size_t {
             auto& output = *static_cast<Bytes*>(user);
             try {
-                output.insert(output.end(), reinterpret_cast<uint8_t*>(data), reinterpret_cast<uint8_t*>(data) + size * count);
+                const auto bytes = std::as_bytes(std::span(data, size * count));
+                output.insert(output.end(), bytes.begin(), bytes.end());
                 return size * count;
             } catch (...) { return 0; } });
         const auto status = curl_easy_perform(handle.get());

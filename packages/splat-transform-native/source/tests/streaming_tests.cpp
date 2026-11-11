@@ -3,6 +3,7 @@
 #include "io/stream_reader.h"
 #include <chrono>
 #include <codec/codec.h>
+#include <cstdint>
 #include <io/esz.h>
 #include <io/ply.h>
 #include <io/splat.h>
@@ -38,7 +39,7 @@ void same(const splat::Splat& left, const splat::Splat& right) {
 void file_backends(const std::filesystem::path& directory, bool require_native) {
     io::Bytes expected(1024 * 1024 + 37);
     for (size_t i = 0; i < expected.size(); ++i) {
-        expected[i] = static_cast<uint8_t>(i * 97 + i / 251);
+        expected[i] = static_cast<std::byte>(i * 97 + i / 251);
     }
     for (auto backend : { io::FileStream::Backend::Automatic, io::FileStream::Backend::ThreadPool }) {
         const auto path = directory / io::utf8_path("流式输入输出.bin");
@@ -53,7 +54,7 @@ void file_backends(const std::filesystem::path& directory, bool require_native) 
             }
             file.write(std::span(expected).first(13));
             file.write(std::span(expected).subspan(13));
-            expected[7] ^= 0x5a;
+            expected[7] ^= std::byte { 0x5a };
             file.seek(7);
             file.write(std::span(expected).subspan(7, 1));
             require(file.size() == expected.size(), "Backpatch truncated output length");
@@ -79,11 +80,11 @@ void file_backends(const std::filesystem::path& directory, bool require_native) 
 void compressed_windows() {
     io::Bytes expected(4 * 1024 * 1024 + 131);
     for (size_t i = 0; i < expected.size(); ++i) {
-        expected[i] = static_cast<uint8_t>((i / 31) % 251);
+        expected[i] = static_cast<std::byte>((i / 31) % 251);
     }
     for (bool gzip : { false, true }) {
         const auto encoded = gzip ? codec::gzip(expected, 1) : codec::zstd_compress(expected, 1);
-        const auto check = [&](std::span<const uint8_t> bytes, bool bounded) {
+        const auto check = [&](std::span<const std::byte> bytes, bool bounded) {
             io::StreamReader source(bytes, 17);
             auto decoded = gzip ? io::gzip_reader(source) : io::zstd_reader(source, bounded ? encoded.size() : std::numeric_limits<size_t>::max());
             for (size_t offset = 0; offset < expected.size();) {
@@ -101,13 +102,13 @@ void compressed_windows() {
         rejects([&] { check(std::span(encoded).first(encoded.size() - 1), false); });
         if (!gzip) {
             auto followed = encoded;
-            followed.push_back(0x42);
+            followed.push_back(std::byte { 0x42 });
             check(followed, true);
         }
     }
     // A highly compressible final frame can exhaust its compressed input while
     // still holding output internally. The reader must drain before testing EOF.
-    const auto compressed = codec::zstd_compress(io::Bytes(5 * 1024 * 1024, 0), 1);
+    const auto compressed = codec::zstd_compress(io::Bytes(5 * 1024 * 1024), 1);
     io::StreamReader source(compressed, 7);
     auto decoded = io::zstd_reader(source);
     decoded.skip(5 * 1024 * 1024);
@@ -118,18 +119,18 @@ void compressed_writes() {
     uint32_t random = 37;
     for (size_t i = 0; i < expected.size(); ++i) {
         random = random * 1664525 + 1013904223;
-        expected[i] = i % 8 < 3 ? uint8_t(random >> 24) : uint8_t(i / 1024);
+        expected[i] = i % 8 < 3 ? std::byte(random >> 24) : std::byte(i / 1024);
     }
     for (size_t size : { size_t(0), size_t(131075), size_t(2 * 1024 * 1024 - 1), expected.size() }) {
-        for (int level : { 1, 6 }) {
+        for (int32_t level : { 1, 6 }) {
             for (bool gzip : { false, true }) {
                 const auto input = std::span(expected).first(size);
                 io::Bytes output;
-                const auto read = [&](size_t offset, std::span<uint8_t> target) {
+                const auto read = [&](size_t offset, std::span<std::byte> target) {
                     require(offset <= size && target.size() <= size - offset, "Compression read outside input");
                     std::copy_n(input.begin() + offset, target.size(), target.begin());
                 };
-                const auto write = [&](std::span<const uint8_t> bytes) { output.insert(output.end(), bytes.begin(), bytes.end()); };
+                const auto write = [&](std::span<const std::byte> bytes) { output.insert(output.end(), bytes.begin(), bytes.end()); };
                 if (gzip) {
                     codec::gzip_stream(size, read, write, level);
                     require(output == codec::gzip(input, level), "Streamed gzip changed DEFLATE blocks or CRC");
@@ -143,7 +144,7 @@ void compressed_writes() {
     }
 }
 void spz_shapes(const std::filesystem::path& directory) {
-    for (unsigned degree = 0; degree <= 3; ++degree) {
+    for (uint32_t degree = 0; degree <= 3; ++degree) {
         splat::Splat source(97, degree);
         for (size_t i = 0; i < source.size(); ++i) {
             auto& p = source.gaussians[i];
@@ -152,7 +153,7 @@ void spz_shapes(const std::filesystem::path& directory) {
             p.rotation = Eigen::Quaternionf(0.2f, -0.8f, 0.4f, -0.1f).normalized();
             p.opacity = float(i) / 96;
             for (size_t c = 0; c < p.sh.size(); ++c) {
-                p.sh[c] = float(int((i + c) % 23) - 11) / 16;
+                p.sh[c] = float(int32_t((i + c) % 23) - 11) / 16;
             }
         }
         for (size_t count : { size_t(0), size_t(1), source.size() }) {
@@ -162,7 +163,7 @@ void spz_shapes(const std::filesystem::path& directory) {
             }
             const auto raw = io::SpzFile(3, -1).write(source, indices);
             const auto expected = io::SpzFile().read({ "expected.uspz", raw, degree });
-            for (int version : { 3, 4 }) {
+            for (int32_t version : { 3, 4 }) {
                 const io::SpzFile format(version, 6);
                 const auto path = directory / "shape.spz";
                 format.write(path, source, indices);
@@ -181,7 +182,7 @@ void format_streams(const std::filesystem::path& directory) {
         p.rotation = Eigen::Quaternionf::Identity();
         p.opacity = float(i % 255) / 255;
         for (size_t c = 0; c < p.sh.size(); ++c) {
-            p.sh[c] = float(int((i * 7 + c * 3) % 97) - 48) / 128;
+            p.sh[c] = float(int32_t((i * 7 + c * 3) % 97) - 48) / 128;
         }
     }
     std::vector<uint32_t> indices(source.size());
@@ -191,7 +192,7 @@ void format_streams(const std::filesystem::path& directory) {
         const auto path = directory / name;
         format.write(path, source, indices);
         require(io::read_bytes(path) == bytes, "File and memory writers differ");
-        for (unsigned retained : { 0u, 3u }) {
+        for (uint32_t retained : { 0u, 3u }) {
             const auto memory = format.read({ path, bytes, retained });
             const auto file = io::read_splat(path, retained);
             same(memory, file);

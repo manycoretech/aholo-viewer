@@ -2,6 +2,7 @@
 #include "backend.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <deque>
 #include <limits>
 #include <stdexcept>
@@ -20,7 +21,7 @@ Grid::Grid(Eigen::Vector3i dimensions) : size(dimensions) {
     }
 }
 uint32_t Grid::block_index(Eigen::Vector3i p) const { return p[0] + p[1] * blocks[0] + uint64_t(p[2]) * blocks[0] * blocks[1]; }
-Eigen::Vector3i Grid::block_point(uint32_t index) const { return { int(index % blocks[0]), int((index / blocks[0]) % blocks[1]), int(index / (uint64_t(blocks[0]) * blocks[1])) }; }
+Eigen::Vector3i Grid::block_point(uint32_t index) const { return { int32_t(index % blocks[0]), int32_t((index / blocks[0]) % blocks[1]), int32_t(index / (uint64_t(blocks[0]) * blocks[1])) }; }
 uint64_t Grid::block_count() const { return uint64_t(blocks[0]) * blocks[1] * blocks[2]; }
 bool Grid::contains(Eigen::Vector3i p) const { return p[0] >= 0 && p[1] >= 0 && p[2] >= 0 && p[0] < size[0] && p[1] < size[1] && p[2] < size[2]; }
 uint64_t Grid::mask(uint32_t index) const {
@@ -157,10 +158,10 @@ Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool 
         }
     }
     if (boundary) {
-        for (int axis = 0; axis < 3; ++axis) {
-            const int u = (axis + 1) % 3, v = (axis + 2) % 3;
-            for (int j = 0; j < allowed.blocks[v]; ++j) {
-                for (int i = 0; i < allowed.blocks[u]; ++i) {
+        for (int32_t axis = 0; axis < 3; ++axis) {
+            const int32_t u = (axis + 1) % 3, v = (axis + 2) % 3;
+            for (int32_t j = 0; j < allowed.blocks[v]; ++j) {
+                for (int32_t i = 0; i < allowed.blocks[u]; ++i) {
                     Eigen::Vector3i p = Eigen::Vector3i::Zero();
                     p[u] = i;
                     p[v] = j;
@@ -181,7 +182,7 @@ Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool 
         uint64_t reached = old | (incoming & permitted);
         while (true) {
             uint64_t expanded = reached;
-            for (int axis = 0; axis < 3; ++axis) {
+            for (int32_t axis = 0; axis < 3; ++axis) {
                 expanded |= (reached & ~face_mask(axis, 3)) << BIT_STRIDES[axis];
                 expanded |= (reached & ~face_mask(axis, 0)) >> BIT_STRIDES[axis];
             }
@@ -194,7 +195,7 @@ Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool 
         visited.set_mask(index, reached);
         const auto p = allowed.block_point(index);
         const uint64_t added = reached & ~old;
-        for (int axis = 0; axis < 3; ++axis) {
+        for (int32_t axis = 0; axis < 3; ++axis) {
             auto neighbor = p;
             neighbor[axis]--;
             enqueue(neighbor, (added & face_mask(axis, 0)) << (3 * BIT_STRIDES[axis]));
@@ -204,14 +205,14 @@ Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool 
     }
     return visited;
 }
-std::optional<Eigen::Vector3i> nearest_cell(const Grid& allowed, Eigen::Vector3i seed, int radius) {
+std::optional<Eigen::Vector3i> nearest_cell(const Grid& allowed, Eigen::Vector3i seed, int32_t radius) {
     if (allowed.get(seed)) {
         return seed;
     }
-    for (int r = 1; r <= radius; ++r) {
-        for (int z = -r; z <= r; ++z) {
-            for (int y = -r; y <= r; ++y) {
-                for (int x = -r; x <= r; ++x) {
+    for (int32_t r = 1; r <= radius; ++r) {
+        for (int32_t z = -r; z <= r; ++z) {
+            for (int32_t y = -r; y <= r; ++y) {
+                for (int32_t x = -r; x <= r; ++x) {
                     if (std::abs(x) != r && std::abs(y) != r && std::abs(z) != r) {
                         continue;
                     }
@@ -237,8 +238,8 @@ Grid filter_blocks(const Grid& grid) {
         }
         const auto block = grid.block_point(index);
         uint64_t any_neighbor = 0, all_neighbors = FULL_BLOCK;
-        for (int axis = 0; axis < 3; ++axis) {
-            const int stride = BIT_STRIDES[axis];
+        for (int32_t axis = 0; axis < 3; ++axis) {
+            const int32_t stride = BIT_STRIDES[axis];
             // Shift all 64 cells at once, masking intra-block wraparound and
             // adding only the facing cells from the two neighboring blocks.
             uint64_t plus = (bits >> stride) & ~HIGH_FACE[axis];
@@ -264,13 +265,13 @@ Grid filter_blocks(const Grid& grid) {
     utility::logger().info("voxel filter: ", removed, " voxels removed, ", filled, " voxels filled");
     return output;
 }
-void crop_grid(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, bool navigable, int margin) {
+void crop_grid(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, bool navigable, int32_t margin) {
     auto extent = grid.extent(navigable);
     if (!extent) {
         return;
     }
     auto [minimum, maximum] = *extent;
-    for (int axis = 0; axis < 3; ++axis) {
+    for (int32_t axis = 0; axis < 3; ++axis) {
         minimum[axis] = std::max(0, minimum[axis] - margin);
         maximum[axis] = std::min(grid.blocks[axis], maximum[axis] + 1 + margin);
         bounds.max()[axis] = bounds.min()[axis] + maximum[axis] * 4 * resolution;
@@ -282,14 +283,14 @@ void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const N
     auto& logger = utility::logger();
     auto seed_cell = [&] {
         Eigen::Vector3i p = Eigen::Vector3i::Zero();
-        for (int a = 0; a < 3; ++a) {
-            p[a] = int(std::floor(((*options.seed)[a] - bounds.min()[a]) / resolution));
+        for (int32_t a = 0; a < 3; ++a) {
+            p[a] = int32_t(std::floor(((*options.seed)[a] - bounds.min()[a]) / resolution));
         }
         return p;
     };
     if (options.exterior_radius != 0 && options.seed) {
         auto elapsed = logger.time("Fill exterior");
-        const int radius = int(std::ceil(options.exterior_radius / resolution));
+        const int32_t radius = int32_t(std::ceil(options.exterior_radius / resolution));
         const auto seed = seed_cell();
         const auto blocked = backend.dilate(grid, { radius, radius, radius });
         auto outside = flood(blocked.inverted(), {}, true);
@@ -302,12 +303,12 @@ void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const N
     }
     if (options.floor_fill) {
         auto elapsed = logger.time("Fill floor");
-        const int radius = int(std::ceil(options.floor_dilation / resolution));
+        const int32_t radius = int32_t(std::ceil(options.floor_dilation / resolution));
         auto blocked = backend.dilate(grid, { radius, 0, radius });
         Grid found(grid.size);
-        for (int z = 0; z < grid.size[2]; ++z) {
-            for (int x = 0; x < grid.size[0]; ++x) {
-                for (int y = 0; y < grid.size[1] && !blocked.get({ x, y, z }); ++y) {
+        for (int32_t z = 0; z < grid.size[2]; ++z) {
+            for (int32_t x = 0; x < grid.size[0]; ++x) {
+                for (int32_t y = 0; y < grid.size[1] && !blocked.get({ x, y, z }); ++y) {
                     found.set({ x, y, z });
                 }
             }
@@ -316,7 +317,7 @@ void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const N
     }
     if (options.capsule_height > 0 && options.seed) {
         auto elapsed = logger.time("Carve nav");
-        const int rx = int(std::ceil(options.capsule_radius / resolution)), ry = int(std::ceil(options.capsule_height * 0.5f / resolution));
+        const int32_t rx = int32_t(std::ceil(options.capsule_radius / resolution)), ry = int32_t(std::ceil(options.capsule_height * 0.5f / resolution));
         if (options.capsule_radius < 0) {
             throw std::runtime_error("navCapsule.radius must be nonnegative");
         }

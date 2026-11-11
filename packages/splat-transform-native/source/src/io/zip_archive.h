@@ -8,7 +8,7 @@ namespace splat_transform::io {
 // The input span remains alive for the duration of this archive reader.
 class ZipArchive {
 public:
-    explicit ZipArchive(std::span<const uint8_t> bytes) {
+    explicit ZipArchive(std::span<const std::byte> bytes) {
         zip_error_t error;
         zip_error_init(&error);
         auto guard = std::unique_ptr<zip_error_t, decltype(&zip_error_fini)>(&error, zip_error_fini);

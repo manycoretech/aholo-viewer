@@ -5,6 +5,7 @@
 #include "dilate.h"
 #include "expand.h"
 #include "voxel/compute.h"
+#include "voxel/gpu_workspace.h"
 #include "voxelize.h"
 #include <algorithm>
 #include <cstring>
@@ -43,7 +44,7 @@ struct Module {
     std::unordered_map<uint32_t, Words> types;
     std::unordered_map<uint32_t, uint32_t> constants;
 
-    explicit Module(std::span<const uint8_t> bytes) : words(bytes.size() / 4) {
+    explicit Module(std::span<const std::byte> bytes) : words(bytes.size() / 4) {
         require(bytes.size() % 4 == 0 && words.size() >= 5, "Invalid SPIR-V size");
         std::memcpy(words.data(), bytes.data(), bytes.size());
         require(words[0] == 0x07230203 && words[1] == 0x00010500, "Expected Vulkan 1.2 / SPIR-V 1.5");
@@ -109,7 +110,37 @@ struct Module {
     }
 };
 
-void check(std::span<const uint8_t> bytes, Words strides, uint32_t push_size, uint32_t local_size, uint32_t shared_size) {
+void pipeline_keys() {
+    using namespace splat_transform;
+    using enum gpu::BufferAccess;
+    const gpu::ComputeShader shader { "cache", shaders::expand, { Read, ReadWrite }, 20, { { 0, 1 }, { 1, 2 } } };
+    const auto hash = voxel::pipeline_hash(shader);
+    auto same = shader;
+    same.name = "another diagnostic name";
+    require(voxel::pipeline_hash(same) == hash, "Diagnostic shader name changed pipeline identity");
+    std::ranges::reverse(same.constants);
+    require(voxel::pipeline_hash(same) == hash, "Specialization order changed pipeline identity");
+
+    const auto different = [&](auto&& modify, const char* message) {
+        auto other = shader;
+        modify(other);
+        require(voxel::pipeline_hash(other) != hash, message);
+    };
+    static const std::vector<std::byte> copied_code(shader.code.bytes.begin(), shader.code.bytes.end());
+    different([&](auto& other) { other.code.bytes = copied_code; }, "Different shader assets share pipeline identity");
+    different([](auto& other) { other.code.bytes = other.code.bytes.first(other.code.bytes.size() - 4); }, "Shader byte range was omitted from pipeline identity");
+    different([](auto& other) { std::ranges::reverse(other.bindings); }, "Binding order was omitted from pipeline identity");
+    different([](auto& other) { other.bindings.pop_back(); }, "Binding count was omitted from pipeline identity");
+    different([](auto& other) { other.push_constant_bytes += 4; }, "Push constant size was omitted from pipeline identity");
+    different([](auto& other) { other.constants[0].value += 1; }, "Specialization value was omitted from pipeline identity");
+    different([](auto& other) { other.constants[0].id = 2; }, "Specialization ID was omitted from pipeline identity");
+    different([](auto& other) { std::swap(other.constants[0].value, other.constants[1].value); }, "Specialization ID/value association was omitted from pipeline identity");
+    different([](auto& other) { other.constants.pop_back(); }, "Specialization count was omitted from pipeline identity");
+    different([](auto& other) { other.entry_point = "compute"; }, "Shader entry point was omitted from pipeline identity");
+    different([](auto& other) { other.constants.clear(); }, "Default and explicit specialization share pipeline identity");
+}
+
+void check(std::span<const std::byte> bytes, Words strides, uint32_t push_size, uint32_t local_size, uint32_t shared_size) {
     const Module module(bytes);
     std::vector<bool> bindings(strides.size());
     uint32_t shared = 0, pushes = 0, entries = 0, local_sizes = 0;
@@ -166,17 +197,18 @@ int main() {
     static_assert(sizeof(splat_transform::voxel::Gaussian) == 64);
     static_assert(sizeof(splat_transform::voxel::VoxelBatch) == 32);
     try {
+        pipeline_keys();
         for (const auto& shader : cluster_variants) {
             check(shader.code.bytes, std::array { 16u, 16u, 4u, 4u }, 8, 128, shader.tile * (shader.columns * 16 + 4));
         }
         check(candidate_count.bytes, std::array { 64u, 4u }, 48, 128, 0);
         check(candidate_scatter.bytes, std::array { 64u, 4u, 4u, 4u }, 48, 128, 0);
         check(voxelize.bytes, std::array { 64u, 4u, 32u, 4u }, 20, 64, 64 * 64 + 8);
-        for (const auto shader : { std::span<const uint8_t>(expand.bytes), std::span<const uint8_t>(compact.bytes) }) {
+        for (const auto shader : { std::span<const std::byte>(expand.bytes), std::span<const std::byte>(compact.bytes) }) {
             check(shader, std::array { 4u, 4u }, 20, 128, 0);
         }
         check(dilate.bytes, std::array { 4u, 4u }, 28, 128, 0);
-        std::cout << "All 30 embedded shaders preserve the Vulkan 1.2 storage, push constant, and workgroup ABI\n";
+        std::cout << "Pipeline cache identities and all 30 embedded shader ABI contracts passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

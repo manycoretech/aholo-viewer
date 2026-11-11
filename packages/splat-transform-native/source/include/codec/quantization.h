@@ -2,20 +2,22 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <numbers>
 #include <splat/splat.h>
 
 namespace splat_transform::codec {
 inline float signed_log(float value) { return std::copysign(std::log1p(std::abs(value)), value); }
 inline float signed_exp(float value) { return std::copysign(std::expm1(std::abs(value)), value); }
-inline uint8_t quantize_byte(float value) { return static_cast<uint8_t>(std::clamp(std::floor(value + 0.5f), 0.0f, 255.0f)); }
+inline std::byte quantize_byte(float value) { return static_cast<std::byte>(std::clamp(std::floor(value + 0.5f), 0.0f, 255.0f)); }
 inline std::array<uint32_t, 2> texture_size(size_t count) {
     auto width = std::max(4u, static_cast<uint32_t>(std::ceil(std::sqrt(float(count)) / 4) * 4));
     const auto rows = (count + width - 1) / width;
     auto height = std::max(4u, static_cast<uint32_t>((rows + 3) / 4 * 4));
     return { width, height };
 }
-inline std::array<uint8_t, 4> encode_quaternion(const splat::Splat& data, size_t i, bool round) {
+inline std::array<std::byte, 4> encode_quaternion(const splat::Splat& data, size_t i, bool round) {
     const auto rotation = data.gaussians[i].rotation.normalized();
     const std::array<float, 4> q { rotation.w(), rotation.x(), rotation.y(), rotation.z() };
     size_t largest = 0;
@@ -25,32 +27,33 @@ inline std::array<uint8_t, 4> encode_quaternion(const splat::Splat& data, size_t
         }
     }
     const float sign = q[largest] < 0 ? -1 : 1;
-    std::array<uint8_t, 4> output {};
+    std::array<std::byte, 4> output {};
     for (size_t c = 0, target = 0; c < 4; ++c) {
         if (c == largest) {
             continue;
         }
         float value = q[c] * sign * std::sqrt(2.0f);
         value = (value * 0.5f + 0.5f) * 255;
-        output[target++] = round ? quantize_byte(value) : static_cast<uint8_t>(std::clamp(value, 0.0f, 255.0f));
+        output[target++] = round ? quantize_byte(value) : static_cast<std::byte>(std::clamp(value, 0.0f, 255.0f));
     }
-    output[3] = static_cast<uint8_t>(252 + largest);
+    output[3] = static_cast<std::byte>(252 + largest);
     return output;
 }
-inline void decode_quaternion(std::span<const uint8_t> bytes, splat::Splat& data, size_t i) {
-    constexpr unsigned PERM[4][4] { { 0, 1, 2, 3 }, { 3, 1, 2, 0 }, { 1, 3, 2, 0 }, { 1, 2, 3, 0 } };
+inline void decode_quaternion(std::span<const std::byte> bytes, splat::Splat& data, size_t i) {
+    constexpr uint32_t PERM[4][4] { { 0, 1, 2, 3 }, { 3, 1, 2, 0 }, { 1, 3, 2, 0 }, { 1, 2, 3, 0 } };
     std::array<float, 4> q;
     float sum = 0;
     for (size_t c = 0; c < 3; ++c) {
-        q[c] = (bytes[c] / 255.0f - 0.5f) * std::sqrt(2.0f);
+        q[c] = (std::to_integer<uint8_t>(bytes[c]) / 255.0f - 0.5f) * std::sqrt(2.0f);
         sum += q[c] * q[c];
     }
     q[3] = std::sqrt(std::max(0.0f, 1 - sum));
-    if (bytes[3] < 252) {
+    const auto tag = std::to_integer<uint8_t>(bytes[3]);
+    if (tag < 252) {
         throw std::runtime_error("Invalid packed quaternion");
     }
     for (size_t c = 0; c < 4; ++c) {
-        data.gaussians[i].attribute(splat::QuatX + c) = q[PERM[bytes[3] - 252][c]];
+        data.gaussians[i].attribute(splat::QuatX + c) = q[PERM[tag - 252][c]];
     }
     data.normalize_rotation(i);
 }

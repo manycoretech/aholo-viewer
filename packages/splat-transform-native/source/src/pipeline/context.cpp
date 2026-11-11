@@ -126,7 +126,7 @@ void TaskContext::update_lod_metadata() {
             meta["voxels"] = std::move(voxels);
         }
         const auto text = meta.dump();
-        io::write_bytes(path, { reinterpret_cast<const uint8_t*>(text.data()), text.size() });
+        io::write_bytes(path, std::as_bytes(std::span(text)));
     }
 }
 } // namespace splat_transform::pipeline

@@ -4,6 +4,7 @@
 #include <barrier>
 #include <bit>
 #include <codec/codec.h>
+#include <cstdint>
 #include <iostream>
 #include <latch>
 #include <pipeline/runner.h>
@@ -18,12 +19,12 @@ template<typename T, typename F, typename... Args>
 concept AcceptsGroupTask = requires(threading::TaskGroup<T>& group, F&& function, Args&&... args) {
     group.submit(std::forward<F>(function), std::forward<Args>(args)...);
 };
-static_assert(AcceptsGroupTask<int, decltype([](int value) { return value; }), int>);
+static_assert(AcceptsGroupTask<int32_t, decltype([](int32_t value) { return value; }), int32_t>);
 static_assert(AcceptsGroupTask<void, decltype([] {})>);
-static_assert(!AcceptsGroupTask<int, int>);
+static_assert(!AcceptsGroupTask<int32_t, int32_t>);
 static_assert(!AcceptsGroupTask<void, decltype([] { return 1; })>);
-static_assert(!AcceptsGroupTask<int, decltype([] {})>);
-static_assert(!AcceptsGroupTask<int, decltype([](int value) { return value; }), std::string>);
+static_assert(!AcceptsGroupTask<int32_t, decltype([] {})>);
+static_assert(!AcceptsGroupTask<int32_t, decltype([](int32_t value) { return value; }), std::string>);
 } // namespace
 
 int main(int argc, char** argv) {
@@ -88,13 +89,13 @@ int main(int argc, char** argv) {
         if (pool.thread_count() != expected_workers || threading::default_thread_count() != expected_workers) {
             throw std::runtime_error("Pipeline cpuWorkers did not configure the shared pool");
         }
-        auto owned_task = pool.submit_task([value = std::make_unique<int>(41)]() mutable { return ++*value; });
+        auto owned_task = pool.submit_task([value = std::make_unique<int32_t>(41)]() mutable { return ++*value; });
         if (pool.get(owned_task) != 42) {
             throw std::runtime_error("Move-only task ownership was lost");
         }
         {
-            threading::TaskGroup<int> tasks(pool);
-            tasks.submit([](std::unique_ptr<int> value) { return *value; }, std::make_unique<int>(42));
+            threading::TaskGroup<int32_t> tasks(pool);
+            tasks.submit([](std::unique_ptr<int32_t> value) { return *value; }, std::make_unique<int32_t>(42));
             if (tasks.get(0) != 42) {
                 throw std::runtime_error("TaskGroup rejected or lost a move-only argument");
             }
@@ -161,15 +162,15 @@ int main(int argc, char** argv) {
         {
             threading::ThreadPool nested_pool(2);
             std::barrier occupied(2);
-            threading::TaskGroup<int> parents(nested_pool, 2);
-            for (int parent = 0; parent < 2; ++parent) {
+            threading::TaskGroup<int32_t> parents(nested_pool, 2);
+            for (int32_t parent = 0; parent < 2; ++parent) {
                 parents.submit([&] {
                     occupied.arrive_and_wait();
-                    threading::TaskGroup<int> children(nested_pool, 8);
-                    for (int value = 0; value < 8; ++value) {
+                    threading::TaskGroup<int32_t> children(nested_pool, 8);
+                    for (int32_t value = 0; value < 8; ++value) {
                         children.submit([value] { return value; });
                     }
-                    int sum = 0;
+                    int32_t sum = 0;
                     for (size_t i = 0; i < children.size(); ++i) {
                         sum += children.get(i);
                     }
@@ -210,7 +211,7 @@ int main(int argc, char** argv) {
 
         // Occupy every default worker with a file-level compression call. gzip
         // submits child jobs to this same pool; zstd shares its native pool.
-        const io::Bytes payload(9 * 1024 * 1024 + 117, 42);
+        const io::Bytes payload(9 * 1024 * 1024 + 117, std::byte { 42 });
         std::barrier compression_started(pool.thread_count());
         threading::TaskGroup<void> files(pool, pool.thread_count());
         for (size_t i = 0; i < pool.thread_count(); ++i) {

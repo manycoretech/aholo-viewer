@@ -23,7 +23,7 @@ struct SpecializationConstant {
 // Generated shader assets are opaque to task code. The backend interprets
 // their compiled bytes; the current build produces SPIR-V for Vulkan.
 struct ShaderCode {
-    std::span<const uint8_t> bytes;
+    std::span<const std::byte> bytes;
 };
 enum class BufferAccess { Read,
     ReadWrite };

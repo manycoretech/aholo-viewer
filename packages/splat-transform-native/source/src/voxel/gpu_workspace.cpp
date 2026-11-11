@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <numeric>
 #include <utility>
+#include <xxhash.h>
 
 namespace splat_transform::voxel {
 namespace {
@@ -11,18 +12,32 @@ void require(bool condition, const char* message) {
     }
 }
 } // namespace
+uint64_t pipeline_hash(const gpu::ComputeShader& shader) noexcept {
+    uint64_t constants = 0;
+    for (const auto& constant : shader.constants) {
+        const std::array<uint32_t, 2> value { constant.id, constant.value };
+        // Specialization IDs are unique; addition makes their order irrelevant.
+        constants += XXH3_64bits(value.data(), value.size() * sizeof(uint32_t));
+    }
+    const auto code = shader.code.bytes;
+    const std::array<uint64_t, 6> fields {
+        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(code.data())), uint64_t(code.size()),
+        shader.push_constant_bytes, uint64_t(shader.bindings.size()), uint64_t(shader.constants.size()), constants
+    };
+    uint64_t hash = XXH3_64bits(fields.data(), fields.size() * sizeof(uint64_t));
+    for (const auto access : shader.bindings) {
+        const auto value = static_cast<uint32_t>(access);
+        hash = XXH3_64bits_withSeed(&value, sizeof(value), hash);
+    }
+    return XXH3_64bits_withSeed(shader.entry_point.data(), shader.entry_point.size(), hash);
+}
 GpuWorkspace::GpuWorkspace(gpu::ComputeDevice device) : device_(device) {}
 const gpu::ComputePipeline& GpuWorkspace::pipeline(const gpu::ComputeShader& shader) {
-    const auto code = shader.code.bytes;
-    PipelineKey key { { code.begin(), code.end() }, shader.bindings, shader.push_constant_bytes, {}, shader.entry_point };
-    for (const auto& constant : shader.constants) {
-        key.constants.emplace_back(constant.id, constant.value);
-    }
-    std::ranges::sort(key.constants);
+    const auto key = pipeline_hash(shader);
     auto found = pipelines_.find(key);
     if (found == pipelines_.end()) {
         auto resource = device_.create_pipeline(shader);
-        found = pipelines_.emplace(std::move(key), std::move(resource)).first;
+        found = pipelines_.emplace(key, std::move(resource)).first;
     }
     return found->second;
 }

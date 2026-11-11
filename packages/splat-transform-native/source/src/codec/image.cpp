@@ -1,11 +1,12 @@
 #include <avif/avif_cxx.h>
 #include <codec/codec.h>
+#include <cstdint>
 #include <memory>
 #include <webp/decode.h>
 #include <webp/encode.h>
 
 namespace splat_transform::codec {
-Bytes encode_webp(std::span<const uint8_t> rgba, uint32_t width, uint32_t height, bool lossless, float quality) {
+Bytes encode_webp(std::span<const std::byte> rgba, uint32_t width, uint32_t height, bool lossless, float quality) {
     if (rgba.size() != size_t(width) * height * 4 || !width || !height) {
         throw std::runtime_error("Invalid WebP image dimensions");
     }
@@ -21,24 +22,26 @@ Bytes encode_webp(std::span<const uint8_t> rgba, uint32_t width, uint32_t height
     config.lossless = lossless;
     config.exact = 1;
     picture.use_argb = lossless;
-    picture.width = static_cast<int>(width);
-    picture.height = static_cast<int>(height);
+    picture.width = static_cast<int32_t>(width);
+    picture.height = static_cast<int32_t>(height);
     picture.writer = WebPMemoryWrite;
     picture.custom_ptr = &writer;
-    if (!WebPPictureImportRGBA(&picture, rgba.data(), static_cast<int>(4 * width)) || !WebPEncode(&config, &picture)) {
+    if (!WebPPictureImportRGBA(&picture, reinterpret_cast<const uint8_t*>(rgba.data()), static_cast<int32_t>(4 * width)) || !WebPEncode(&config, &picture)) {
         throw std::runtime_error("WebP encode failed");
     }
-    return Bytes(writer.mem, writer.mem + writer.size);
+    const auto bytes = std::as_bytes(std::span(writer.mem, writer.size));
+    return Bytes(bytes.begin(), bytes.end());
 }
-Image decode_webp(std::span<const uint8_t> bytes) {
-    int width = 0, height = 0;
-    auto pixels = std::unique_ptr<uint8_t, decltype(&WebPFree)>(WebPDecodeRGBA(bytes.data(), bytes.size(), &width, &height), WebPFree);
+Image decode_webp(std::span<const std::byte> bytes) {
+    int32_t width = 0, height = 0;
+    auto pixels = std::unique_ptr<uint8_t, decltype(&WebPFree)>(WebPDecodeRGBA(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size(), &width, &height), WebPFree);
     if (!pixels) {
         throw std::runtime_error("WebP decode failed");
     }
-    return { Bytes(pixels.get(), pixels.get() + size_t(width) * height * 4), static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
+    const auto rgba = std::as_bytes(std::span(pixels.get(), size_t(width) * height * 4));
+    return { Bytes(rgba.begin(), rgba.end()), static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
 }
-Bytes encode_avif(std::span<const uint8_t> rgba, uint32_t width, uint32_t height, int quality) {
+Bytes encode_avif(std::span<const std::byte> rgba, uint32_t width, uint32_t height, int32_t quality) {
     if (rgba.size() != size_t(width) * height * 4) {
         throw std::runtime_error("Invalid AVIF image dimensions");
     }
@@ -49,7 +52,7 @@ Bytes encode_avif(std::span<const uint8_t> rgba, uint32_t width, uint32_t height
     }
     avifRGBImage rgb {};
     avifRGBImageSetDefaults(&rgb, image.get());
-    rgb.pixels = const_cast<uint8_t*>(rgba.data());
+    rgb.pixels = reinterpret_cast<uint8_t*>(const_cast<std::byte*>(rgba.data()));
     rgb.rowBytes = width * 4;
     if (avifImageRGBToYUV(image.get(), &rgb) != AVIF_RESULT_OK) {
         throw std::runtime_error("AVIF RGB conversion failed");
@@ -63,23 +66,24 @@ Bytes encode_avif(std::span<const uint8_t> rgba, uint32_t width, uint32_t height
         avifEncoderFinish(encoder.get(), &output) != AVIF_RESULT_OK) {
         throw std::runtime_error("AVIF encode failed");
     }
-    return Bytes(output.data, output.data + output.size);
+    const auto bytes = std::as_bytes(std::span(output.data, output.size));
+    return Bytes(bytes.begin(), bytes.end());
 }
-Image decode_avif(std::span<const uint8_t> bytes) {
+Image decode_avif(std::span<const std::byte> bytes) {
     avif::DecoderPtr decoder(avifDecoderCreate());
     avif::ImagePtr image(avifImageCreateEmpty());
     if (!decoder || !image) {
         throw std::bad_alloc();
     }
     decoder->maxThreads = 1;
-    if (avifDecoderReadMemory(decoder.get(), image.get(), bytes.data(), bytes.size()) != AVIF_RESULT_OK) {
+    if (avifDecoderReadMemory(decoder.get(), image.get(), reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()) != AVIF_RESULT_OK) {
         throw std::runtime_error("AVIF decode failed");
     }
     Image output { Bytes(size_t(image->width) * image->height * 4), image->width, image->height };
     avifRGBImage rgb {};
     avifRGBImageSetDefaults(&rgb, image.get());
     rgb.format = AVIF_RGB_FORMAT_RGBA;
-    rgb.pixels = output.rgba.data();
+    rgb.pixels = reinterpret_cast<uint8_t*>(output.rgba.data());
     rgb.rowBytes = output.width * 4;
     if (avifImageYUVToRGB(image.get(), &rgb) != AVIF_RESULT_OK) {
         throw std::runtime_error("AVIF YUV conversion failed");

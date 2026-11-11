@@ -3,6 +3,7 @@
 #include <cmath>
 #include <codec/codec.h>
 #include <codec/quantization.h>
+#include <cstdint>
 #include <iostream>
 #include <limits>
 #include <spatial/clustering.h>
@@ -17,7 +18,7 @@ concept AcceptsQuantization = requires(const Eigen::Matrix<float, Eigen::Dynamic
     { spatial::quantize_1d(fields, std::forward<Transform>(transform)) } -> std::same_as<spatial::Quantization>;
 };
 static_assert(AcceptsQuantization<std::identity>);
-static_assert(!AcceptsQuantization<int>);
+static_assert(!AcceptsQuantization<int32_t>);
 static_assert(!AcceptsQuantization<decltype([](const std::string&) { return 1.0; })>);
 static_assert(!AcceptsQuantization<decltype([](double) {})>);
 static_assert(!AcceptsQuantization<decltype([](double) { return std::string(); })>);
@@ -77,7 +78,7 @@ void device_registry() {
 void half_values() {
     for (uint32_t bits = 0; bits <= UINT16_MAX; ++bits) {
         const auto value = io::from_half(static_cast<uint16_t>(bits));
-        const int exponent = (bits >> 10) & 31;
+        const int32_t exponent = (bits >> 10) & 31;
         const auto fraction = bits & 1023;
         const bool negative = (bits & 0x8000) != 0;
         if (exponent == 31 && fraction) {
@@ -177,12 +178,37 @@ void codec_numeric() {
         }
     }
 }
+void image_codecs() {
+    constexpr uint32_t WIDTH = 4, HEIGHT = 4;
+    io::Bytes rgba(WIDTH * HEIGHT * 4);
+    for (size_t i = 0; i < WIDTH * HEIGHT; ++i) {
+        rgba[i * 4] = static_cast<std::byte>(i * 13);
+        rgba[i * 4 + 1] = static_cast<std::byte>(255 - i * 11);
+        rgba[i * 4 + 2] = static_cast<std::byte>((i % 4) * 63);
+        rgba[i * 4 + 3] = static_cast<std::byte>(32 + i * 11);
+    }
+    const auto webp = codec::decode_webp(codec::encode_webp(rgba, WIDTH, HEIGHT));
+    if (webp.width != WIDTH || webp.height != HEIGHT || webp.rgba != rgba) {
+        throw std::runtime_error("Lossless WebP changed RGBA byte storage");
+    }
+    const auto avif = codec::decode_avif(codec::encode_avif(rgba, WIDTH, HEIGHT, 100));
+    if (avif.width != WIDTH || avif.height != HEIGHT || avif.rgba.size() != rgba.size()) {
+        throw std::runtime_error("AVIF changed RGBA byte storage dimensions");
+    }
+    for (size_t i = 0; i < rgba.size(); ++i) {
+        const int32_t difference = std::abs(std::to_integer<int32_t>(avif.rgba[i]) - std::to_integer<int32_t>(rgba[i]));
+        // Alpha is lossless; RGB passes through an integer YUV conversion.
+        if (difference > (i % 4 == 3 ? 0 : 8)) {
+            throw std::runtime_error("AVIF changed RGBA channel order or values");
+        }
+    }
+}
 } // namespace
 
 int main() {
     try {
         using namespace splat_transform;
-        const io::Bytes input { 0, 1, 2, 255, 0, 3, 17, 42 };
+        const io::Bytes input { std::byte {}, std::byte { 1 }, std::byte { 2 }, std::byte { 255 }, std::byte {}, std::byte { 3 }, std::byte { 17 }, std::byte { 42 } };
         if (codec::gunzip(codec::gzip(input)) != input || codec::zstd_decompress(codec::zstd_compress(input)) != input) {
             throw std::runtime_error("Compression roundtrip failed");
         }
@@ -190,7 +216,7 @@ int main() {
         uint32_t random = 12345;
         for (size_t i = 0; i < large.size(); ++i) {
             random = random * 1664525 + 1013904223;
-            large[i] = i % 8 < 3 ? uint8_t(random >> 24) : uint8_t(i / 1024);
+            large[i] = i % 8 < 3 ? std::byte(random >> 24) : std::byte(i / 1024);
         }
         for (const bool gzip : { true, false }) {
             const auto encoded = gzip ? codec::gzip(large, 6) : codec::zstd_compress(large, 7);
@@ -211,6 +237,7 @@ int main() {
         device_registry();
         quantization();
         codec_numeric();
+        image_codecs();
         bool truncated = false;
         try {
             io::ByteReader reader(input);

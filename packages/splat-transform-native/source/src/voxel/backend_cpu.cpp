@@ -2,13 +2,14 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <utility/thread_pool.h>
 
 namespace splat_transform::voxel {
 namespace {
-constexpr int BATCH_VOXELS = 16;
-constexpr int BATCH_BLOCKS = BATCH_VOXELS / 4;
+constexpr int32_t BATCH_VOXELS = 16;
+constexpr int32_t BATCH_BLOCKS = BATCH_VOXELS / 4;
 
 // Keep only one job per available worker in the shared queue. Dynamic chunks
 // balance sparse/dense regions; TaskGroup joins borrowed state on exceptions and
@@ -50,15 +51,15 @@ bool voxel_range(const Gaussian& gaussian, const Grid& grid, const Eigen::Aligne
     if (!(g[3] > ALPHA_THRESHOLD) || !std::all_of(g.begin(), g.begin() + 14, [](float value) { return std::isfinite(value); })) {
         return false;
     }
-    for (int a = 0; a < 3; ++a) {
+    for (int32_t a = 0; a < 3; ++a) {
         const float low = std::floor((g[a] - g[11 + a] - bounds.min()[a]) / resolution);
         const float high = std::ceil((g[a] + g[11 + a] - bounds.min()[a]) / resolution);
         if (g[11 + a] < 0 || low > grid.size[a] - 1 || high < 0) {
             return false;
         }
         // Clamp in floating point before converting extreme coordinates.
-        minimum[a] = int(std::max(0.0f, low));
-        maximum[a] = int(std::min(float(grid.size[a] - 1), high));
+        minimum[a] = int32_t(std::max(0.0f, low));
+        maximum[a] = int32_t(std::min(float(grid.size[a] - 1), high));
         if (minimum[a] > maximum[a]) {
             return false;
         }
@@ -76,7 +77,7 @@ public:
             throw std::runtime_error("CPU voxel Gaussian indices exceed 32 bits");
         }
         Eigen::Vector3i dimensions;
-        for (int a = 0; a < 3; ++a) {
+        for (int32_t a = 0; a < 3; ++a) {
             dimensions[a] = (grid.blocks[a] + BATCH_BLOCKS - 1) / BATCH_BLOCKS;
         }
         const size_t batch_count = size_t(dimensions[0]) * dimensions[1] * dimensions[2];
@@ -86,9 +87,9 @@ public:
             if (!voxel_range(data.gaussians[index], grid, bounds, resolution, minimum, maximum)) {
                 return;
             }
-            for (int z = minimum[2] / BATCH_VOXELS; z <= maximum[2] / BATCH_VOXELS; ++z) {
-                for (int y = minimum[1] / BATCH_VOXELS; y <= maximum[1] / BATCH_VOXELS; ++y) {
-                    for (int x = minimum[0] / BATCH_VOXELS; x <= maximum[0] / BATCH_VOXELS; ++x) {
+            for (int32_t z = minimum[2] / BATCH_VOXELS; z <= maximum[2] / BATCH_VOXELS; ++z) {
+                for (int32_t y = minimum[1] / BATCH_VOXELS; y <= maximum[1] / BATCH_VOXELS; ++y) {
+                    for (int32_t x = minimum[0] / BATCH_VOXELS; x <= maximum[0] / BATCH_VOXELS; ++x) {
                         visit(x + size_t(y) * dimensions[0] + size_t(z) * dimensions[0] * dimensions[1]);
                     }
                 }
@@ -129,9 +130,9 @@ public:
         parallel_chunks(active.size(), 1, [&](size_t begin, size_t end) {
             for (size_t batch = begin; batch < end; ++batch) {
                 const auto key = active[batch];
-                const Eigen::Vector3i origin { int(key % dimensions[0]) * BATCH_VOXELS,
-                    int(key / dimensions[0] % dimensions[1]) * BATCH_VOXELS,
-                    int(key / (size_t(dimensions[0]) * dimensions[1])) * BATCH_VOXELS };
+                const Eigen::Vector3i origin { int32_t(key % dimensions[0]) * BATCH_VOXELS,
+                    int32_t(key / dimensions[0] % dimensions[1]) * BATCH_VOXELS,
+                    int32_t(key / (size_t(dimensions[0]) * dimensions[1])) * BATCH_VOXELS };
                 std::array<float, BATCH_VOXELS * BATCH_VOXELS * BATCH_VOXELS> density {};
                 auto& result = masks[batch];
                 // Atomic scatter order varies; accumulation must not.
@@ -143,18 +144,18 @@ public:
                     if (!voxel_range(gaussian, grid, bounds, resolution, minimum, maximum)) {
                         continue;
                     }
-                    for (int a = 0; a < 3; ++a) {
+                    for (int32_t a = 0; a < 3; ++a) {
                         minimum[a] = std::max(minimum[a], origin[a]);
                         maximum[a] = std::min(maximum[a], origin[a] + BATCH_VOXELS - 1);
                     }
                     const float max_distance = -2 * std::log(ALPHA_THRESHOLD / g[3]);
                     const Eigen::Quaternionf inverse_rotation(g[4], -g[5], -g[6], -g[7]);
                     const Eigen::Vector3f inverse_scale = Eigen::Map<const Eigen::Vector3f>(g.data() + 8).cwiseMax(1e-8f).cwiseInverse();
-                    for (int z = minimum[2]; z <= maximum[2]; ++z) {
-                        for (int y = minimum[1]; y <= maximum[1]; ++y) {
-                            for (int x = minimum[0]; x <= maximum[0]; ++x) {
+                    for (int32_t z = minimum[2]; z <= maximum[2]; ++z) {
+                        for (int32_t y = minimum[1]; y <= maximum[1]; ++y) {
+                            for (int32_t x = minimum[0]; x <= maximum[0]; ++x) {
                                 const Eigen::Vector3i local { x - origin[0], y - origin[1], z - origin[2] };
-                                const int block = local[0] / 4 + local[1] / 4 * 4 + local[2] / 4 * 16;
+                                const int32_t block = local[0] / 4 + local[1] / 4 * 4 + local[2] / 4 * 16;
                                 const uint64_t bit = uint64_t { 1 } << ((x & 3) + (y & 3) * 4 + (z & 3) * 16);
                                 if (result[block] & bit) {
                                     continue;
@@ -181,10 +182,10 @@ public:
         // complete. Workers never mutate the shared unordered_map.
         for (size_t batch = 0; batch < active.size(); ++batch) {
             const auto key = active[batch];
-            const Eigen::Vector3i origin { int(key % dimensions[0]) * BATCH_BLOCKS,
-                int(key / dimensions[0] % dimensions[1]) * BATCH_BLOCKS,
-                int(key / (size_t(dimensions[0]) * dimensions[1])) * BATCH_BLOCKS };
-            for (int block = 0; block < 64; ++block) {
+            const Eigen::Vector3i origin { int32_t(key % dimensions[0]) * BATCH_BLOCKS,
+                int32_t(key / dimensions[0] % dimensions[1]) * BATCH_BLOCKS,
+                int32_t(key / (size_t(dimensions[0]) * dimensions[1])) * BATCH_BLOCKS };
+            for (int32_t block = 0; block < 64; ++block) {
                 if (masks[batch][block]) {
                     grid.set_mask(grid.block_index({ origin[0] + block % 4, origin[1] + block / 4 % 4, origin[2] + block / 16 }), masks[batch][block]);
                 }
@@ -194,8 +195,8 @@ public:
     }
     Grid dilate(const Grid& grid, Eigen::Vector3i radius) const override {
         Grid output = grid;
-        for (int axis = 0; axis < 3; ++axis) {
-            for (int distance = 0; distance < radius[axis]; ++distance) {
+        for (int32_t axis = 0; axis < 3; ++axis) {
+            for (int32_t distance = 0; distance < radius[axis]; ++distance) {
                 Grid next = output;
                 for (auto index : output.active_blocks()) {
                     auto p = output.block_point(index);

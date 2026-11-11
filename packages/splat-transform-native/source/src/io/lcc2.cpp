@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstdint>
 #include <io/lcc2.h>
 #include <io/resource.h>
 #include <numeric>
@@ -13,7 +14,7 @@ splat::Splat Lcc2File::read(const FileInput& source) const {
     if (version != "0.0.1" && version != "0.0.2" && version != "0.0.3") {
         throw std::runtime_error("Unsupported LCC2 version");
     }
-    const int levels = meta.value("totalLevels", meta.value("lod_level", 0));
+    const int32_t levels = meta.value("totalLevels", meta.value("lod_level", 0));
     if (levels < 1) {
         throw std::runtime_error("Invalid LCC2 level count");
     }
@@ -41,7 +42,7 @@ splat::Splat Lcc2File::read(const FileInput& source) const {
         }
     };
     const auto env = root.value("data", Json::object()).value("env", Json());
-    const auto visit = [&](auto&& self, const Json& node, int depth) -> void {
+    const auto visit = [&](auto&& self, const Json& node, int32_t depth) -> void {
         const auto ref = node.value("data", Json::object()).value("3dgs", Json());
         if (depth == levels && ref.is_object() && (!env.is_object() || ref.at("name") != env.at("name"))) {
             add(ref);

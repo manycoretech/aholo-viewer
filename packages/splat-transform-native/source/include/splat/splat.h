@@ -114,17 +114,17 @@ private:
 struct Splat {
     std::vector<Gaussian> gaussians;
     Eigen::AlignedBox3f bounding_box;
-    unsigned sh_degree = 0;
+    uint32_t sh_degree = 0;
     std::vector<size_t> block_offsets;
     std::vector<size_t> block_counts;
 
     Splat() = default;
-    Splat(size_t count, unsigned sh_degree);
+    Splat(size_t count, uint32_t sh_degree);
     size_t size() const noexcept { return gaussians.size(); }
     size_t sh_count() const { return SH_COUNTS.at(sh_degree); }
     size_t attribute_count() const { return ShOffset + sh_count(); }
     void normalize_rotation(size_t index) { gaussians.at(index).normalize_rotation(); }
-    void limit_sh_degree(unsigned maximum);
+    void limit_sh_degree(uint32_t maximum);
     Splat select(std::span<const uint32_t> indices) const&;
     Splat select(std::span<const uint32_t> indices) &&;
     void prepare_lod();

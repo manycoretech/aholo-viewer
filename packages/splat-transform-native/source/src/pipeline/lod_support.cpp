@@ -1,4 +1,5 @@
 #include "lod_support.h"
+#include <cstdint>
 #include <io/resource.h>
 #include <utility/logger.h>
 
@@ -13,7 +14,7 @@ splat::block::SplitNormal split_normal(const Json& config) {
     }
     const auto& value = config.at("splitNormal");
     if (value.is_number_integer()) {
-        int normal = value.get<int>();
+        int32_t normal = value.get<int32_t>();
         if (normal >= 0 && normal <= 3) {
             return static_cast<splat::block::SplitNormal>(normal);
         }

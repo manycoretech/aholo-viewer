@@ -1,5 +1,6 @@
 #include "file_stream.h"
 #include <algorithm>
+#include <cstdint>
 #include <io/file.h>
 #include <memory>
 #include <zip.h>
@@ -30,7 +31,7 @@ Bytes read_bytes(const std::filesystem::path& path) {
     }
     return bytes;
 }
-void write_bytes(const std::filesystem::path& path, std::span<const uint8_t> bytes) {
+void write_bytes(const std::filesystem::path& path, std::span<const std::byte> bytes) {
     FileStream stream(path, FileStream::Access::Write);
     stream.write(bytes);
     stream.close();
@@ -83,14 +84,14 @@ Bytes zip(const Archive& files) {
 }
 float from_half(uint16_t value) {
     const auto sign = uint32_t(value & 0x8000) << 16;
-    int exponent = (value >> 10) & 31;
+    int32_t exponent = (value >> 10) & 31;
     uint32_t fraction = value & 1023;
     uint32_t bits;
     if (!exponent) {
         if (!fraction) {
             bits = sign;
         } else {
-            const int shift = 11 - std::bit_width(fraction);
+            const int32_t shift = 11 - std::bit_width(fraction);
             fraction <<= shift;
             exponent = -14 - shift;
             bits = sign | (uint32_t(exponent + 127) << 23) | ((fraction & 1023) << 13);
@@ -105,9 +106,9 @@ float from_half(uint16_t value) {
 uint16_t to_half(float value) {
     const uint32_t bits = std::bit_cast<uint32_t>(value);
     const uint32_t sign = (bits >> 16) & 0x8000;
-    const int exponent = int((bits >> 23) & 255);
+    const int32_t exponent = int32_t((bits >> 23) & 255);
     const uint32_t fraction = bits & 0x7fffff;
-    const int shifted = exponent - 112;
+    const int32_t shifted = exponent - 112;
     if (exponent == 255) {
         return static_cast<uint16_t>(sign | (fraction ? 0x7fff : 0x7c00));
     }

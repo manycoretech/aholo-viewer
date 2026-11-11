@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <numeric>
 #include <optional>
 #include <pipeline/runner.h>
@@ -32,7 +33,7 @@ std::pair<bool, bool> transform(splat::Splat& data, std::span<const uint32_t> in
         return { false, false };
     }
     Eigen::Vector3f scale;
-    for (int c = 0; c < 3; ++c) {
+    for (int32_t c = 0; c < 3; ++c) {
         scale[c] = matrix.block<3, 1>(0, c).norm();
     }
     if (matrix.determinant() < 0) {
@@ -42,7 +43,7 @@ std::pair<bool, bool> transform(splat::Splat& data, std::span<const uint32_t> in
         throw std::runtime_error("Singular splat transform");
     }
     Eigen::Matrix3f rotation;
-    for (int c = 0; c < 3; ++c) {
+    for (int32_t c = 0; c < 3; ++c) {
         rotation.col(c) = matrix.block<3, 1>(0, c) / scale[c];
     }
     const Eigen::Quaternionf quaternion(rotation);
@@ -69,7 +70,7 @@ std::pair<bool, bool> transform(splat::Splat& data, std::span<const uint32_t> in
 } // namespace
 void modify(splat::Splat& data, const io::Json& config) {
     std::array<std::optional<float>, 4> rgba;
-    std::optional<unsigned> max_sh_degree;
+    std::optional<uint32_t> max_sh_degree;
     if (config.contains("rgba")) {
         const auto& value = config.at("rgba");
         if (value.is_array() && value.size() == rgba.size()) {

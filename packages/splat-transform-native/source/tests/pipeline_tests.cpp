@@ -2,6 +2,7 @@
 #include "voxel/grid.h"
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <io/file.h>
 #include <io/spz.h>
 #include <iostream>
@@ -20,15 +21,15 @@ void require(bool condition, const char* message) {
 }
 void save_json(const std::filesystem::path& path, const io::Json& json) {
     const auto text = json.dump();
-    io::write_bytes(path, std::span(reinterpret_cast<const uint8_t*>(text.data()), text.size()));
+    io::write_bytes(path, std::as_bytes(std::span(text)));
 }
 void write_options(const std::filesystem::path& directory, const splat::Splat& source) {
     pipeline::TaskContext context;
     context.set({ { "output", "source" } }, std::make_shared<splat::Splat>(source));
     std::vector<uint32_t> indices(source.size());
     std::iota(indices.begin(), indices.end(), 0);
-    for (int version : { 3, 4 }) {
-        for (int level : { 0, 1, 9 }) {
+    for (int32_t version : { 3, 4 }) {
+        for (int32_t level : { 0, 1, 9 }) {
             const auto path = directory / "options.spz";
             io::Json config { { "input", "source" }, { "output", io::path_utf8(path) }, { "version", version }, { "enableMortonSort", false } };
             if (level) {
@@ -71,13 +72,13 @@ void filter_neighborhoods() {
                 grid = grid.inverted();
             }
             const auto filtered = voxel::filter_blocks(grid);
-            for (int z = 0; z < dimensions[2]; ++z) {
-                for (int y = 0; y < dimensions[1]; ++y) {
-                    for (int x = 0; x < dimensions[0]; ++x) {
+            for (int32_t z = 0; z < dimensions[2]; ++z) {
+                for (int32_t y = 0; y < dimensions[1]; ++y) {
+                    for (int32_t x = 0; x < dimensions[0]; ++x) {
                         const Eigen::Vector3i p { x, y, z };
                         const auto bits = grid.mask(grid.block_index({ x / 4, y / 4, z / 4 }));
-                        int neighbors = 0;
-                        for (int axis = 0; axis < 3; ++axis) {
+                        int32_t neighbors = 0;
+                        for (int32_t axis = 0; axis < 3; ++axis) {
                             auto neighbor = p;
                             --neighbor[axis];
                             neighbors += grid.get(neighbor);
@@ -93,7 +94,7 @@ void filter_neighborhoods() {
     }
     voxel::Grid shell({ 12, 12, 12 });
     const Eigen::Vector3i center { 4, 4, 4 };
-    for (int axis = 0; axis < 3; ++axis) {
+    for (int32_t axis = 0; axis < 3; ++axis) {
         auto p = center;
         --p[axis];
         shell.set(p);
@@ -176,10 +177,10 @@ int main() {
             }
             io::write_splat(directory / "rotations.splat", canonical, { .enable_morton_sort = false });
             const auto encoded = io::read_bytes(directory / "rotations.splat");
-            constexpr std::array<uint8_t, 4> EXPECTED { 168, 88, 209, 47 };
+            constexpr std::array<std::byte, 4> EXPECTED { std::byte { 168 }, std::byte { 88 }, std::byte { 209 }, std::byte { 47 } };
             for (size_t c = 0; c < 4; ++c) {
                 require(encoded[28 + c] == EXPECTED[c] && encoded[60 + c] == EXPECTED[c], "Quaternion quantization differs from the legacy sign convention");
-                require(encoded[92 + c] == 128, "Zero quaternion quantization differs from the legacy encoding");
+                require(encoded[92 + c] == std::byte { 128 }, "Zero quaternion quantization differs from the legacy encoding");
             }
         }
         io::Bytes scores;
@@ -199,8 +200,8 @@ int main() {
             require(index_reader.read<uint32_t>() == i, "Short score file was read at the wrong offset");
         }
         voxel::Grid wall({ 12, 12, 12 });
-        for (int y = 0; y < 12; ++y) {
-            for (int z = 0; z < 12; ++z) {
+        for (int32_t y = 0; y < 12; ++y) {
+            for (int32_t z = 0; z < 12; ++z) {
                 wall.set({ 5, y, z });
             }
         }

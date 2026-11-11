@@ -1,6 +1,7 @@
 #include <Eigen/Dense>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <iterator>
 #include <nanoflann.hpp>
 #include <numbers>
@@ -27,7 +28,7 @@ public:
     GaussianCloud(const splat::Splat& splat) : splat_(splat) {}
 
     inline size_t kdtree_get_point_count() const { return splat_.gaussians.size(); }
-    inline float kdtree_get_pt(size_t i, int d) const { return splat_.gaussians[i].mean[d]; }
+    inline float kdtree_get_pt(size_t i, int32_t d) const { return splat_.gaussians[i].mean[d]; }
     template<class BBOX>
     bool kdtree_get_bbox(BBOX&) const { return false; }
 
@@ -307,7 +308,7 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
             auto result_count = tree.knnSearch(current.gaussians[i].mean.data(), query_count, out_indices.data(), out_distances.data());
             const size_t take = std::min<size_t>(k_eff, result_count > 0 ? result_count - 1 : size_t { 0 });
             for (auto j = 0; j < take; j++) {
-                auto neighbor = static_cast<int>(out_indices[j + 1]);
+                auto neighbor = static_cast<int32_t>(out_indices[j + 1]);
                 if (neighbor <= i) {
                     continue;
                 }

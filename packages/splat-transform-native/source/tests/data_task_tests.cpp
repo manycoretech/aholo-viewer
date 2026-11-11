@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <codec/codec.h>
+#include <cstdint>
 #include <iostream>
 #include <numeric>
 #include <optional>
@@ -30,7 +31,7 @@ void rejects(F&& action) {
     }
     require(failed, "Invalid task input was accepted");
 }
-std::shared_ptr<splat::Splat> cloud(size_t count, unsigned degree, float base = 0) {
+std::shared_ptr<splat::Splat> cloud(size_t count, uint32_t degree, float base = 0) {
     auto result = std::make_shared<splat::Splat>(count, degree);
     for (size_t i = 0; i < count; ++i) {
         auto& point = result->gaussians[i];
@@ -70,7 +71,7 @@ void single_block(const splat::Splat& data) {
 }
 void save_json(const std::filesystem::path& path, const Json& value) {
     const auto text = value.dump();
-    io::write_bytes(path, { reinterpret_cast<const uint8_t*>(text.data()), text.size() });
+    io::write_bytes(path, std::as_bytes(std::span(text)));
 }
 void put_resource(pipeline::TaskContext& context, const char* name, pipeline::Resource resource) {
     context.set({ { "output", name } }, std::move(resource));
@@ -102,7 +103,7 @@ void modify_contracts(const std::filesystem::path& directory) {
         { Json { { "maxShDegree", 0 } }, {} },
         { Json { { "rgba", { 0, 0, 0, 1 } }, { "maxShDegree", 1 } }, { 0.0f, 0.0f, 0.0f, 1.0f } },
     };
-    for (unsigned degree = 0; degree <= 3; ++degree) {
+    for (uint32_t degree = 0; degree <= 3; ++degree) {
         for (const auto& extension : extensions) {
             auto source = cloud(4, degree);
             pipeline::TaskContext context;
@@ -119,7 +120,7 @@ void modify_contracts(const std::filesystem::path& directory) {
                 }
             }
             if (extension.config.contains("maxShDegree")) {
-                expected.limit_sh_degree(extension.config.at("maxShDegree").get<unsigned>());
+                expected.limit_sh_degree(extension.config.at("maxShDegree").get<uint32_t>());
             }
             auto config = original;
             config.update(extension.config);
@@ -249,7 +250,7 @@ void select_contracts(const std::filesystem::path& directory) {
     io::write_bytes(directory / "indices.zst", codec::zstd_compress(bytes));
     io::write_bytes(directory / "bad.bin", std::span(bytes).first(7));
     io::write_bytes(directory / "bad.zst", codec::zstd_compress(std::span(bytes).first(7)));
-    for (unsigned degree = 0; degree <= 3; ++degree) {
+    for (uint32_t degree = 0; degree <= 3; ++degree) {
         auto source = cloud(10, degree);
         const auto unchanged = *source;
         pipeline::TaskContext context;
@@ -288,7 +289,7 @@ void select_contracts(const std::filesystem::path& directory) {
     }
 }
 void replace_contracts() {
-    for (unsigned degree = 0; degree <= 3; ++degree) {
+    for (uint32_t degree = 0; degree <= 3; ++degree) {
         for (bool same_object : { false, true }) {
             for (const auto output : { "result", "source", "patch", "alias" }) {
                 auto source = cloud(5, degree), patch = same_object ? source : cloud(4, degree, 100);
@@ -348,7 +349,7 @@ void replace_contracts() {
     }
 }
 
-std::vector<pipeline::SingleFile> bundle(unsigned degree) {
+std::vector<pipeline::SingleFile> bundle(uint32_t degree) {
     Json tree = Json::array();
     for (const auto ref : { std::array { 0u, 1u, 2u }, std::array { 1u, 3u, 1u }, std::array { 0u, 5u, 2u }, std::array { 0u, 1u, 2u }, std::array { 0u, 8u, 0u } }) {
         Json lods = Json::array({ Json::object(), Json::object(), Json::object(), { { "file", ref[0] }, { "offset", ref[1] }, { "count", ref[2] } }, Json::object() });
@@ -358,7 +359,7 @@ std::vector<pipeline::SingleFile> bundle(unsigned degree) {
     return { { "lod-meta.json", meta.dump() }, { "a.esz", cloud(8, degree, 100), true }, { "b.esz", cloud(6, degree, 500) } };
 }
 void extract_contracts() {
-    for (unsigned degree = 0; degree <= 3; ++degree) {
+    for (uint32_t degree = 0; degree <= 3; ++degree) {
         auto files = bundle(degree);
         auto first = std::get<pipeline::SplatPtr>(files[1].content), second = std::get<pipeline::SplatPtr>(files[2].content);
         const auto original_first = *first, original_second = *second;
@@ -390,7 +391,7 @@ void extract_contracts() {
         plain["input"] = "alias";
         rejects([&] { task("ExtractLodLevel", plain, context); });
         const auto original_meta = Json::parse(std::get<std::string>(files[0].content));
-        for (unsigned invalid = 0; invalid < 13; ++invalid) {
+        for (uint32_t invalid = 0; invalid < 13; ++invalid) {
             auto meta = original_meta;
             switch (invalid) {
             case 0:
@@ -479,7 +480,7 @@ Json esz_meta(const std::filesystem::path& path) {
     io::ByteReader reader(decoded);
     require(reader.read<uint32_t>() == 0x262834, "Invalid ESZ magic");
     const auto bytes = reader.take(reader.read<uint32_t>());
-    return Json::parse(bytes.begin(), bytes.end());
+    return Json::parse(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
 }
 void shared_lod_contracts(const std::filesystem::path& directory) {
     pipeline::TaskContext context;

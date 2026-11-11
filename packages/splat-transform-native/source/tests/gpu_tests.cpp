@@ -6,6 +6,7 @@
 #include <charconv>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <gpu/compute.h>
 #include <gpu/context.h>
 #include <iostream>
@@ -15,7 +16,7 @@
 
 using namespace splat_transform;
 namespace {
-splat::Splat feature_splats(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& matrix, unsigned degree) {
+splat::Splat feature_splats(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& matrix, uint32_t degree) {
     splat::Splat result(static_cast<size_t>(matrix.rows()), degree);
     const auto coefficients = result.sh_count() / 3;
     for (size_t row = 0; row < result.size(); ++row) {
@@ -29,13 +30,13 @@ splat::Splat feature_splats(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dy
 }
 voxel::Grid reference_dilation(const voxel::Grid& grid, Eigen::Vector3i radius) {
     voxel::Grid result(grid.size);
-    for (int z = 0; z < grid.size[2]; ++z) {
-        for (int y = 0; y < grid.size[1]; ++y) {
-            for (int x = 0; x < grid.size[0]; ++x) {
+    for (int32_t z = 0; z < grid.size[2]; ++z) {
+        for (int32_t y = 0; y < grid.size[1]; ++y) {
+            for (int32_t x = 0; x < grid.size[0]; ++x) {
                 if (grid.get({ x, y, z })) {
-                    for (int dz = -radius[2]; dz <= radius[2]; ++dz) {
-                        for (int dy = -radius[1]; dy <= radius[1]; ++dy) {
-                            for (int dx = -radius[0]; dx <= radius[0]; ++dx) {
+                    for (int32_t dz = -radius[2]; dz <= radius[2]; ++dz) {
+                        for (int32_t dy = -radius[1]; dy <= radius[1]; ++dy) {
+                            for (int32_t dx = -radius[0]; dx <= radius[0]; ++dx) {
                                 result.set({ x + dx, y + dy, z + dz });
                             }
                         }
@@ -82,7 +83,7 @@ void voxel_session_lifetimes(const voxel::Gaussian& gaussian) {
             const auto input = feature_splats(points, 1);
             spatial::ClusterSession cluster(spatial::FeatureView(input), 2);
             const auto combined = device.allocation_bytes();
-            for (int iteration = 0; iteration < 3; ++iteration) {
+            for (int32_t iteration = 0; iteration < 3; ++iteration) {
                 if (cluster.assign(centroids) != std::vector<uint32_t> { 0, 0, 0, 0, 1, 1, 1, 1 }) {
                     throw std::runtime_error("Voxel and clustering sessions changed each other's output");
                 }
@@ -119,7 +120,7 @@ int main(int argc, char** argv) {
     try {
         uint32_t selected = 0;
         bool large_tests = false;
-        for (int i = 1; i < argc; ++i) {
+        for (int32_t i = 1; i < argc; ++i) {
             const std::string_view argument(argv[i]);
             if (argument == "--large") {
                 large_tests = true;
@@ -158,7 +159,7 @@ int main(int argc, char** argv) {
                 throw std::runtime_error("Scene-wide voxel dispatch changed isolated Gaussian occupancy");
             }
             for (size_t i = 0; i < points.size(); ++i) {
-                if (!grid.get({ int(i * 16), 0, 0 })) {
+                if (!grid.get({ int32_t(i * 16), 0, 0 })) {
                     throw std::runtime_error("Scene-wide voxel dispatch lost a batch after the old 256-batch boundary");
                 }
             }
@@ -184,13 +185,13 @@ int main(int argc, char** argv) {
                     throw std::runtime_error("Parallel candidate sorting changed voxel occupancy");
                 }
                 for (size_t bin = 0; bin < bins; ++bin) {
-                    if (!grid.get({ int(bin * 16), 0, 0 })) {
+                    if (!grid.get({ int32_t(bin * 16), 0, 0 })) {
                         throw std::runtime_error("Parallel candidate sorting lost a dense bin or tail");
                     }
                 }
             }
         }
-        for (unsigned degree : { 1u, 2u, 3u }) {
+        for (uint32_t degree : { 1u, 2u, 3u }) {
             const auto columns = splat::SH_COUNTS[degree];
             Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> points(257, columns), centroids(129, columns);
             for (size_t c = 0; c < columns; ++c) {
@@ -458,9 +459,9 @@ int main(int argc, char** argv) {
                 voxel::Grid input(size), expected(size);
                 for (const auto point : points) {
                     input.set(point);
-                    for (int z = -1; z <= 1; ++z) {
-                        for (int y = -1; y <= 1; ++y) {
-                            for (int x = -1; x <= 1; ++x) {
+                    for (int32_t z = -1; z <= 1; ++z) {
+                        for (int32_t y = -1; y <= 1; ++y) {
+                            for (int32_t x = -1; x <= 1; ++x) {
                                 expected.set({ point[0] + x, point[1] + y, point[2] + z });
                             }
                         }
@@ -478,7 +479,7 @@ int main(int argc, char** argv) {
                 std::cout << "Large tiled dilation and halo boundaries passed\n";
             }
         }
-        for (int dimension : { 12, 8, 16 }) {
+        for (int32_t dimension : { 12, 8, 16 }) {
             voxel::VoxelSession session;
             voxel::Grid grid({ dimension, dimension, dimension });
             grid.set({ 0, 0, 0 });
@@ -502,7 +503,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Box dilation changed its kernel");
         }
         splat::Splat source(1, 0);
-        for (int a = 0; a < 3; ++a) {
+        for (int32_t a = 0; a < 3; ++a) {
             source.gaussians[0].attribute(a) = 0.8f;
             source.gaussians[0].attribute(splat::ScaleX + a) = 0.2f;
         }

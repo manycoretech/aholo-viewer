@@ -1,4 +1,5 @@
 #include "../lod_support.h"
+#include <cstdint>
 #include <iomanip>
 #include <pipeline/tasks/auto_chunk_lod.h>
 #include <splat/splat_lod.h>
@@ -99,7 +100,7 @@ std::vector<SingleFile> chunk_lod(splat::Splat source, const Json& config) {
         const auto count_text = std::to_string(count);
         count_width = std::max(count_width, count_text.size());
         logger.info('\t', "Level ", level, std::setw(9), '(' + utility::fixed(levels[level].at("precision").get<float>() * 100) + "%)",
-            ": ", std::setw(static_cast<int>(count_width)), count_text,
+            ": ", std::setw(static_cast<int32_t>(count_width)), count_text,
             std::setw(9), '(' + utility::fixed(float(count) / source_count * 100) + "%)");
     }
     Json meta { { "magicCode", 0x262834 }, { "type", "lod-splat" }, { "version", "1.0" }, { "counts", source_count },

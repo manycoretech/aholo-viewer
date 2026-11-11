@@ -1,6 +1,7 @@
 #include "stream_reader.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <io/file.h>
 #include <io/ply.h>
@@ -60,7 +61,7 @@ const std::array<std::string, 14> FIELDS {
 // Resolve the common native-endian float layout once, then decode directly
 // into canonical Gaussians without per-value type/name/attribute dispatch.
 template<typename Reader>
-void read_float_vertices(const Element& element, std::span<const int> bindings, Reader& reader, splat::Splat& result, size_t batch_bytes) {
+void read_float_vertices(const Element& element, std::span<const int32_t> bindings, Reader& reader, splat::Splat& result, size_t batch_bytes) {
     const size_t stride = element.properties.size() * sizeof(float);
     if (element.count > result.size() || !stride || element.count > reader.remaining() / stride) {
         throw std::runtime_error("Truncated PLY vertex data or element count mismatch");
@@ -73,7 +74,7 @@ void read_float_vertices(const Element& element, std::span<const int> bindings, 
             offsets[size_t(bindings[p])] = p * sizeof(float);
         }
     }
-    const auto decode = [&](std::span<const uint8_t> bytes, size_t first, size_t begin, size_t end) {
+    const auto decode = [&](std::span<const std::byte> bytes, size_t first, size_t begin, size_t end) {
         for (size_t i = begin; i < end; ++i) {
             auto& gaussian = result.gaussians[first + i];
             const auto* row = bytes.data() + i * stride;
@@ -131,7 +132,7 @@ bool next_line(StreamReader& stream, std::string& line) {
         if (bytes.empty()) {
             return false;
         }
-        if (bytes[0] == '\n') {
+        if (bytes[0] == std::byte { '\n' }) {
             return true;
         }
         line.push_back(static_cast<char>(bytes[0]));
@@ -182,7 +183,7 @@ Header read_header(Reader& header) {
     return result;
 }
 template<typename Reader>
-splat::Splat read_ply(const Header& header, Reader& reader, unsigned max_sh_degree, size_t batch_bytes) {
+splat::Splat read_ply(const Header& header, Reader& reader, uint32_t max_sh_degree, size_t batch_bytes) {
     const auto& [little, compressed, elements] = header;
     size_t count = 0, sh_count = 0;
     for (const auto& element : elements) {
@@ -201,21 +202,21 @@ splat::Splat read_ply(const Header& header, Reader& reader, unsigned max_sh_degr
     if (degree_it == splat::SH_COUNTS.end()) {
         throw std::runtime_error("Unsupported PLY ShCoefficients coefficient count");
     }
-    splat::Splat result(count, std::min(max_sh_degree, static_cast<unsigned>(degree_it - splat::SH_COUNTS.begin())));
+    splat::Splat result(count, std::min(max_sh_degree, static_cast<uint32_t>(degree_it - splat::SH_COUNTS.begin())));
     std::vector<std::unordered_map<std::string, float>> chunks;
     for (const auto& element : elements) {
-        std::vector<int> bindings;
+        std::vector<int32_t> bindings;
         for (const auto& property : element.properties) {
             auto found = std::find(FIELDS.begin(), FIELDS.end(), property.name);
-            int column = found == FIELDS.end() ? -1 : static_cast<int>(found - FIELDS.begin());
+            int32_t column = found == FIELDS.end() ? -1 : static_cast<int32_t>(found - FIELDS.begin());
             if (property.name.starts_with("f_rest_") && sh_count) {
                 size_t original = std::stoul(property.name.substr(7));
-                column = static_cast<int>(splat::ShOffset + (original % (sh_count / 3)) * 3 + original / (sh_count / 3));
+                column = static_cast<int32_t>(splat::ShOffset + (original % (sh_count / 3)) * 3 + original / (sh_count / 3));
             }
             bindings.push_back(column);
         }
         if (!compressed && element.name == "vertex") {
-            for (int c = 0; c < 14; ++c) {
+            for (int32_t c = 0; c < 14; ++c) {
                 if (std::find(bindings.begin(), bindings.end(), c) == bindings.end()) {
                     throw std::runtime_error("Missing PLY property: " + FIELDS[c]);
                 }
@@ -248,7 +249,7 @@ splat::Splat read_ply(const Header& header, Reader& reader, unsigned max_sh_degr
                     continue;
                 }
                 float value = read_scalar<float>(reader, property.type, little);
-                const int c = bindings[p];
+                const int32_t c = bindings[p];
                 if (element.name == "chunk") {
                     chunk[property.name] = value;
                 } else if ((element.name == "vertex" || element.name == "sh") && c >= 0) {
@@ -275,9 +276,9 @@ splat::Splat read_ply(const Header& header, Reader& reader, unsigned max_sh_degr
                 const auto& limits = chunks.at(i >> 8);
                 const std::array<std::string, 3> xyz { "x", "y", "z" }, rgb { "r", "g", "b" };
                 for (size_t axis = 0; axis < 3; ++axis) {
-                    const unsigned shift = axis == 0 ? 21 : axis == 1 ? 11
+                    const uint32_t shift = axis == 0 ? 21 : axis == 1 ? 11
                                                                       : 0;
-                    const unsigned mask = axis == 1 ? 1023 : 2047;
+                    const uint32_t mask = axis == 1 ? 1023 : 2047;
                     auto mix = [&](const std::string& field, float t) {
                         return limits.at("min_" + field) + t * (limits.at("max_" + field) - limits.at("min_" + field));
                     };
@@ -323,7 +324,7 @@ splat::Splat PlyFile::read(const FileInput& source) const {
     ByteReader reader(bytes.subspan(header_end + terminator));
     return read_ply(header, reader, source.max_sh_degree, std::numeric_limits<size_t>::max());
 }
-splat::Splat PlyFile::read(const std::filesystem::path& path, unsigned max_sh_degree) const {
+splat::Splat PlyFile::read(const std::filesystem::path& path, uint32_t max_sh_degree) const {
     StreamReader reader(path, PLY_BUFFER_SIZE);
     const auto header = read_header(reader);
     return read_ply(header, reader, max_sh_degree, PLY_BUFFER_SIZE);
@@ -339,7 +340,8 @@ Bytes PlyFile::write(const splat::Splat& data, std::span<const uint32_t> indices
     }
     header << "end_header\n";
     auto text = header.str();
-    Bytes output(text.begin(), text.end());
+    const auto header_bytes = std::as_bytes(std::span(text));
+    Bytes output(header_bytes.begin(), header_bytes.end());
     output.reserve(output.size() + indices.size() * data.attribute_count() * 4);
     for (uint32_t index : indices) {
         for (size_t c = 0; c < 14; ++c) {

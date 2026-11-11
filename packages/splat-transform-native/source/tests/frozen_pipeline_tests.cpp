@@ -12,7 +12,7 @@ void require(bool condition, const char* message) {
 }
 void save_json(const std::filesystem::path& path, const io::Json& value) {
     const auto text = value.dump();
-    io::write_bytes(path, { reinterpret_cast<const uint8_t*>(text.data()), text.size() });
+    io::write_bytes(path, std::as_bytes(std::span(text)));
 }
 void prepare(const std::filesystem::path& directory) {
     std::filesystem::create_directories(directory / "inputs");

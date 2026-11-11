@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <utility/logger.h>
 
@@ -40,7 +41,7 @@ PreparedData prepare(const splat::Splat& data) {
             output.invalid_extents.push_back(uint32_t(i));
         }
         auto& g = output.gaussians[i].values;
-        for (int a = 0; a < 3; ++a) {
+        for (int32_t a = 0; a < 3; ++a) {
             g[a] = data.gaussians[i].attribute(splat::X + a);
             g[8 + a] = data.gaussians[i].attribute(splat::ScaleX + a);
             g[11 + a] = float(e[a]);
@@ -51,7 +52,7 @@ PreparedData prepare(const splat::Splat& data) {
         }
         g[3] = data.gaussians[i].attribute(splat::Alpha);
         g[4] = data.gaussians[i].attribute(splat::QuatW);
-        for (int a = 0; a < 3; ++a) {
+        for (int32_t a = 0; a < 3; ++a) {
             g[5 + a] = data.gaussians[i].attribute(splat::QuatX + a);
         }
     }
@@ -79,7 +80,7 @@ void PreparedData::select(std::span<const uint32_t> indices) {
             continue;
         }
         const auto& g = gaussians[i].values;
-        for (int a = 0; a < 3; ++a) {
+        for (int32_t a = 0; a < 3; ++a) {
             scene.min()[a] = std::min(scene.min()[a], g[a] - g[11 + a]);
             scene.max()[a] = std::max(scene.max()[a], g[a] + g[11 + a]);
         }
@@ -89,7 +90,7 @@ void PreparedData::select(std::span<const uint32_t> indices) {
 }
 Eigen::AlignedBox3f align_bounds(Eigen::AlignedBox3f bounds, float resolution) {
     const float block_size = resolution * 4;
-    for (int a = 0; a < 3; ++a) {
+    for (int32_t a = 0; a < 3; ++a) {
         bounds.min()[a] = std::floor(bounds.min()[a] / block_size) * block_size;
         bounds.max()[a] = std::ceil(bounds.max()[a] / block_size) * block_size;
     }
@@ -97,8 +98,8 @@ Eigen::AlignedBox3f align_bounds(Eigen::AlignedBox3f bounds, float resolution) {
 }
 Grid make_grid(const Eigen::AlignedBox3f& bounds, float resolution) {
     Eigen::Vector3i dimensions;
-    for (int a = 0; a < 3; ++a) {
-        dimensions[a] = std::max(4, int(std::llround((bounds.max()[a] - bounds.min()[a]) / resolution)));
+    for (int32_t a = 0; a < 3; ++a) {
+        dimensions[a] = std::max(4, int32_t(std::llround((bounds.max()[a] - bounds.min()[a]) / resolution)));
     }
     return Grid(dimensions);
 }
@@ -109,7 +110,7 @@ Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBo
     }
     const auto center = splat::bounds(data);
     float inflation = 0, center_volume = 1, scene_volume = 1;
-    for (int a = 0; a < 3; ++a) {
+    for (int32_t a = 0; a < 3; ++a) {
         const float c = std::max(0.0f, center.max()[a] - center.min()[a]), s = std::max(0.0f, scene.max()[a] - scene.min()[a]);
         inflation = std::max(inflation, s / std::max(c, 1e-6f));
         center_volume *= c;
@@ -119,7 +120,7 @@ Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBo
         return box;
     }
     auto dense = splat::dense_bounds(data, 1 - options->target_center_keep_ratio);
-    for (int a = 0; a < 3; ++a) {
+    for (int32_t a = 0; a < 3; ++a) {
         dense.min()[a] = std::max(dense.min()[a], box.min()[a]);
         dense.max()[a] = std::min(dense.max()[a], box.max()[a]);
         if (dense.min()[a] >= dense.max()[a]) {
@@ -129,7 +130,7 @@ Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBo
     size_t kept = 0;
     for (size_t i = 0; i < data.size(); ++i) {
         bool inside = true;
-        for (int a = 0; a < 3; ++a) {
+        for (int32_t a = 0; a < 3; ++a) {
             inside &= data.gaussians[i].attribute(a) >= dense.min()[a] && data.gaussians[i].attribute(a) <= dense.max()[a];
         }
         kept += inside;
@@ -152,12 +153,12 @@ void filter_cluster(PreparedData& prepared, const FilterClusterOptions& options,
     }
     auto bounds = align_bounds(prepared.scene, resolution);
     const Eigen::Vector3f seed = options.seed.value_or(Eigen::Vector3f::Zero());
-    for (int a = 0; a < 3; ++a) {
+    for (int32_t a = 0; a < 3; ++a) {
         bounds.min()[a] = std::max(bounds.min()[a], box.min()[a]);
         bounds.max()[a] = std::min(bounds.max()[a], box.max()[a]);
     }
     bounds = align_bounds(bounds, resolution);
-    for (int a = 0; a < 3; ++a) {
+    for (int32_t a = 0; a < 3; ++a) {
         if (bounds.min()[a] >= bounds.max()[a]) {
             logger.warn("filterCluster: box does not overlap scene bounds, returning empty data");
             prepared.select({});
@@ -176,21 +177,21 @@ void filter_cluster(PreparedData& prepared, const FilterClusterOptions& options,
         return;
     }
     Eigen::Vector3i seed_cell;
-    for (int a = 0; a < 3; ++a) {
-        seed_cell[a] = std::clamp(int(std::floor((seed[a] - bounds.min()[a]) / resolution)), 0, occupied.size[a] - 1);
+    for (int32_t a = 0; a < 3; ++a) {
+        seed_cell[a] = std::clamp(int32_t(std::floor((seed[a] - bounds.min()[a]) / resolution)), 0, occupied.size[a] - 1);
     }
     // Find the same Chebyshev shell and z/y/x tie ordering without scanning empty volume.
     if (!occupied.get(seed_cell)) {
-        std::array<int, 4> best { INT_MAX, INT_MAX, INT_MAX, INT_MAX };
+        std::array<int32_t, 4> best { INT32_MAX, INT32_MAX, INT32_MAX, INT32_MAX };
         Eigen::Vector3i nearest = seed_cell;
         for (auto index : occupied.active_blocks()) {
             const auto p = occupied.block_point(index);
             auto bits = occupied.mask(index);
             while (bits) {
-                const int bit = std::countr_zero(bits);
+                const int32_t bit = std::countr_zero(bits);
                 bits &= bits - 1;
                 Eigen::Vector3i cell { p[0] * 4 + bit % 4, p[1] * 4 + bit / 4 % 4, p[2] * 4 + bit / 16 };
-                std::array<int, 4> order { std::max({ std::abs(cell[0] - seed_cell[0]), std::abs(cell[1] - seed_cell[1]), std::abs(cell[2] - seed_cell[2]) }), cell[2], cell[1], cell[0] };
+                std::array<int32_t, 4> order { std::max({ std::abs(cell[0] - seed_cell[0]), std::abs(cell[1] - seed_cell[1]), std::abs(cell[2] - seed_cell[2]) }), cell[2], cell[1], cell[0] };
                 if (order < best) {
                     best = order;
                     nearest = cell;
@@ -211,8 +212,8 @@ void filter_cluster(PreparedData& prepared, const FilterClusterOptions& options,
             const auto& gaussian = prepared.gaussians[i];
             const auto& g = gaussian.values;
             Eigen::Vector3i center;
-            for (int a = 0; a < 3; ++a) {
-                center[a] = int(std::floor((g[a] - bounds.min()[a]) / resolution));
+            for (int32_t a = 0; a < 3; ++a) {
+                center[a] = int32_t(std::floor((g[a] - bounds.min()[a]) / resolution));
             }
             if (component.get(center)) {
                 selected.push_back(i);
@@ -221,17 +222,17 @@ void filter_cluster(PreparedData& prepared, const FilterClusterOptions& options,
             const float maximum_extent = std::max({ g[11], g[12], g[13] });
             const float hits_needed = maximum_extent > resolution ? std::max(1.0f, std::ceil(8 * float(g[11]) * g[12] * g[13] / (resolution * resolution * resolution) * 0.1f)) : 1;
             Eigen::Vector3i minimum, maximum;
-            for (int a = 0; a < 3; ++a) {
-                minimum[a] = std::max(0, int(std::floor((float(g[a]) - g[11 + a] - bounds.min()[a]) / (4 * resolution))));
-                maximum[a] = std::min(component.blocks[a] - 1, int(std::floor((float(g[a]) + g[11 + a] - bounds.min()[a]) / (4 * resolution))));
+            for (int32_t a = 0; a < 3; ++a) {
+                minimum[a] = std::max(0, int32_t(std::floor((float(g[a]) - g[11 + a] - bounds.min()[a]) / (4 * resolution))));
+                maximum[a] = std::min(component.blocks[a] - 1, int32_t(std::floor((float(g[a]) + g[11 + a] - bounds.min()[a]) / (4 * resolution))));
             }
             size_t hits = 0;
-            for (int z = minimum[2]; z <= maximum[2] && hits < hits_needed; ++z) {
-                for (int y = minimum[1]; y <= maximum[1] && hits < hits_needed; ++y) {
-                    for (int x = minimum[0]; x <= maximum[0] && hits < hits_needed; ++x) {
+            for (int32_t z = minimum[2]; z <= maximum[2] && hits < hits_needed; ++z) {
+                for (int32_t y = minimum[1]; y <= maximum[1] && hits < hits_needed; ++y) {
+                    for (int32_t x = minimum[0]; x <= maximum[0] && hits < hits_needed; ++x) {
                         auto bits = component.mask(component.block_index({ x, y, z }));
                         while (bits && hits < hits_needed) {
-                            const int b = std::countr_zero(bits);
+                            const int32_t b = std::countr_zero(bits);
                             bits &= bits - 1;
                             const Eigen::Vector3f difference { bounds.min()[0] + x * 4 * resolution + (b % 4 + 0.5f) * resolution - g[0],
                                 bounds.min()[1] + y * 4 * resolution + (b / 4 % 4 + 0.5f) * resolution - g[1], bounds.min()[2] + z * 4 * resolution + (b / 16 + 0.5f) * resolution - g[2] };
@@ -253,7 +254,7 @@ void filter_cluster(PreparedData& prepared, const FilterClusterOptions& options,
         for (auto index : occupied.active_blocks()) {
             auto remaining = occupied.mask(index) & ~processed.mask(index);
             while (remaining) {
-                const int bit = std::countr_zero(remaining);
+                const int32_t bit = std::countr_zero(remaining);
                 const auto p = occupied.block_point(index);
                 auto component = flood(occupied, { { p[0] * 4 + bit % 4, p[1] * 4 + bit / 4 % 4, p[2] * 4 + bit / 16 } });
                 processed = unite(processed, component);

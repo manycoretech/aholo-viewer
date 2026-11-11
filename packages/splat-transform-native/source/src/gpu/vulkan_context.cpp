@@ -1,6 +1,7 @@
 #define VMA_IMPLEMENTATION
 #include "vulkan_context.h"
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <gpu/context.h>
 #include <iomanip>
@@ -35,7 +36,7 @@ DeviceInfo describe(const vk::raii::PhysicalDevice& physical) {
     const auto& base = properties.get<vk::PhysicalDeviceProperties2>().properties;
     std::ostringstream uuid;
     for (auto byte : properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID) {
-        uuid << std::hex << std::setw(2) << std::setfill('0') << unsigned(byte);
+        uuid << std::hex << std::setw(2) << std::setfill('0') << uint32_t(byte);
     }
     return { .name = base.deviceName.data(),
         .api = ApiType::Vulkan,

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <limits>
 #include <pipeline/runner.h>
@@ -21,11 +22,11 @@ void require(bool condition, const char* message) {
 // Independent voxel-first reference: double precision matrix rotation and a
 // serial scan of every Gaussian, without spatial bins, jobs, or early exit.
 voxel::Grid reference(const voxel::PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff) {
-    voxel::Grid output({ int(std::lround(bounds.sizes().x() / resolution)), int(std::lround(bounds.sizes().y() / resolution)), int(std::lround(bounds.sizes().z() / resolution)) });
+    voxel::Grid output({ int32_t(std::lround(bounds.sizes().x() / resolution)), int32_t(std::lround(bounds.sizes().y() / resolution)), int32_t(std::lround(bounds.sizes().z() / resolution)) });
     const double threshold = -std::log1p(-std::min(double(cutoff), 1.0 - 1e-8));
-    for (int z = 0; z < output.size[2]; ++z) {
-        for (int y = 0; y < output.size[1]; ++y) {
-            for (int x = 0; x < output.size[0]; ++x) {
+    for (int32_t z = 0; z < output.size[2]; ++z) {
+        for (int32_t y = 0; y < output.size[1]; ++y) {
+            for (int32_t x = 0; x < output.size[0]; ++x) {
                 const Eigen::Vector3i cell { x, y, z };
                 const Eigen::Vector3d center = bounds.min().cast<double>() + (Eigen::Vector3d(x, y, z).array() + 0.5).matrix() * resolution;
                 float density = 0;
@@ -36,7 +37,7 @@ voxel::Grid reference(const voxel::PreparedData& data, const Eigen::AlignedBox3f
                         continue;
                     }
                     bool inside = true;
-                    for (int a = 0; a < 3; ++a) {
+                    for (int32_t a = 0; a < 3; ++a) {
                         inside &= cell[a] >= std::floor((g[a] - g[11 + a] - bounds.min()[a]) / resolution) &&
                                   cell[a] <= std::ceil((g[a] + g[11 + a] - bounds.min()[a]) / resolution);
                     }
@@ -67,7 +68,7 @@ void numerical_contracts() {
     splat::Splat source(37, 0);
     for (size_t i = 0; i < source.size(); ++i) {
         auto& g = source.gaussians[i];
-        g.mean = { float(int(i % 9) - 4) * 0.5625f, float(int(i % 7) - 3) * 0.4375f, float(int(i % 5) - 2) * 0.3125f };
+        g.mean = { float(int32_t(i % 9) - 4) * 0.5625f, float(int32_t(i % 7) - 3) * 0.4375f, float(int32_t(i % 5) - 2) * 0.3125f };
         g.scale = { 0.125f, 0.25f, 0.1875f };
         g.opacity = 0.05f + float(i % 4) * 0.15f;
         g.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(float(i) * 0.2f, Eigen::Vector3f(1, 2, 3).normalized()));

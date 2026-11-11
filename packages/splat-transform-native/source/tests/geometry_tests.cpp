@@ -1,5 +1,6 @@
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <io/json.h>
 #include <iostream>
 #include <limits>
@@ -146,7 +147,7 @@ void voxel_geometry() {
     require(std::isnan(voxel::distance_squared(packed, Eigen::Vector3f::Ones())), "Distance no longer propagates a NaN scale");
 }
 void voxel_selection() {
-    for (unsigned degree = 0; degree <= 3; ++degree) {
+    for (uint32_t degree = 0; degree <= 3; ++degree) {
         splat::Splat source(12, degree);
         for (size_t i = 0; i < source.size(); ++i) {
             auto& point = source.gaussians[i];
@@ -195,7 +196,7 @@ void voxel_selection() {
 void sh_rotation() {
     const Eigen::Matrix3f rotation = Eigen::AngleAxisf(0.73f, Eigen::Vector3f(1, 2, 3).normalized()).toRotationMatrix();
     const spatial::ShRotation forward(rotation), backward(rotation.transpose()), identity(Eigen::Matrix3f::Identity());
-    for (unsigned degree = 0; degree <= 3; ++degree) {
+    for (uint32_t degree = 0; degree <= 3; ++degree) {
         splat::ShCoefficients original(3 + splat::SH_COUNTS[degree]);
         for (size_t i = 0; i < original.size(); ++i) {
             original[i] = float(std::sin(double(i) * 0.73)) * 0.3f;
@@ -208,9 +209,9 @@ void sh_rotation() {
         forward.apply(actual);
         for (size_t c = 0; c < 3; ++c) {
             require(actual[c] == original[c], "SH rotation changed the DC channels");
-            for (unsigned band = 1; band <= degree; ++band) {
+            for (uint32_t band = 1; band <= degree; ++band) {
                 double before = 0, after = 0;
-                for (unsigned i = band * band; i < (band + 1) * (band + 1); ++i) {
+                for (uint32_t i = band * band; i < (band + 1) * (band + 1); ++i) {
                     before += double(original[i * 3 + c]) * original[i * 3 + c];
                     after += double(actual[i * 3 + c]) * actual[i * 3 + c];
                 }

@@ -1,6 +1,6 @@
 #pragma once
 #include <gpu/compute.h>
-#include <map>
+#include <unordered_map>
 
 namespace splat_transform::voxel {
 struct BufferData {
@@ -18,7 +18,10 @@ struct ComputeStage {
     std::span<const std::byte> push;
     std::array<uint32_t, 3> groups {};
 };
+uint64_t pipeline_hash(const gpu::ComputeShader& shader) noexcept;
+
 // Synchronous sequences reuse workspace-owned storage and transfer buffers.
+// Shader bytecode must remain immutable and alive for the workspace lifetime.
 class GpuWorkspace {
 public:
     explicit GpuWorkspace(gpu::ComputeDevice device = {});
@@ -32,17 +35,9 @@ public:
     void execute_chain(const std::vector<BufferData>& bindings, const std::vector<ComputeStage>& stages);
 
 private:
-    struct PipelineKey {
-        std::vector<uint8_t> code;
-        std::vector<gpu::BufferAccess> bindings;
-        uint32_t push_constant_bytes;
-        std::vector<std::pair<uint32_t, uint32_t>> constants;
-        std::string entry_point;
-        auto operator<=>(const PipelineKey&) const = default;
-    };
     const gpu::ComputePipeline& pipeline(const gpu::ComputeShader& shader);
     gpu::ComputeDevice device_;
-    std::map<PipelineKey, gpu::ComputePipeline> pipelines_;
+    std::unordered_map<uint64_t, gpu::ComputePipeline> pipelines_;
     std::vector<gpu::Buffer> storage_, uploads_, downloads_;
 };
 } // namespace splat_transform::voxel

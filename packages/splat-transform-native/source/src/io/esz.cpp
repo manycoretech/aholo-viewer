@@ -1,6 +1,7 @@
 #include "stream_reader.h"
 #include <codec/codec.h>
 #include <codec/quantization.h>
+#include <cstdint>
 #include <io/esz.h>
 #include <io/file.h>
 #include <io/json.h>
@@ -18,7 +19,7 @@ Bytes segment(StreamReader& reader, bool image) {
     }
     return Bytes(content.begin(), content.end());
 }
-void append_segment(Bytes& output, std::span<const uint8_t> bytes) {
+void append_segment(Bytes& output, std::span<const std::byte> bytes) {
     if (bytes.size() > UINT32_MAX) {
         throw std::runtime_error("ESZ segment exceeds 32-bit length");
     }
@@ -39,18 +40,18 @@ void high_segment(StreamReader& reader, size_t count, F&& decode) {
     }
     decode_records(reader, count, 16, std::forward<F>(decode));
 }
-splat::Splat read_esz_stream(StreamReader& source, unsigned max_sh_degree) {
+splat::Splat read_esz_stream(StreamReader& source, uint32_t max_sh_degree) {
     auto reader = zstd_reader(source);
     if (reader.read<uint32_t>() != ESZ_MAGIC) {
         throw std::runtime_error("Invalid ESZ magic");
     }
     const auto meta_bytes = reader.take(reader.read<uint32_t>());
-    const auto meta = Json::parse(meta_bytes.begin(), meta_bytes.end());
+    const auto meta = Json::parse(std::string_view(reinterpret_cast<const char*>(meta_bytes.data()), meta_bytes.size()));
     if (meta.at("version") != 2) {
         throw std::runtime_error("Unsupported ESZ version");
     }
     const auto layout = meta.at("layout").get<std::string>();
-    const auto degree = meta.at("shDegree").get<unsigned>();
+    const auto degree = meta.at("shDegree").get<uint32_t>();
     if (degree > 3) {
         throw std::runtime_error("Invalid ESZ SH degree");
     }
@@ -66,7 +67,7 @@ splat::Splat read_esz_stream(StreamReader& source, unsigned max_sh_degree) {
                 const float max = codec::signed_log(meta.at("box").at("max").at(c).get<float>());
                 parallel_rows(output.size(), [&](size_t first, size_t end) {
                     for (size_t i = first; i < end; ++i) {
-                        const auto value = low[i * 4 + c] | (uint32_t(high[i * 4 + c]) << 8);
+                        const auto value = std::to_integer<uint32_t>(low[i * 4 + c]) | (std::to_integer<uint32_t>(high[i * 4 + c]) << 8);
                         output.gaussians[i].attribute(c) = codec::signed_exp(min + (max - min) / 65535 * value);
                     }
                 });
@@ -78,7 +79,7 @@ splat::Splat read_esz_stream(StreamReader& source, unsigned max_sh_degree) {
             parallel_rows(output.size(), [&](size_t first, size_t end) {
                 for (size_t i = first; i < end; ++i) {
                     for (size_t c = 0; c < 3; ++c) {
-                        output.gaussians[i].attribute(splat::ScaleX + c) = std::exp(scales[i * 4 + c] / 16.0f - 10);
+                        output.gaussians[i].attribute(splat::ScaleX + c) = std::exp(std::to_integer<uint8_t>(scales[i * 4 + c]) / 16.0f - 10);
                     }
                 }
             });
@@ -98,9 +99,9 @@ splat::Splat read_esz_stream(StreamReader& source, unsigned max_sh_degree) {
             parallel_rows(output.size(), [&](size_t first, size_t end) {
                 for (size_t i = first; i < end; ++i) {
                     for (size_t c = 0; c < 3; ++c) {
-                        output.gaussians[i].attribute(splat::Red + c) = ((colors[i * 4 + c] / 255.0f - 0.5f) * COLOR_SCALE + 0.5f);
+                        output.gaussians[i].attribute(splat::Red + c) = ((std::to_integer<uint8_t>(colors[i * 4 + c]) / 255.0f - 0.5f) * COLOR_SCALE + 0.5f);
                     }
-                    output.gaussians[i].attribute(splat::Alpha) = static_cast<float>(colors[i * 4 + 3] / 255.0f);
+                    output.gaussians[i].attribute(splat::Alpha) = static_cast<float>(std::to_integer<uint8_t>(colors[i * 4 + 3]) / 255.0f);
                 }
             });
         }
@@ -112,14 +113,14 @@ splat::Splat read_esz_stream(StreamReader& source, unsigned max_sh_degree) {
                 for (size_t i = first; i < end; ++i) {
                     for (size_t j = 0; j < output.sh_count() / 3; ++j) {
                         for (size_t c = 0; c < 3; ++c) {
-                            output.gaussians[i].attribute(splat::ShOffset + j * 3 + c) = (int(sh[(i * coefficients + j) * 4 + c]) - 128) / 128.0f;
+                            output.gaussians[i].attribute(splat::ShOffset + j * 3 + c) = (std::to_integer<int32_t>(sh[(i * coefficients + j) * 4 + c]) - 128) / 128.0f;
                         }
                     }
                 }
             });
         }
     } else if (layout == "high") {
-        high_segment(reader, output.size(), [&](std::span<const uint8_t> bytes, size_t first, size_t count) {
+        high_segment(reader, output.size(), [&](std::span<const std::byte> bytes, size_t first, size_t count) {
             ByteReader centers(bytes);
             for (size_t i = first; i < first + count; ++i) {
                 for (size_t c = 0; c < 3; ++c) {
@@ -129,7 +130,7 @@ splat::Splat read_esz_stream(StreamReader& source, unsigned max_sh_degree) {
                 centers.take(2);
             }
         });
-        high_segment(reader, output.size(), [&](std::span<const uint8_t> bytes, size_t first, size_t count) {
+        high_segment(reader, output.size(), [&](std::span<const std::byte> bytes, size_t first, size_t count) {
             ByteReader attributes(bytes);
             for (size_t i = first; i < first + count; ++i) {
                 for (size_t c = 0; c < 3; ++c) {
@@ -142,7 +143,7 @@ splat::Splat read_esz_stream(StreamReader& source, unsigned max_sh_degree) {
             }
         });
         for (size_t group = 0; group < source_sh_count / 3; group += 4) {
-            high_segment(reader, output.size(), [&](std::span<const uint8_t> bytes, size_t first, size_t count) {
+            high_segment(reader, output.size(), [&](std::span<const std::byte> bytes, size_t first, size_t count) {
                 ByteReader sh(bytes);
                 for (size_t i = first; i < first + count; ++i) {
                     for (size_t j = 0; j < 4; ++j) {
@@ -168,7 +169,7 @@ splat::Splat EszFile::read(const FileInput& source) const {
     StreamReader reader(source.bytes);
     return read_esz_stream(reader, source.max_sh_degree);
 }
-splat::Splat EszFile::read(const std::filesystem::path& path, unsigned max_sh_degree) const {
+splat::Splat EszFile::read(const std::filesystem::path& path, uint32_t max_sh_degree) const {
     StreamReader reader(path);
     return read_esz_stream(reader, max_sh_degree);
 }
@@ -177,14 +178,15 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
     const auto high_precision = high_precision_;
     auto& logger = utility::logger();
     logger.info(high_precision ? "ESZ encoding high mode" : "ESZ encoding low mode");
-    constexpr int LEVEL = 3;
+    constexpr int32_t LEVEL = 3;
     const auto bounds = splat::bounds(data);
     const Json meta { { "version", 2 }, { "layout", high_precision ? "high" : "low" }, { "counts", data.size() }, { "shDegree", data.sh_degree }, { "box", bounds_json(bounds) } };
     const auto text = meta.dump();
     Bytes output;
     append(output, ESZ_MAGIC);
     append(output, static_cast<uint32_t>(text.size()));
-    output.insert(output.end(), text.begin(), text.end());
+    const auto meta_bytes = std::as_bytes(std::span(text));
+    output.insert(output.end(), meta_bytes.begin(), meta_bytes.end());
     if (high_precision) {
         Bytes segment;
         segment.reserve(data.size() * 16);
@@ -214,7 +216,7 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
                     uint32_t value = 0;
                     if (group + j < data.sh_count() / 3) {
                         const auto col = splat::ShOffset + (group + j) * 3;
-                        auto quantize = [&](size_t c, unsigned mask) {
+                        auto quantize = [&](size_t c, uint32_t mask) {
                             return static_cast<uint32_t>(std::clamp((data.gaussians[index].attribute(col + c) * 0.5f + 0.5f) * mask, 0.0f, float(mask)));
                         };
                         value = (quantize(0, 2047) << 21) | (quantize(1, 1023) << 11) | quantize(2, 2047);
@@ -230,22 +232,22 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             append_segment(output, codec::encode_webp(bytes, w, h));
         };
         auto means_time = logger.time("ESZ encoding means");
-        Bytes low(size_t(width) * height * 4, 255), high(low.size(), 255);
+        Bytes low(size_t(width) * height * 4, std::byte { 255 }), high(low.size(), std::byte { 255 });
         for (size_t c = 0; c < 3; ++c) {
             const float min = codec::signed_log(bounds.min()[c]);
             const float max = codec::signed_log(bounds.max()[c]);
             const float scale = 65535 / std::max(max - min, 1e-9f);
             for (size_t i = 0; i < indices.size(); ++i) {
                 const auto value = static_cast<uint32_t>(std::clamp(std::floor((codec::signed_log(data.gaussians[indices[i]].attribute(c)) - min) * scale + 0.5f), 0.0f, 65535.0f));
-                low[i * 4 + c] = value & 255;
-                high[i * 4 + c] = (value >> 8) & 255;
+                low[i * 4 + c] = static_cast<std::byte>(value & 255);
+                high[i * 4 + c] = static_cast<std::byte>((value >> 8) & 255);
             }
         }
         write_image(low, width, height);
         write_image(high, width, height);
         means_time.finish();
         auto scales_time = logger.time("ESZ encoding scales");
-        Bytes pixels(low.size(), 255);
+        Bytes pixels(low.size(), std::byte { 255 });
         for (size_t i = 0; i < indices.size(); ++i) {
             for (size_t c = 0; c < 3; ++c) {
                 pixels[i * 4 + c] = codec::quantize_byte((std::log(float(data.gaussians[indices[i]].attribute(splat::ScaleX + c))) + 10) * 16);
@@ -254,7 +256,7 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         write_image(pixels, width, height);
         scales_time.finish();
         auto quats_time = logger.time("ESZ encoding quats");
-        std::fill(pixels.begin(), pixels.end(), 0);
+        std::fill(pixels.begin(), pixels.end(), std::byte {});
         for (size_t i = 0; i < indices.size(); ++i) {
             const auto quat = codec::encode_quaternion(data, indices[i], true);
             std::copy(quat.begin(), quat.end(), pixels.begin() + i * 4);
@@ -262,7 +264,7 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         write_image(pixels, width, height);
         quats_time.finish();
         auto colors_time = logger.time("ESZ encoding sh0");
-        std::fill(pixels.begin(), pixels.end(), 255);
+        std::fill(pixels.begin(), pixels.end(), std::byte { 255 });
         for (size_t i = 0; i < indices.size(); ++i) {
             for (size_t c = 0; c < 3; ++c) {
                 pixels[i * 4 + c] = codec::quantize_byte(((data.gaussians[indices[i]].attribute(splat::Red + c) - 0.5f) / COLOR_SCALE + 0.5f) * 255);
@@ -275,13 +277,13 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             auto sh_time = logger.time("ESZ encoding shN");
             const auto coefficients = data.sh_count() / 3;
             const auto [w, h] = codec::texture_size(data.size() * coefficients);
-            pixels.assign(size_t(w) * h * 4, 255);
+            pixels.assign(size_t(w) * h * 4, std::byte { 255 });
             for (size_t i = 0; i < indices.size(); ++i) {
                 for (size_t j = 0; j < coefficients; ++j) {
                     const float step = j < 3 ? 8 : 16;
                     for (size_t c = 0; c < 3; ++c) {
                         const float value = std::floor((std::floor(float(data.gaussians[indices[i]].attribute(splat::ShOffset + j * 3 + c)) * 128 + 0.5f) + 128 + step / 2) / step) * step;
-                        pixels[(i * coefficients + j) * 4 + c] = static_cast<uint8_t>(std::clamp(value, 0.0f, 255.0f));
+                        pixels[(i * coefficients + j) * 4 + c] = static_cast<std::byte>(std::clamp(value, 0.0f, 255.0f));
                     }
                 }
             }

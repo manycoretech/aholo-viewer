@@ -4,6 +4,7 @@
 #include <cmath>
 #include <codec/codec.h>
 #include <codec/quantization.h>
+#include <cstdint>
 #include <io/file.h>
 #include <io/spz.h>
 #include <optional>
@@ -14,7 +15,7 @@ constexpr uint32_t SPZ_MAGIC = 0x5053474e;
 constexpr float COLOR_SCALE = splat::SH_C0 / 0.15f;
 } // namespace
 namespace {
-void read_attribute(StreamReader& input, splat::Splat& result, unsigned degree, unsigned version, unsigned fractional_bits, size_t field) {
+void read_attribute(StreamReader& input, splat::Splat& result, uint32_t degree, uint32_t version, uint32_t fractional_bits, size_t field) {
     const size_t sh_count = splat::SH_COUNTS.at(degree);
     const std::array<size_t, 6> strides { version == 1 ? 6u : 9u, 1, 3, 3, version < 3 ? 3u : 4u, sh_count };
     if (!strides[field]) {
@@ -24,8 +25,8 @@ void read_attribute(StreamReader& input, splat::Splat& result, unsigned degree, 
         input.skip(result.size() * sh_count);
         return;
     }
-    const float fraction = std::ldexp(1.0f, -int(fractional_bits));
-    decode_records(input, result.size(), strides[field], [&](std::span<const uint8_t> bytes, size_t first, size_t count) {
+    const float fraction = std::ldexp(1.0f, -int32_t(fractional_bits));
+    decode_records(input, result.size(), strides[field], [&](std::span<const std::byte> bytes, size_t first, size_t count) {
         ByteReader reader(bytes);
         for (size_t i = first; i < first + count; ++i) {
             auto& point = result.gaussians[i];
@@ -35,7 +36,7 @@ void read_attribute(StreamReader& input, splat::Splat& result, unsigned degree, 
                         point.attribute(axis) = from_half(reader.read<uint16_t>());
                     } else {
                         const auto value = reader.take(3);
-                        const uint32_t bits = value[0] | (uint32_t(value[1]) << 8) | (uint32_t(value[2]) << 16);
+                        const uint32_t bits = std::to_integer<uint32_t>(value[0]) | (std::to_integer<uint32_t>(value[1]) << 8) | (std::to_integer<uint32_t>(value[2]) << 16);
                         const int32_t scalar = int32_t(bits) - ((bits & 0x800000) ? 0x1000000 : 0);
                         point.attribute(axis) = static_cast<float>(scalar * fraction);
                     }
@@ -62,7 +63,7 @@ void read_attribute(StreamReader& input, splat::Splat& result, unsigned degree, 
                 } else {
                     auto packed = reader.read<uint32_t>();
                     const auto largest = packed >> 30;
-                    for (int c = 3; c >= 0; --c) {
+                    for (int32_t c = 3; c >= 0; --c) {
                         if (uint32_t(c) == largest) {
                             continue;
                         }
@@ -77,7 +78,7 @@ void read_attribute(StreamReader& input, splat::Splat& result, unsigned degree, 
                 point.rotation.normalize();
             } else {
                 for (size_t c = 0; c < sh_count; ++c) {
-                    const auto value = (int(reader.read<uint8_t>()) - 128) / 128.0f;
+                    const auto value = (int32_t(reader.read<uint8_t>()) - 128) / 128.0f;
                     if (c < result.sh_count()) {
                         point.sh[c + 3] = value;
                     }
@@ -86,10 +87,10 @@ void read_attribute(StreamReader& input, splat::Splat& result, unsigned degree, 
         }
     });
 }
-splat::Splat read_spz_stream(StreamReader& source, unsigned max_sh_degree) {
+splat::Splat read_spz_stream(StreamReader& source, uint32_t max_sh_degree) {
     std::optional<StreamReader> decompressed;
     const auto signature = source.peek(2);
-    if (signature[0] == 0x1f && signature[1] == 0x8b) {
+    if (signature[0] == std::byte { 0x1f } && signature[1] == std::byte { 0x8b }) {
         decompressed.emplace(gzip_reader(source));
     }
     auto& input = decompressed ? *decompressed : source;
@@ -108,7 +109,7 @@ splat::Splat read_spz_stream(StreamReader& source, unsigned max_sh_degree) {
     if (degree > 3 || fractional_bits > 30) {
         throw std::runtime_error("Invalid SPZ SH degree or fractional bits");
     }
-    splat::Splat result(count, std::min(unsigned(degree), max_sh_degree));
+    splat::Splat result(count, std::min(uint32_t(degree), max_sh_degree));
     if (version == 4) {
         const auto toc_offset = input.read<uint32_t>();
         if (toc_offset < 32 || streams != (degree ? 6 : 5)) {
@@ -142,7 +143,7 @@ splat::Splat SpzFile::read(const FileInput& source) const {
     StreamReader reader(source.bytes);
     return read_spz_stream(reader, source.max_sh_degree);
 }
-splat::Splat SpzFile::read(const std::filesystem::path& path, unsigned max_sh_degree) const {
+splat::Splat SpzFile::read(const std::filesystem::path& path, uint32_t max_sh_degree) const {
     StreamReader reader(path);
     return read_spz_stream(reader, max_sh_degree);
 }
@@ -150,7 +151,7 @@ splat::Splat SpzFile::read(const std::filesystem::path& path, unsigned max_sh_de
 namespace {
 class SpzWriter {
 public:
-    SpzWriter(const splat::Splat& data, std::span<const uint32_t> indices, int version, int level)
+    SpzWriter(const splat::Splat& data, std::span<const uint32_t> indices, int32_t version, int32_t level)
         : data_(data), indices_(indices), version_(version), level_(level), strides_ { 9, 1, 3, 3, 4, data.sh_count() } {
         if (version != 3 && version != 4) {
             throw std::runtime_error("Unsupported SPZ output version");
@@ -164,15 +165,15 @@ public:
         append(header_, SPZ_MAGIC);
         append(header_, uint32_t(version));
         append(header_, static_cast<uint32_t>(indices.size()));
-        header_.push_back(static_cast<uint8_t>(data.sh_degree));
-        header_.push_back(12);
-        header_.push_back(1);
-        header_.push_back(version == 4 ? static_cast<uint8_t>(data.sh_degree ? 6 : 5) : 0);
+        header_.push_back(static_cast<std::byte>(data.sh_degree));
+        header_.push_back(std::byte { 12 });
+        header_.push_back(std::byte { 1 });
+        header_.push_back(static_cast<std::byte>(version == 4 ? (data.sh_degree ? 6 : 5) : 0));
     }
     void write(const codec::WriteChunk& output, const std::function<void(size_t)>& seek) const {
         if (version_ == 3) {
             const auto size = header_.size() + offsets_.back();
-            const auto read = [&](size_t offset, std::span<uint8_t> bytes) {
+            const auto read = [&](size_t offset, std::span<std::byte> bytes) {
                 if (offset < header_.size()) {
                     const size_t count = std::min(bytes.size(), header_.size() - offset);
                     std::copy_n(header_.data() + offset, count, bytes.data());
@@ -199,15 +200,15 @@ public:
         const size_t streams = data_.sh_degree ? 6 : 5;
         auto header = header_;
         append(header, uint32_t(32));
-        header.resize(32 + streams * 16, 0);
+        header.resize(32 + streams * 16, std::byte {});
         output(header);
         size_t position = header.size();
         Bytes toc;
         for (size_t field = 0; field < streams; ++field) {
             const auto size = offsets_[field + 1] - offsets_[field];
             const size_t start = position;
-            const auto read = [&](size_t offset, std::span<uint8_t> bytes) { encode(offsets_[field] + offset, bytes, true); };
-            const auto write = [&](std::span<const uint8_t> bytes) {
+            const auto read = [&](size_t offset, std::span<std::byte> bytes) { encode(offsets_[field] + offset, bytes, true); };
+            const auto write = [&](std::span<const std::byte> bytes) {
                 output(bytes);
                 position += bytes.size();
             };
@@ -222,15 +223,15 @@ public:
     }
 
 private:
-    void encode_rows(size_t field, size_t first, size_t count, uint8_t* output) const {
+    void encode_rows(size_t field, size_t first, size_t count, std::byte* output) const {
         for (size_t row = 0; row < count; ++row, output += strides_[field]) {
             const auto& point = data_.gaussians[indices_[first + row]];
             if (field == 0) {
                 for (size_t c = 0; c < 3; ++c) {
                     const auto value = static_cast<uint32_t>(static_cast<int32_t>(std::clamp(float(point.attribute(c)) * 4096, -8388607.0f, 8388607.0f)));
-                    output[c * 3] = value & 255;
-                    output[c * 3 + 1] = (value >> 8) & 255;
-                    output[c * 3 + 2] = (value >> 16) & 255;
+                    output[c * 3] = static_cast<std::byte>(value & 255);
+                    output[c * 3 + 1] = static_cast<std::byte>((value >> 8) & 255);
+                    output[c * 3 + 2] = static_cast<std::byte>((value >> 16) & 255);
                 }
             } else if (field == 1) {
                 output[0] = codec::quantize_byte(point.attribute(splat::Alpha) * 255);
@@ -244,14 +245,14 @@ private:
                 }
             } else if (field == 4) {
                 const auto& rotation = point.rotation.coeffs();
-                unsigned largest = 0;
-                for (unsigned c = 1; c < 4; ++c) {
+                uint32_t largest = 0;
+                for (uint32_t c = 1; c < 4; ++c) {
                     if (std::abs(rotation[c]) > std::abs(rotation[largest])) {
                         largest = c;
                     }
                 }
                 uint32_t packed = largest;
-                for (unsigned c = 0; c < 4; ++c) {
+                for (uint32_t c = 0; c < 4; ++c) {
                     if (c == largest) {
                         continue;
                     }
@@ -260,22 +261,22 @@ private:
                     packed = (packed << 10) | (sign << 9) | magnitude;
                 }
                 for (size_t c = 0; c < 4; ++c) {
-                    output[c] = static_cast<uint8_t>(packed >> (8 * c));
+                    output[c] = static_cast<std::byte>(packed >> (8 * c));
                 }
             } else {
                 for (size_t c = 0; c < data_.sh_count(); ++c) {
                     const float step = c < 9 ? 8 : 16;
                     const float quantized = std::floor((std::floor(float(point.attribute(splat::ShOffset + c)) * 128 + 0.5f) + 128 + step / 2) / step) * step;
-                    output[c] = static_cast<uint8_t>(std::clamp(quantized, 0.0f, 255.0f));
+                    output[c] = static_cast<std::byte>(std::clamp(quantized, 0.0f, 255.0f));
                 }
             }
         }
     }
-    void encode_field(size_t field, size_t offset, std::span<uint8_t> bytes, bool parallel) const {
+    void encode_field(size_t field, size_t offset, std::span<std::byte> bytes, bool parallel) const {
         const size_t stride = strides_[field];
         size_t first = offset / stride;
         const size_t skip = offset % stride;
-        std::array<uint8_t, 45> partial;
+        std::array<std::byte, 45> partial;
         if (skip) {
             encode_rows(field, first++, 1, partial.data());
             const size_t count = std::min(bytes.size(), stride - skip);
@@ -298,7 +299,7 @@ private:
             std::copy_n(partial.data(), bytes.size(), bytes.data());
         }
     }
-    void encode(size_t offset, std::span<uint8_t> bytes, bool parallel) const {
+    void encode(size_t offset, std::span<std::byte> bytes, bool parallel) const {
         while (!bytes.empty()) {
             const size_t field = std::upper_bound(offsets_.begin(), offsets_.end(), offset) - offsets_.begin() - 1;
             const size_t count = std::min(bytes.size(), offsets_[field + 1] - offset);
@@ -309,7 +310,7 @@ private:
     }
     const splat::Splat& data_;
     std::span<const uint32_t> indices_;
-    int version_, level_;
+    int32_t version_, level_;
     std::array<size_t, 6> strides_;
     std::array<size_t, 7> offsets_ {};
     Bytes header_;
@@ -320,7 +321,7 @@ Bytes SpzFile::write(const splat::Splat& data, std::span<const uint32_t> indices
     Bytes output;
     size_t position = 0;
     writer.write(
-        [&](std::span<const uint8_t> bytes) {
+        [&](std::span<const std::byte> bytes) {
             output.resize(std::max(output.size(), position + bytes.size()));
             std::copy(bytes.begin(), bytes.end(), output.begin() + position);
             position += bytes.size();
@@ -331,7 +332,7 @@ Bytes SpzFile::write(const splat::Splat& data, std::span<const uint32_t> indices
 void SpzFile::write(const std::filesystem::path& path, const splat::Splat& data, std::span<const uint32_t> indices) const {
     SpzWriter writer(data, indices, version_, compression_level_);
     FileStream output(path, FileStream::Access::Write);
-    writer.write([&](std::span<const uint8_t> bytes) { output.write(bytes); }, [&](size_t offset) { output.seek(offset); });
+    writer.write([&](std::span<const std::byte> bytes) { output.write(bytes); }, [&](size_t offset) { output.seek(offset); });
     output.close();
 }
 } // namespace splat_transform::io

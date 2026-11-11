@@ -41,9 +41,9 @@ function(compile_shader NAME SOURCE)
         message(FATAL_ERROR "DXC failed for ${NAME}: ${DXC_RESULT}")
     endif()
     file(READ "${BINARY}" SHADER_HEX HEX)
-    string(REGEX REPLACE "(..)" "0x\\1," SHADER_BYTES "${SHADER_HEX}")
+    string(REGEX REPLACE "(..)" "std::byte{0x\\1}," SHADER_BYTES "${SHADER_HEX}")
     file(CONFIGURE OUTPUT "${SHADER_TEMP_DIRECTORY}/${NAME}.h"
-        CONTENT "#pragma once\n#include <gpu/compute.h>\nnamespace splat_transform::shaders {\nalignas(4) inline constexpr uint8_t ${NAME}_spirv[] = { ${SHADER_BYTES} };\ninline constexpr gpu::ShaderCode ${NAME} { ${NAME}_spirv };\n}\n"
+        CONTENT "#pragma once\n#include <gpu/compute.h>\nnamespace splat_transform::shaders {\nalignas(4) inline constexpr std::byte ${NAME}_spirv[] = { ${SHADER_BYTES} };\ninline constexpr gpu::ShaderCode ${NAME} { ${NAME}_spirv };\n}\n"
         @ONLY NEWLINE_STYLE UNIX)
 endfunction()
 

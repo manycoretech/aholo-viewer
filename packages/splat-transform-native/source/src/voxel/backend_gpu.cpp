@@ -1,6 +1,7 @@
 #include "voxelize.h"
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <utility/logger.h>
 #include <utility/thread_pool.h>
 
@@ -53,7 +54,7 @@ void sort_candidates(CandidateBins& candidates) {
 }
 Batches build_batches(VoxelSession& session, const PreparedData& data, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
     Eigen::Vector3i count;
-    for (int a = 0; a < 3; ++a) {
+    for (int32_t a = 0; a < 3; ++a) {
         count[a] = (grid.blocks[a] + 3) / 4;
     }
     const float batch_size = 16 * resolution;
@@ -71,9 +72,9 @@ Batches build_batches(VoxelSession& session, const PreparedData& data, const Gri
         if (!candidates.counts[key]) {
             continue;
         }
-        Eigen::Vector3i origin { int(key % count[0]) * 4, int(key / count[0] % count[1]) * 4, int(key / (uint64_t(count[0]) * count[1])) * 4 };
+        Eigen::Vector3i origin { int32_t(key % count[0]) * 4, int32_t(key / count[0] % count[1]) * 4, int32_t(key / (uint64_t(count[0]) * count[1])) * 4 };
         Eigen::Vector3i dimensions;
-        for (int a = 0; a < 3; ++a) {
+        for (int32_t a = 0; a < 3; ++a) {
             dimensions[a] = std::min(4, grid.blocks[a] - origin[a]);
         }
         output.push_back({ origin, dimensions, candidates.offsets[key], candidates.counts[key] });
@@ -102,9 +103,9 @@ public:
         dispatch_time.finish();
         for (size_t j = 0; j < batches.size(); ++j) {
             const auto& b = batches[j];
-            for (int z = 0; z < b.dimensions[2]; ++z) {
-                for (int y = 0; y < b.dimensions[1]; ++y) {
-                    for (int x = 0; x < b.dimensions[0]; ++x) {
+            for (int32_t z = 0; z < b.dimensions[2]; ++z) {
+                for (int32_t y = 0; y < b.dimensions[1]; ++y) {
+                    for (int32_t x = 0; x < b.dimensions[0]; ++x) {
                         const size_t local = j * 128 + 2 * (x + y * b.dimensions[0] + z * b.dimensions[0] * b.dimensions[1]);
                         output.set_mask(output.block_index({ b.origin[0] + x, b.origin[1] + y, b.origin[2] + z }), uint64_t(masks[local]) | (uint64_t(masks[local + 1]) << 32));
                     }

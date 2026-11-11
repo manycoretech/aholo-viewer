@@ -2,6 +2,7 @@
 #include <bit>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <io/ksplat.h>
 #include <io/ply.h>
 #include <iostream>
@@ -138,7 +139,7 @@ void formats() {
             auto file = io::create_file(extension, { .spz_version = variant ? 4 : 3, .high_precision = variant }, io::FileOperation::Write);
             const auto bytes = file->write(source, indices);
             const auto full = file->read({ {}, bytes, 3 });
-            for (unsigned degree : { 0u, 1u, 2u }) {
+            for (uint32_t degree : { 0u, 1u, 2u }) {
                 const auto limited = file->read({ {}, bytes, degree });
                 require(limited.sh_degree == degree && limited.size() == source.size(), "Format ignored maxShDegree");
                 for (size_t i = 0; i < limited.size(); ++i) {
@@ -178,7 +179,8 @@ void packed_ply_fields() {
     for (const uint32_t field : { 0xa5a5a5a5u, 0xe0080201u, 0x12345678u, 0x89abcdefu }) {
         io::append(payload, field);
     }
-    io::Bytes bytes(header.begin(), header.end());
+    const auto header_bytes = std::as_bytes(std::span(header));
+    io::Bytes bytes(header_bytes.begin(), header_bytes.end());
     bytes.insert(bytes.end(), payload.begin(), payload.end());
     const auto decoded = io::PlyFile().read({ {}, bytes, 0 });
     const auto& point = decoded.gaussians.at(0);
@@ -197,7 +199,7 @@ void float_ply_layouts() {
     const std::array<std::string, 14> fields {
         "x", "y", "z", "scale_0", "scale_1", "scale_2", "rot_1", "rot_2", "rot_3", "rot_0", "f_dc_0", "f_dc_1", "f_dc_2", "opacity"
     };
-    const auto make_file = [&](size_t count, unsigned degree, bool native_endian, bool mixed) {
+    const auto make_file = [&](size_t count, uint32_t degree, bool native_endian, bool mixed) {
         const bool little = native_endian == (std::endian::native == std::endian::little);
         std::string header = "ply\nformat binary_" + std::string(little ? "little" : "big") + "_endian 1.0\nelement vertex " + std::to_string(count) + '\n';
         // Deliberately reorder the fields and keep an unused property in every
@@ -210,9 +212,10 @@ void float_ply_layouts() {
             header += "property " + std::string(mixed && name == "x" ? "double " : "float ") + name + '\n';
         }
         header += "property " + std::string(mixed ? "uchar" : "float") + " ignored\nend_header\n";
-        io::Bytes bytes(header.begin(), header.end());
+        const auto header_bytes = std::as_bytes(std::span(header));
+        io::Bytes bytes(header_bytes.begin(), header_bytes.end());
         const auto append_value = [&]<typename T>(T value) {
-            auto data = std::bit_cast<std::array<uint8_t, sizeof(T)>>(value);
+            auto data = std::bit_cast<std::array<std::byte, sizeof(T)>>(value);
             if (little != (std::endian::native == std::endian::little)) {
                 std::ranges::reverse(data);
             }
@@ -220,7 +223,7 @@ void float_ply_layouts() {
         };
         for (size_t row = 0; row < count; ++row) {
             for (size_t c = 0; c < names.size(); ++c) {
-                const float value = float(int((row * 7 + c * 11) % 97) - 48) / 32;
+                const float value = float(int32_t((row * 7 + c * 11) % 97) - 48) / 32;
                 if (mixed && names[c] == "x") {
                     append_value(double(value));
                 } else {
@@ -235,12 +238,12 @@ void float_ply_layouts() {
         }
         return bytes;
     };
-    for (unsigned degree : { 0u, 1u, 2u, 3u }) {
+    for (uint32_t degree : { 0u, 1u, 2u, 3u }) {
         const size_t count = degree == 3 ? 65537 : 13;
         const auto fast_bytes = make_file(count, degree, true, false);
         const auto opposite = make_file(count, degree, false, false);
         const auto mixed = make_file(count, degree, true, true);
-        for (unsigned retained : { 0u, degree }) {
+        for (uint32_t retained : { 0u, degree }) {
             const auto fast = io::PlyFile().read({ {}, fast_bytes, retained });
             for (const auto* generic_bytes : { &fast_bytes, &opposite, &mixed }) {
                 const auto generic = io::PlyFile().read({ {}, *generic_bytes, retained });

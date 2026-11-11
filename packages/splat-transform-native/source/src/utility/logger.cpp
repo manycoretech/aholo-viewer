@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstdint>
 #include <iomanip>
 #include <iostream>
 #include <syncstream>
@@ -87,7 +88,7 @@ void Logger::Timer::finish() {
     const auto elapsed = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - start_).count();
     logger_.info(label_, ": ", duration_text(elapsed));
 }
-std::string fixed(float value, int precision) {
+std::string fixed(float value, int32_t precision) {
     if (std::isnan(value)) {
         return "NaN";
     }

@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -20,7 +21,7 @@ private:
         size_t flush_count = 0;
 
     private:
-        int sync() override {
+        int32_t sync() override {
             ++flush_count;
             return std::stringbuf::sync();
         }
@@ -74,9 +75,9 @@ int main() {
         {
             auto task = logger.scope("[Task:Parallel#3]");
             std::vector<std::jthread> workers;
-            for (int worker = 0; worker < 4; ++worker) {
+            for (int32_t worker = 0; worker < 4; ++worker) {
                 workers.emplace_back([&, worker] {
-                    for (int index = 0; index < 25; ++index) {
+                    for (int32_t index = 0; index < 25; ++index) {
                         logger.info("worker=", worker, " item=", index);
                     }
                 });
@@ -88,8 +89,8 @@ int main() {
             messages.insert(std::move(line));
         }
         require(messages.size() == 100, "Concurrent logging lost or interleaved messages");
-        for (int worker = 0; worker < 4; ++worker) {
-            for (int index = 0; index < 25; ++index) {
+        for (int32_t worker = 0; worker < 4; ++worker) {
+            for (int32_t index = 0; index < 25; ++index) {
                 require(messages.contains("[Task:Parallel#3] worker=" + std::to_string(worker) + " item=" + std::to_string(index)), "Concurrent logging changed a task prefix or message");
             }
         }

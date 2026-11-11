@@ -1,6 +1,7 @@
 #include "cluster_gpu.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <numeric>
 #include <spatial/clustering.h>
 #include <unordered_set>
@@ -58,7 +59,7 @@ Quantization detail::quantize_values(std::vector<float> values, size_t rows, siz
     };
     const size_t k = std::min<size_t>(256, occupied);
     std::vector<float> previous(bins, 1e30f), current(bins, 1e30f);
-    std::vector<std::vector<int>> splits(k + 1, std::vector<int>(bins, -1));
+    std::vector<std::vector<int32_t>> splits(k + 1, std::vector<int32_t>(bins, -1));
     for (size_t j = 0; j < bins; ++j) {
         previous[j] = cost(0, j);
     }
@@ -66,12 +67,12 @@ Quantization detail::quantize_values(std::vector<float> values, size_t rows, siz
         std::fill(current.begin(), current.end(), 1e30f);
         for (size_t j = m - 1; j < bins; ++j) {
             float best = 1e30f;
-            int split = static_cast<int>(m) - 2;
+            int32_t split = static_cast<int32_t>(m) - 2;
             for (size_t s = m - 2; s < j; ++s) {
                 const float value = previous[s] + cost(s + 1, j);
                 if (value < best) {
                     best = value;
-                    split = static_cast<int>(s);
+                    split = static_cast<int32_t>(s);
                 }
             }
             current[j] = best;
@@ -79,9 +80,9 @@ Quantization detail::quantize_values(std::vector<float> values, size_t rows, siz
         }
         previous.swap(current);
     }
-    int j = static_cast<int>(bins) - 1;
+    int32_t j = static_cast<int32_t>(bins) - 1;
     for (size_t m = k; m > 0; --m) {
-        const int s = m > 1 ? splits[m][j] : -1;
+        const int32_t s = m > 1 ? splits[m][j] : -1;
         result.centroids[m - 1] = std::lerp(min, max, mean(s + 1, j));
         j = s;
     }

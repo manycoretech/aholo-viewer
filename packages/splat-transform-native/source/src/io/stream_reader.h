@@ -9,14 +9,14 @@ namespace splat_transform::io {
 // before advancing the reader. Compressed readers retain only a bounded window.
 class StreamReader {
 public:
-    using Read = std::function<size_t(std::span<uint8_t>)>;
+    using Read = std::function<size_t(std::span<std::byte>)>;
     explicit StreamReader(const std::filesystem::path& path, size_t buffer_size = 1024 * 1024);
-    explicit StreamReader(std::span<const uint8_t> bytes, size_t buffer_size = 1024 * 1024);
+    explicit StreamReader(std::span<const std::byte> bytes, size_t buffer_size = 1024 * 1024);
     explicit StreamReader(Read read, size_t buffer_size = 1024 * 1024);
     size_t remaining() const { return remaining_; }
-    std::span<const uint8_t> peek(size_t count);
-    std::span<const uint8_t> take(size_t count);
-    std::span<const uint8_t> read_some(size_t maximum);
+    std::span<const std::byte> peek(size_t count);
+    std::span<const std::byte> take(size_t count);
+    std::span<const std::byte> read_some(size_t maximum);
     void skip(size_t count);
     void require_end();
     template<typename T>

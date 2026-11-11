@@ -3,6 +3,7 @@
 #include <bit>
 #include <cmath>
 #include <codec/codec.h>
+#include <cstdint>
 #include <io/file.h>
 #include <io/json.h>
 #include <utility/logger.h>
@@ -140,14 +141,14 @@ io::Bytes encode_octree(const Octree& tree, bool compact) {
             const auto node = tree.nodes[i];
             const uint8_t tag = node == 0xff000000u ? 1 : (node >> 24) ? 2
                                                                        : 0;
-            tags[i / 4] |= tag << ((i % 4) * 2);
+            tags[i / 4] |= std::byte { tag } << ((i % 4) * 2);
             if (tag == 2) {
-                masks.push_back(node >> 24);
+                masks.push_back(static_cast<std::byte>(node >> 24));
             }
         }
         output.insert(output.end(), tags.begin(), tags.end());
         output.insert(output.end(), masks.begin(), masks.end());
-        output.resize((output.size() + 3) & ~size_t { 3 }, 0);
+        output.resize((output.size() + 3) & ~size_t { 3 }, std::byte {});
     } else {
         for (auto value : tree.nodes) {
             io::append(output, value);
@@ -202,7 +203,7 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
         const float exterior_pad = has_exterior ? (std::ceil(navigation.exterior_radius / resolution) + 1) * resolution : 0;
         const float floor_pad = navigation.floor_fill ? (std::ceil(navigation.floor_dilation / resolution) + 1) * resolution : 0;
         auto bounds = prepared.scene;
-        for (int a = 0; a < 3; ++a) {
+        for (int32_t a = 0; a < 3; ++a) {
             const float pad = a == 1 ? exterior_pad : std::max(exterior_pad, floor_pad);
             bounds.min()[a] = std::max(bounds.min()[a] - pad, box.min()[a]);
             bounds.max()[a] = std::min(bounds.max()[a] + pad, box.max()[a]);
@@ -212,11 +213,11 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
         }
         return align_bounds(bounds, resolution);
     };
-    for (int attempt = 0; attempt <= 4; ++attempt) {
+    for (int32_t attempt = 0; attempt <= 4; ++attempt) {
         auto bounds = resolve_bounds();
-        for (int grid_attempt = 0; grid_attempt < 4; ++grid_attempt) {
+        for (int32_t grid_attempt = 0; grid_attempt < 4; ++grid_attempt) {
             float count = 1;
-            for (int a = 0; a < 3; ++a) {
+            for (int32_t a = 0; a < 3; ++a) {
                 count *= std::round((bounds.max()[a] - bounds.min()[a]) / (4 * resolution));
             }
             const float target = std::floor(0x7fffffff * 0.55f);
@@ -279,7 +280,7 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
         std::filesystem::create_directories(directory);
         const auto json = metadata.dump(2);
         logger.info("writing '", io::path_utf8(directory / "voxel-meta.json"), "'...");
-        io::write_bytes(directory / "voxel-meta.json", std::span(reinterpret_cast<const uint8_t*>(json.data()), json.size()));
+        io::write_bytes(directory / "voxel-meta.json", std::as_bytes(std::span(json)));
         logger.info("writing '", io::path_utf8(directory / filename), "'...");
         io::write_bytes(directory / filename, binary);
         const auto shape = options.collision_mesh;

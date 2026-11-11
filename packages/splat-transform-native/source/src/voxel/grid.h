@@ -2,6 +2,7 @@
 #include <Eigen/Core>
 #include <array>
 #include <bit>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <splat/splat.h>
@@ -12,10 +13,10 @@
 namespace splat_transform::voxel {
 class Backend;
 inline constexpr uint64_t FULL_BLOCK = ~uint64_t { 0 };
-inline constexpr std::array<int, 3> BIT_STRIDES { 1, 4, 16 };
-constexpr uint64_t face_mask(int axis, int coordinate) {
+inline constexpr std::array<int32_t, 3> BIT_STRIDES { 1, 4, 16 };
+constexpr uint64_t face_mask(int32_t axis, int32_t coordinate) {
     uint64_t result = 0;
-    for (int i = 0; i < 64; ++i) {
+    for (int32_t i = 0; i < 64; ++i) {
         if ((i / BIT_STRIDES[axis]) % 4 == coordinate) {
             result |= uint64_t { 1 } << i;
         }
@@ -50,9 +51,9 @@ public:
 
 Grid unite(const Grid& left, const Grid& right);
 Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool boundary = false);
-std::optional<Eigen::Vector3i> nearest_cell(const Grid& allowed, Eigen::Vector3i seed, int radius);
+std::optional<Eigen::Vector3i> nearest_cell(const Grid& allowed, Eigen::Vector3i seed, int32_t radius);
 Grid filter_blocks(const Grid& grid);
-void crop_grid(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, bool navigable, int margin);
+void crop_grid(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, bool navigable, int32_t margin);
 void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const Navigation& options, const Backend& backend);
 struct Mesh {
     std::vector<float> positions;
@@ -61,5 +62,5 @@ struct Mesh {
 Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution);
 Mesh marching_cubes(const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution);
 Mesh merge_coplanar(const Mesh& mesh, float resolution);
-std::vector<uint8_t> encode_glb(const Mesh& mesh);
+std::vector<std::byte> encode_glb(const Mesh& mesh);
 } // namespace splat_transform::voxel

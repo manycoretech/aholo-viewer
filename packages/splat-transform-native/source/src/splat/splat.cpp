@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <numbers>
 #include <numeric>
 #include <ranges>
@@ -167,7 +168,7 @@ void Gaussian::make_valid() {
     }
 }
 
-Splat::Splat(size_t count, unsigned degree) : sh_degree(degree) {
+Splat::Splat(size_t count, uint32_t degree) : sh_degree(degree) {
     if (degree > 3 || count > std::numeric_limits<uint32_t>::max()) {
         throw std::runtime_error("Unsupported splat size or SH degree");
     }
@@ -177,7 +178,7 @@ Splat::Splat(size_t count, unsigned degree) : sh_degree(degree) {
     }
 }
 
-void Splat::limit_sh_degree(unsigned maximum) {
+void Splat::limit_sh_degree(uint32_t maximum) {
     const auto degree = std::min(sh_degree, std::min(maximum, 3u));
     if (degree == sh_degree) {
         return;
@@ -226,7 +227,7 @@ void Splat::prepare_lod() {
 }
 
 Splat combine(std::vector<Splat>&& source, bool minimum_sh) {
-    unsigned degree = minimum_sh ? 3 : 0;
+    uint32_t degree = minimum_sh ? 3 : 0;
     size_t count = 0;
     for (const auto& part : source) {
         if (part.size() > std::numeric_limits<uint32_t>::max() - count) {
@@ -303,16 +304,16 @@ Eigen::AlignedBox3f dense_bounds(const Splat& data, float ratio) {
     if (!data.size() || ratio >= 1) {
         return result;
     }
-    constexpr int BIN_COUNT = 65535;
+    constexpr int32_t BIN_COUNT = 65535;
     std::array<std::vector<uint32_t>, 3> bins;
     Eigen::Vector3f scale;
-    std::array<int, 3> start { 0, 0, 0 }, end { BIN_COUNT - 1, BIN_COUNT - 1, BIN_COUNT - 1 };
+    std::array<int32_t, 3> start { 0, 0, 0 }, end { BIN_COUNT - 1, BIN_COUNT - 1, BIN_COUNT - 1 };
     for (size_t axis = 0; axis < 3; ++axis) {
         bins[axis].resize(BIN_COUNT, 0);
         scale[axis] = BIN_COUNT / std::max(result.max()[axis] - result.min()[axis], 1e-9f);
         for (const auto& gaussian : data.gaussians) {
             const float value = gaussian.mean[axis];
-            const auto index = static_cast<int>((value - result.min()[axis]) * scale[axis]);
+            const auto index = static_cast<int32_t>((value - result.min()[axis]) * scale[axis]);
             // The original typed array does not count a point in the upper endpoint bin.
             if (index >= 0 && index < BIN_COUNT) {
                 ++bins[axis][index];
@@ -323,9 +324,9 @@ Eigen::AlignedBox3f dense_bounds(const Splat& data, float ratio) {
     const auto limit = static_cast<int64_t>(std::ceil(data.size() * (1 - ratio)));
     while (remaining > limit) {
         uint32_t minimum = std::numeric_limits<uint32_t>::max();
-        int selected = -1;
-        for (int side = 0; side < 6; ++side) {
-            int axis = side / 2;
+        int32_t selected = -1;
+        for (int32_t side = 0; side < 6; ++side) {
+            int32_t axis = side / 2;
             if (start[axis] > end[axis]) {
                 continue;
             }

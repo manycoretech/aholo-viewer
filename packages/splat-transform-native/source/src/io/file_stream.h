@@ -1,5 +1,5 @@
 #pragma once
-#include <cstdint>
+#include <cstddef>
 #include <filesystem>
 #include <memory>
 #include <span>
@@ -19,8 +19,8 @@ public:
     FileStream& operator=(const FileStream&) = delete;
     size_t size() const;
     bool uses_native_backend() const noexcept;
-    size_t read(std::span<uint8_t> target);
-    void write(std::span<const uint8_t> bytes);
+    size_t read(std::span<std::byte> target);
+    void write(std::span<const std::byte> bytes);
     void seek(size_t offset);
     void close();
 

@@ -2,6 +2,7 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <algorithm>
+#include <cstdint>
 #include <deque>
 #include <numeric>
 
@@ -128,8 +129,8 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
         bool valid = true;
         for (auto it = fan.rbegin(); it != fan.rend(); ++it) {
             const auto& v = triangles[*it].vertices;
-            const int offset = v[0] == vertex ? 0 : v[1] == vertex ? 1
-                                                                   : 2;
+            const int32_t offset = v[0] == vertex ? 0 : v[1] == vertex ? 1
+                                                                       : 2;
             Link link { v[(offset + 1) % 3], v[(offset + 2) % 3], *it };
             if (std::ranges::find(links, link.from, &Link::from) != links.end()) {
                 valid = false;

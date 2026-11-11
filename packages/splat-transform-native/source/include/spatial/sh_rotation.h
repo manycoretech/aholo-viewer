@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include <cstdint>
 #include <splat/splat.h>
 #include <stdexcept>
 #include <unsupported/Eigen/KroneckerProduct>
@@ -102,7 +103,7 @@ public:
     }
 
 private:
-    template<int Size>
+    template<int32_t Size>
     static void rotate_band(splat::ShCoefficients& sh, size_t offset, const Eigen::Matrix<float, Size, Size>& rotation) {
         // Rows are coefficients, columns are RGB. Evaluate before overwriting input.
         Eigen::Map<Eigen::Matrix<float, Size, 3, Eigen::RowMajor>> coefficients(sh.data() + offset * 3);

@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstdint>
 #include <io/ksplat.h>
 
 namespace splat_transform::io {
@@ -21,9 +22,9 @@ splat::Splat KsplatFile::read(const FileInput& source) const {
     if (sh_max == 0) {
         sh_max = 1.5f;
     }
-    unsigned degree = 0;
+    uint32_t degree = 0;
     for (size_t s = 0; s < section_count; ++s) {
-        degree = std::max(degree, unsigned(input.read_at<uint16_t>(4096 + s * 1024 + 40)));
+        degree = std::max(degree, uint32_t(input.read_at<uint16_t>(4096 + s * 1024 + 40)));
     }
     splat::Splat result(count, source.retained_degree(degree));
     constexpr std::array<size_t, 45> SH_INDEX {

@@ -53,7 +53,7 @@ void write_resource(const Resource& resource, const std::filesystem::path& path,
             const auto destination = path / io::utf8_path(file.name);
             if (const auto* text = std::get_if<std::string>(&file.content)) {
                 progress(destination);
-                io::write_bytes(destination, { reinterpret_cast<const uint8_t*>(text->data()), text->size() });
+                io::write_bytes(destination, std::as_bytes(std::span(*text)));
                 continue;
             }
             const auto format = io::create_file(destination.extension().string(), options, io::FileOperation::Write);

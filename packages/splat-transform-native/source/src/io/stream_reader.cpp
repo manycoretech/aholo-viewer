@@ -13,12 +13,12 @@ struct GzipState {
         }
     }
     ~GzipState() { inflateEnd(&stream); }
-    size_t read(std::span<uint8_t> output) {
+    size_t read(std::span<std::byte> output) {
         if (finished) {
             return 0;
         }
         const size_t capacity = std::min(output.size(), size_t(std::numeric_limits<uInt>::max()));
-        stream.next_out = output.data();
+        stream.next_out = reinterpret_cast<Bytef*>(output.data());
         stream.avail_out = static_cast<uInt>(capacity);
         while (stream.avail_out) {
             if (!stream.avail_in && !input_ended) {
@@ -26,7 +26,7 @@ struct GzipState {
                 if (input.empty()) {
                     input_ended = true;
                 }
-                stream.next_in = const_cast<Bytef*>(input.data());
+                stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(input.data()));
                 stream.avail_in = static_cast<uInt>(input.size());
             }
             const auto before = stream.avail_out;
@@ -51,7 +51,7 @@ struct ZstdState {
             throw std::runtime_error("Cannot initialize Zstd stream");
         }
     }
-    size_t read(std::span<uint8_t> output) {
+    size_t read(std::span<std::byte> output) {
         ZSTD_outBuffer out { output.data(), output.size(), 0 };
         while (out.pos < out.size) {
             if (input.pos == input.size && !input_ended) {
@@ -93,10 +93,10 @@ StreamReader::StreamReader(Read read, size_t buffer_size) : read_(std::move(read
 StreamReader::StreamReader(const std::filesystem::path& path, size_t buffer_size) : buffer_size_(buffer_size) {
     auto stream = std::make_shared<FileStream>(path, FileStream::Access::Read);
     remaining_ = stream->size();
-    read_ = [stream](std::span<uint8_t> target) { return stream->read(target); };
+    read_ = [stream](std::span<std::byte> target) { return stream->read(target); };
 }
-StreamReader::StreamReader(std::span<const uint8_t> bytes, size_t buffer_size)
-    : read_([bytes](std::span<uint8_t> target) mutable {
+StreamReader::StreamReader(std::span<const std::byte> bytes, size_t buffer_size)
+    : read_([bytes](std::span<std::byte> target) mutable {
           const size_t count = std::min(bytes.size(), target.size());
           std::copy_n(bytes.begin(), count, target.begin());
           bytes = bytes.subspan(count);
@@ -128,7 +128,7 @@ void StreamReader::fill(size_t minimum) {
         }
     }
 }
-std::span<const uint8_t> StreamReader::peek(size_t count) {
+std::span<const std::byte> StreamReader::peek(size_t count) {
     if (count > remaining_) {
         throw std::runtime_error("Truncated input stream");
     }
@@ -136,15 +136,15 @@ std::span<const uint8_t> StreamReader::peek(size_t count) {
     if (count > end_ - begin_) {
         throw std::runtime_error("Truncated input stream");
     }
-    return std::span<const uint8_t>(buffer_).subspan(begin_, count);
+    return std::span<const std::byte>(buffer_).subspan(begin_, count);
 }
-std::span<const uint8_t> StreamReader::take(size_t count) {
+std::span<const std::byte> StreamReader::take(size_t count) {
     auto result = peek(count);
     begin_ += count;
     remaining_ -= count;
     return result;
 }
-std::span<const uint8_t> StreamReader::read_some(size_t maximum) {
+std::span<const std::byte> StreamReader::read_some(size_t maximum) {
     if (!maximum || !remaining_) {
         return {};
     }
@@ -167,10 +167,10 @@ void StreamReader::require_end() {
 }
 StreamReader gzip_reader(StreamReader& source) {
     auto state = std::make_shared<GzipState>(source);
-    return StreamReader([state](std::span<uint8_t> output) { return state->read(output); });
+    return StreamReader([state](std::span<std::byte> output) { return state->read(output); });
 }
 StreamReader zstd_reader(StreamReader& source, size_t compressed_size) {
     auto state = std::make_shared<ZstdState>(source, compressed_size);
-    return StreamReader([state](std::span<uint8_t> output) { return state->read(output); });
+    return StreamReader([state](std::span<std::byte> output) { return state->read(output); });
 }
 } // namespace splat_transform::io

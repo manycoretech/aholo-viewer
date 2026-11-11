@@ -1,5 +1,6 @@
 #pragma once
 #include <chrono>
+#include <cstdint>
 #include <exception>
 #include <iostream>
 #include <mutex>
@@ -41,7 +42,7 @@ public:
         Logger& logger_;
         std::string label_;
         std::chrono::steady_clock::time_point start_;
-        int exceptions_;
+        int32_t exceptions_;
         bool enabled_;
     };
 
@@ -85,6 +86,6 @@ private:
 };
 
 Logger& logger();
-std::string fixed(float value, int precision = 2);
+std::string fixed(float value, int32_t precision = 2);
 std::string format_size(size_t bytes);
 } // namespace splat_transform::utility
