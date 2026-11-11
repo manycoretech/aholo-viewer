@@ -1,5 +1,7 @@
 #include "../lod_support.h"
+#include <array>
 #include <pipeline/tasks/auto_lod.h>
+#include <splat/splat_lod.h>
 #include <utility/logger.h>
 
 namespace splat_transform::pipeline {
@@ -9,8 +11,11 @@ void AutoLodTask::exec(const Json& config, TaskContext& context) const {
     auto& logger = utility::logger();
     logger.info("loaded -> \"", config.at("input").get<std::string>(), '"');
     const auto target = target_count(data, config, 0.3f, std::numeric_limits<float>::infinity());
-    Json levels = Json::array({ { { "precision", 1.0f }, { "scaleBoost", 1.0f } }, { { "precision", data.size() ? float(target) / data.size() : 0 }, { "scaleBoost", 1.0f } } });
-    auto blocked = generate(std::move(data), levels, 0.2f, split_normal(config));
+    const std::array levels {
+        splat::lod::SplatLevelParameters { 1.0f, 1.0f },
+        splat::lod::SplatLevelParameters { data.size() ? float(target) / data.size() : 0, 1.0f }
+    };
+    auto blocked = splat::lod::generate_blocked_lod(std::move(data), levels, 0.2f, split_normal(config));
     std::vector<splat::Splat> parts;
     for (const auto& block : blocked.blocks) {
         parts.push_back(std::move(blocked.splats[block.references[1]]));

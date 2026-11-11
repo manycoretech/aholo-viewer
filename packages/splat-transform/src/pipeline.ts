@@ -9,7 +9,7 @@ export type TaskType =
     | 'FlexLod'
     | 'AutoLod'
     | 'AutoChunkLod'
-    | 'SplitSplatTask'
+    | 'Split'
     | 'Voxel';
 
 /** Optional extensions to Modify; output remains an alias of the modified input. */

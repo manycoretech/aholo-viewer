@@ -191,7 +191,7 @@ const cli = yargs(hideBin(process.argv))
                     { id: '0', type: 'Read', config: { inputs: [argv.input], output: 'cache0' } },
                     {
                         id: '1',
-                        type: 'SplitSplatTask',
+                        type: 'Split',
                         config: {
                             input: 'cache0',
                             output: 'cache0',

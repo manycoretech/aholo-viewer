@@ -7,8 +7,10 @@
 #include <ranges>
 #include <splat/splat.h>
 #include <splat/splat_lod.h>
+#include <stdexcept>
 #include <tuple>
 #include <utility/logger.h>
+#include <utility/thread_pool.h>
 #include <vector>
 
 namespace splat_transform::splat {
@@ -405,5 +407,47 @@ void generate_lod(size_t id, SplatLod& lod, std::span<const SplatLevelParameters
         }
         lod.levels.push_back(lod.splats.size() - 1);
     }
+}
+
+BlockedSplat generate_blocked_lod(Splat input, std::span<const SplatLevelParameters> parameters, float precision, block::SplitNormal normal) {
+    BlockedSplat output;
+    if (!input.size()) {
+        output.splats.push_back(std::move(input));
+        output.blocks.push_back({ Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f::Zero()), std::vector<uint32_t>(parameters.size(), 0) });
+        return output;
+    }
+    if (!(precision > 0 && precision <= 1) || parameters.empty()) {
+        throw std::runtime_error("Invalid LOD configuration");
+    }
+    input.prepare_lod();
+    auto blocks = block::split(std::move(input), precision, normal);
+    const auto lod_parameters = parameters.subspan(1);
+    auto& pool = threading::default_pool();
+    threading::TaskGroup<SplatLod> futures(pool, blocks.size());
+    for (size_t index = 0; index < blocks.size(); ++index) {
+        futures.submit([&, index] {
+            SplatLod lod;
+            lod.splats.push_back(std::move(blocks[index]));
+            lod.levels.push_back(0);
+            if (!lod_parameters.empty()) {
+                generate_lod(index, lod, lod_parameters, 2000, 20);
+            }
+            return lod;
+        });
+    }
+    for (size_t index = 0; index < futures.size(); ++index) {
+        auto lod = futures.get(index);
+        Block block;
+        block.bounds = lod.splats.front().bounding_box;
+        const auto base = static_cast<uint32_t>(output.splats.size());
+        for (auto ref : lod.levels) {
+            block.references.push_back(base + ref);
+        }
+        for (auto& splat : lod.splats) {
+            output.splats.push_back(std::move(splat));
+        }
+        output.blocks.push_back(std::move(block));
+    }
+    return output;
 }
 } // namespace splat_transform::splat::lod

@@ -1,6 +1,7 @@
 #include "../lod_support.h"
 #include <iomanip>
 #include <pipeline/tasks/auto_chunk_lod.h>
+#include <splat/splat_lod.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility/logger.h>
@@ -24,7 +25,12 @@ std::vector<SingleFile> chunk_lod(splat::Splat source, const Json& config) {
     auto& logger = utility::logger();
     logger.info("generate lod");
     auto elapsed = logger.time("generate elapsed");
-    auto blocked = generate(std::move(source), levels, source_count ? std::min(1.0f, max_count / source_count) : 1, split_normal(config));
+    std::vector<splat::lod::SplatLevelParameters> parameters;
+    parameters.reserve(levels.size());
+    for (const auto& level : levels) {
+        parameters.push_back({ level.at("precision").get<float>(), level.value("scaleBoost", 1.0f) });
+    }
+    auto blocked = splat::lod::generate_blocked_lod(std::move(source), parameters, source_count ? std::min(1.0f, max_count / source_count) : 1, split_normal(config));
     elapsed.finish();
     struct Layout {
         size_t file;

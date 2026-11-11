@@ -8,7 +8,7 @@
 #include <pipeline/tasks/replace_append.h>
 #include <pipeline/tasks/select.h>
 #include <pipeline/tasks/skeleton_lod.h>
-#include <pipeline/tasks/split_splat.h>
+#include <pipeline/tasks/split.h>
 #include <pipeline/tasks/voxel.h>
 #include <pipeline/tasks/write.h>
 
@@ -31,7 +31,8 @@ const std::array TASKS {
     TaskType { "FlexLod", make_task<FlexLodTask> },
     TaskType { "AutoLod", make_task<AutoLodTask> },
     TaskType { "AutoChunkLod", make_task<AutoChunkLodTask> },
-    TaskType { "SplitSplatTask", make_task<SplitSplatTask> },
+    TaskType { "Split", make_task<SplitTask> },
+    TaskType { "SplitSplatTask", make_task<SplitTask> }, // Legacy version 1 alias.
     TaskType { "Voxel", make_task<VoxelTask> },
 };
 } // namespace

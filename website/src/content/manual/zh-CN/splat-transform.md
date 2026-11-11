@@ -44,7 +44,7 @@ order: 5
 | `spz`、`uspz`  | SPZ v3/v4，以及未 gzip 压缩的 SPZ v3；版本由 [Write](#write) 配置。 |
 | `sog`          | SOG；有 SH 系数时需要 GPU。                                         |
 | `esz`          | ESZ v2；`highPrecision` 控制精度。推荐用于分块 LOD。                |
-| LOD / 分块目录 | 由 `AutoChunkLod` 或 `SplitSplatTask` 生成，再由 `Write` 写出。     |
+| LOD / 分块目录 | 由 `AutoChunkLod` 或 `Split` 生成，再由 `Write` 写出。              |
 | 体素目录       | 由 `Voxel` 直接写出元数据、体素二进制及可选碰撞 GLB。               |
 
 ## 安装与命令行
@@ -61,15 +61,15 @@ splat-transform list:gpu
 splat-transform pipeline.json
 ```
 
-| 命令             | 对应任务与参数                                                                 |
-| ---------------- | ------------------------------------------------------------------------------ |
-| `create`         | `Read → Modify → Write`，用于格式转换。                                        |
-| `lod:loading`    | `SkeletonLod`；可选 `--ratio`。                                                |
-| `lod:flex`       | `FlexLod`；必填 `--score`，可选 `--ratio`。                                    |
-| `lod:auto`       | `AutoLod`；可选 `--ratio`、`--split-normal`。                                  |
-| `lod:auto-chunk` | `AutoChunkLod`；必填 `--type`，可选 `--max-chunk-counts`、`--split-normal`。   |
-| `split`          | `SplitSplatTask`；必填 `--type`，可选 `--max-chunk-counts`、`--split-normal`。 |
-| `list:gpu`       | 列出 Vulkan 设备下标和名称。                                                   |
+| 命令             | 对应任务与参数                                                               |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `create`         | `Read → Modify → Write`，用于格式转换。                                      |
+| `lod:loading`    | `SkeletonLod`；可选 `--ratio`。                                              |
+| `lod:flex`       | `FlexLod`；必填 `--score`，可选 `--ratio`。                                  |
+| `lod:auto`       | `AutoLod`；可选 `--ratio`、`--split-normal`。                                |
+| `lod:auto-chunk` | `AutoChunkLod`；必填 `--type`，可选 `--max-chunk-counts`、`--split-normal`。 |
+| `split`          | `Split`；必填 `--type`，可选 `--max-chunk-counts`、`--split-normal`。        |
+| `list:gpu`       | 列出 Vulkan 设备下标和名称。                                                 |
 
 `--type` / `-t` 接受 `ply`、`spz`、`splat`、`sog`、`esz`。`--split-normal` 接受 `None`、`X`、`Y`、`Z`，不区分大小写，或对应数字 `0`、`1`、`2`、`3`。指定参考轴可使分块沿该轴保持完整，例如 `Y` 用于保留竖直方向。复杂参数使用 pipeline 配置；单个命令的帮助可通过 `splat-transform lod:flex --help` 等方式查看。
 
@@ -137,14 +137,16 @@ Get-Content -Raw pipeline.json | splat-transform -
 
 将单个 splat 写入文件，或将 LOD / 分块 bundle 写入目录。格式由输出文件扩展名或 bundle 中的文件名决定。
 
-| 参数               | 类型 / 默认值       | 说明                                                                                         |
-| ------------------ | ------------------- | -------------------------------------------------------------------------------------------- |
-| `input`            | `string`，必填      | 输入资源键。                                                                                 |
-| `output`           | `string`，必填      | 单文件路径或 bundle 输出目录。                                                               |
-| `enableMortonSort` | `boolean` / `true`  | 写出前按 Morton 顺序排列；要求保留区间顺序的 bundle 文件会强制关闭。                         |
-| `version`          | `3 \| 4` / `3`      | 仅用于 `.spz`；`.uspz` 固定输出未压缩的 v3。                                                 |
-| `compressLevel`    | `number`            | SPZ v3 使用 gzip，默认 `6`，常用范围 `0–9`；SPZ v4 使用 zstd，默认 `7`，遵循 zstd 等级范围。 |
-| `highPrecision`    | `boolean` / `false` | 仅用于 ESZ：`false` 为低精度，`true` 为高精度布局。                                          |
+| 参数               | 类型 / 默认值       | 说明                                                                             |
+| ------------------ | ------------------- | -------------------------------------------------------------------------------- |
+| `input`            | `string`，必填      | 输入资源键。                                                                     |
+| `output`           | `string`，必填      | 单文件路径或 bundle 输出目录。                                                   |
+| `enableMortonSort` | `boolean` / `true`  | 写出前按 Morton 顺序排列；要求保留区间顺序的 bundle 文件会强制关闭。             |
+| `version`          | `3 \| 4` / `3`      | 仅用于 `.spz`；`.uspz` 固定输出未压缩的 v3。                                     |
+| `compressLevel`    | `number` / `6`      | 仅用于 SPZ：v3 使用 gzip（常用范围 `0–9`），v4 使用 zstd（遵循 zstd 等级范围）。 |
+| `highPrecision`    | `boolean` / `false` | 仅用于 ESZ：`false` 为低精度，`true` 为高精度布局。                              |
+
+自 `2.1.2` 起，SPZ v3/v4 的默认压缩等级统一为 `6`。`2.1.1` 中，v3 默认 `6`，v4 默认 `7`。需要沿用 `2.1.1` 的 SPZ v4 等级时，显式设置 `compressLevel: 7`。
 
 bundle 的 CPU 文件写出并发上限由 pipeline 根级 `cpuWorkers` 统一设置，旧 `parallelCounts` 不再生效。需要 GPU 的文件按顺序写出；单个 SOG 文件的 CPU 纹理编码仍使用共享线程池。
 
@@ -272,9 +274,11 @@ patch 中的索引相对于对应输入块。`deletedIndices` 是位图，不是
 
 自定义 `levels` 时，省略 `merged` / `permanent` 表示 `false`；不会继承默认数组最后两级的 `true`。同一 pipeline 对同源数据生成 Voxel 后，LOD 元数据会自动写入相对 `voxels` 路径，支持 Voxel 在 LOD 写出前或后执行。
 
-### SplitSplatTask
+### Split
 
 仅分块，不生成多级 LOD，也不生成 `lod-meta.json`。输出 bundle 包含 `block_0.<type>` 等文件，由 `Write` 写入目录。
+
+JavaScript / TypeScript 接口使用 `Split`；原生 C++ pipeline 解析层兼容旧名称 `SplitSplatTask`。
 
 | 参数              | 类型 / 默认值                      | 说明                           |
 | ----------------- | ---------------------------------- | ------------------------------ |

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.2
+
+- Rename the split pipeline task to `Split`; accept the legacy name `SplitSplatTask` only in the native C++ pipeline loader
+- Move blocked LOD generation to `splat::lod::generate_blocked_lod` with `std::span<const SplatLevelParameters>`; parse JSON level settings in pipeline tasks
+- Default SPZ compression to level `6` for both v3 gzip and v4 zstd; the v4 default changes from `7` to `6`, and explicit `compressLevel` values still override the default
+
 ## 2.1.1
 
 - Modify `rgba` also accepts an object with optional `r`, `g`, `b`, and `a` channels; omitted channels keep their current values

@@ -76,7 +76,7 @@ set(SPLAT_TRANSFORM_SOURCE_FILES
     src/pipeline/tasks/flex_lod.cpp
     src/pipeline/tasks/auto_lod.cpp
     src/pipeline/tasks/auto_chunk_lod.cpp
-    src/pipeline/tasks/split_splat.cpp
+    src/pipeline/tasks/split.cpp
     src/pipeline/tasks/voxel.cpp
     src/pipeline/modify.cpp
     src/voxel/voxel.cpp
@@ -119,7 +119,7 @@ set(SPLAT_TRANSFORM_HEADER_FILES
     include/pipeline/tasks/replace_append.h
     include/pipeline/tasks/select.h
     include/pipeline/tasks/skeleton_lod.h
-    include/pipeline/tasks/split_splat.h
+    include/pipeline/tasks/split.h
     include/pipeline/tasks/voxel.h
     include/pipeline/tasks/write.h
     include/spatial/clustering.h

@@ -49,7 +49,7 @@ Both the npm CLI and the native executable accept a pipeline file or a single da
 }
 ```
 
-Supported tasks are Read, Write, Modify, Select, ReplaceAppend, ExtractLodLevel, SkeletonLod, FlexLod, AutoLod, AutoChunkLod, SplitSplatTask, and Voxel. Version 1 pipeline structure remains supported; see the task reference for current fields and defaults. GPU enumeration uses the native executable's standalone `--list-gpu` command through `enumerateAdapters()` and does not enter the pipeline. Task logs keep the 1.x prefixes, counts, LOD summaries, file progress, and timing labels. Information, progress, and timing logs go to stdout; warnings and errors go to stderr.
+Supported tasks are Read, Write, Modify, Select, ReplaceAppend, ExtractLodLevel, SkeletonLod, FlexLod, AutoLod, AutoChunkLod, Split, and Voxel. JavaScript and TypeScript use `Split`; the native C++ pipeline loader also accepts the legacy name `SplitSplatTask`. Version 1 pipeline structure remains supported; see the task reference for current fields and defaults. GPU enumeration uses the native executable's standalone `--list-gpu` command through `enumerateAdapters()` and does not enter the pipeline. Task logs keep the 1.x prefixes, counts, LOD summaries, file progress, and timing labels. Information, progress, and timing logs go to stdout; warnings and errors go to stderr.
 
 Tasks run sequentially. Top-level `gpu` defaults to device index `0`. Task `input` and processing `output` fields are in-memory resource keys; `Write.output` and `Voxel.output` are filesystem destinations. Task-level `release: string[]` removes resource keys after the task succeeds, so release shared resources only after their final consumer. Failures stop subsequent tasks without rolling back completed output.
 
@@ -59,7 +59,7 @@ Inputs: PLY, compressed PLY, SPLAT, KSPLAT, SPZ/USPZ, SOG and unpacked SOG metad
 
 ## Output and LOD options
 
-- `Write.version` selects SPZ v3 (default) or v4. `compressLevel` defaults to `6` for v3 gzip and `7` for v4 zstd. USPZ always writes uncompressed v3.
+- `Write.version` selects SPZ v3 (default) or v4. Starting with `2.1.2`, `compressLevel` defaults to `6` for both v3 gzip and v4 zstd. Version `2.1.1` defaults to `6` for v3 and `7` for v4. Set `compressLevel: 7` explicitly to retain the SPZ v4 level used by `2.1.1`. USPZ always writes uncompressed v3.
 - `Write.highPrecision` defaults to `false` for ESZ. `enableMortonSort` defaults to `true`, subject to bundle interval ordering. Concurrent bundle writes are limited to the shared CPU pool's worker count, configured through top-level `cpuWorkers`.
 - `AutoChunkLod.levels` defaults to precision values `1`, `0.5`, `0.25`, `0.05`, `0.01`, with scale boosts `1`, `1`, `1`, `1.01`, `1.02`. The last two levels also set `merged: true` and `permanent: true`. A custom array replaces these defaults; omitted `merged` and `permanent` fields are `false`.
 - `Voxel` supports `compression: "none" | "gzip" | "zstd"`, `nodeEncoding: "raw" | "compact"`, and `collisionMesh: false | true | "smooth" | "faces"`. Defaults are `"none"`, `"raw"`, and `false`; `true` selects smooth mesh generation. Cluster filtering, automatic dense bounds, floor fill, and navigation options are documented in the task reference.

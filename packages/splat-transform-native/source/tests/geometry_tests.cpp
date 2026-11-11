@@ -1,8 +1,10 @@
+#include <array>
 #include <cmath>
+#include <io/json.h>
 #include <iostream>
 #include <limits>
-#include <pipeline/lod_support.h>
 #include <spatial/sh_rotation.h>
+#include <splat/splat_lod.h>
 #include <voxel/voxelize.h>
 
 using namespace splat_transform;
@@ -16,7 +18,8 @@ void center_bounds() {
     const auto empty = splat::bounds(splat::Splat());
     require(empty.min().isZero(0) && empty.max().isZero(0), "Empty center bounds must remain the origin");
     require(io::bounds_json(empty).dump() == "{\"min\":[0.0,0.0,0.0],\"max\":[0.0,0.0,0.0]}", "Bounds JSON changed its array schema");
-    const auto lod = pipeline::generate({}, io::Json::array({ { { "precision", 1 } } }), 1, splat::block::SplitNormal::None);
+    constexpr std::array levels { splat::lod::SplatLevelParameters { 1.0f, 1.0f } };
+    const auto lod = splat::lod::generate_blocked_lod({}, levels, 1, splat::block::SplitNormal::None);
     require(lod.blocks.size() == 1 && lod.blocks[0].bounds.min().isZero(0) && lod.blocks[0].bounds.max().isZero(0), "Empty LOD metadata must keep zero bounds");
     splat::Splat data(5, 0);
     data.gaussians[0].mean = { -2, 3, 7 };

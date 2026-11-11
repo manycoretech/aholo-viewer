@@ -44,7 +44,7 @@ Unpacked SOG/LCC/LCC2 companion resources resolve relative to their metadata fil
 | `spz`, `uspz`           | SPZ v3/v4 and SPZ v3 without gzip compression; configure the version in [Write](#write). |
 | `sog`                   | SOG; SH coefficients require GPU clustering.                                             |
 | `esz`                   | ESZ v2; `highPrecision` selects the layout. Recommended for chunk LOD.                   |
-| LOD / split directories | Created by `AutoChunkLod` or `SplitSplatTask`, then saved with `Write`.                  |
+| LOD / split directories | Created by `AutoChunkLod` or `Split`, then saved with `Write`.                           |
 | Voxel directories       | Written directly by `Voxel`, with metadata, binary data, and an optional collision GLB.  |
 
 ## Installation and CLI
@@ -61,15 +61,15 @@ splat-transform list:gpu
 splat-transform pipeline.json
 ```
 
-| Command          | Tasks and options                                                                        |
-| ---------------- | ---------------------------------------------------------------------------------------- |
-| `create`         | `Read → Modify → Write` for format conversion.                                           |
-| `lod:loading`    | `SkeletonLod`; optional `--ratio`.                                                       |
-| `lod:flex`       | `FlexLod`; required `--score`, optional `--ratio`.                                       |
-| `lod:auto`       | `AutoLod`; optional `--ratio` and `--split-normal`.                                      |
-| `lod:auto-chunk` | `AutoChunkLod`; required `--type`, optional `--max-chunk-counts` and `--split-normal`.   |
-| `split`          | `SplitSplatTask`; required `--type`, optional `--max-chunk-counts` and `--split-normal`. |
-| `list:gpu`       | Lists Vulkan device indices and names.                                                   |
+| Command          | Tasks and options                                                                      |
+| ---------------- | -------------------------------------------------------------------------------------- |
+| `create`         | `Read → Modify → Write` for format conversion.                                         |
+| `lod:loading`    | `SkeletonLod`; optional `--ratio`.                                                     |
+| `lod:flex`       | `FlexLod`; required `--score`, optional `--ratio`.                                     |
+| `lod:auto`       | `AutoLod`; optional `--ratio` and `--split-normal`.                                    |
+| `lod:auto-chunk` | `AutoChunkLod`; required `--type`, optional `--max-chunk-counts` and `--split-normal`. |
+| `split`          | `Split`; required `--type`, optional `--max-chunk-counts` and `--split-normal`.        |
+| `list:gpu`       | Lists Vulkan device indices and names.                                                 |
 
 `--type` / `-t` accepts `ply`, `spz`, `splat`, `sog`, or `esz`. `--split-normal` accepts case-insensitive `None`, `X`, `Y`, or `Z`, or the corresponding numbers `0`, `1`, `2`, or `3`. A reference axis keeps blocks unsplit along that axis; for example, `Y` preserves the vertical extent. Use a pipeline for additional parameters. Inspect individual command help with commands such as `splat-transform lod:flex --help`.
 
@@ -137,14 +137,16 @@ Reads and combines multiple inputs while retaining input-block order for `Modify
 
 Writes a single splat to a file or a LOD / split bundle to a directory. The output extension or bundle filenames determine the format.
 
-| Parameter          | Type / default      | Description                                                                                             |
-| ------------------ | ------------------- | ------------------------------------------------------------------------------------------------------- |
-| `input`            | `string`, required  | Input resource key.                                                                                     |
-| `output`           | `string`, required  | Single-file path or bundle output directory.                                                            |
-| `enableMortonSort` | `boolean` / `true`  | Applies Morton ordering for output; disabled for bundle files that must preserve interval order.        |
-| `version`          | `3 \| 4` / `3`      | Applies to `.spz` only; `.uspz` always writes uncompressed v3.                                          |
-| `compressLevel`    | `number`            | SPZ v3 uses gzip, default `6`, typically `0–9`; SPZ v4 uses zstd, default `7`, with zstd's level range. |
-| `highPrecision`    | `boolean` / `false` | ESZ only: `false` selects low precision, `true` selects high precision.                                 |
+| Parameter          | Type / default      | Description                                                                                      |
+| ------------------ | ------------------- | ------------------------------------------------------------------------------------------------ |
+| `input`            | `string`, required  | Input resource key.                                                                              |
+| `output`           | `string`, required  | Single-file path or bundle output directory.                                                     |
+| `enableMortonSort` | `boolean` / `true`  | Applies Morton ordering for output; disabled for bundle files that must preserve interval order. |
+| `version`          | `3 \| 4` / `3`      | Applies to `.spz` only; `.uspz` always writes uncompressed v3.                                   |
+| `compressLevel`    | `number` / `6`      | SPZ only: v3 uses gzip (typically `0–9`); v4 uses zstd and follows its level range.              |
+| `highPrecision`    | `boolean` / `false` | ESZ only: `false` selects low precision, `true` selects high precision.                          |
+
+Starting with `2.1.2`, the default compression level is `6` for both SPZ v3 and v4. Version `2.1.1` uses `6` for v3 and `7` for v4. Set `compressLevel: 7` explicitly to retain the SPZ v4 level used by `2.1.1`.
 
 Concurrent CPU bundle file writes are limited by top-level pipeline `cpuWorkers`; the former `parallelCounts` option is no longer used. Files requiring GPU processing are written sequentially. CPU texture encoding within a SOG file still uses the shared pool.
 
@@ -272,9 +274,11 @@ Generates a multi-level bundle containing `lod-meta.json`; save it with `Write`.
 
 Omitting `merged` / `permanent` in a custom array means `false`; it does not inherit `true` from the last two default levels. Voxel output associated with the same source automatically adds relative `voxels` paths to LOD metadata, whether Voxel runs before or after the LOD writes.
 
-### SplitSplatTask
+### Split
 
 Splits data without generating multiple LOD levels or `lod-meta.json`. The output bundle contains files such as `block_0.<type>` and is saved to a directory by `Write`.
+
+The JavaScript and TypeScript interfaces use `Split`. The native C++ pipeline loader also accepts the legacy name `SplitSplatTask`.
 
 | Parameter         | Type / default                     | Description                               |
 | ----------------- | ---------------------------------- | ----------------------------------------- |

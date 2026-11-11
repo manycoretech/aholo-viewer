@@ -2,7 +2,7 @@
 #include <pipeline/task.h>
 
 namespace splat_transform::pipeline {
-class SplitSplatTask final : public BaseTask {
+class SplitTask final : public BaseTask {
 public:
     void exec(const io::Json& config, TaskContext& context) const override;
 };
