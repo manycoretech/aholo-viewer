@@ -87,7 +87,7 @@ export default async function runner({ renderer, control, loading, configPanel, 
         throwIfAborted(signal);
     }
 
-    initConfigPanel(splat, configPanel, viewer, meta.levels - 1);
+    initConfigPanel(splat, configPanel, viewer, meta.levels - 1, () => renderer.render());
 
     renderer.frame(({ delta }) => {
         const updated = control.update(delta);
@@ -103,38 +103,42 @@ function initConfigPanel(
     configPanel: RuntimeConfigPanel,
     viewer: Viewer,
     maxLevel: number,
+    requestRender: () => void,
 ) {
+    const rendering = {
+        repackEnabled: false,
+        radial: false,
+        sortHighPrecisionEnabled: false,
+    };
     const applyConfig = () => {
-        if (LodConfig.highPrecisionEnabled) {
-            setViewerConfig(viewer, {
-                pipeline: {
-                    Splatting: {
-                        pack: {
-                            highPrecisionEnabled: true,
-                            cameraRelativeEnabled: false,
-                        },
+        setViewerConfig(viewer, {
+            pipeline: {
+                Splatting: {
+                    pack: {
+                        highPrecisionEnabled: LodConfig.highPrecisionEnabled,
+                        cameraRelativeEnabled: !LodConfig.highPrecisionEnabled,
+                        repackEnabled: rendering.repackEnabled,
+                    },
+                    sort: {
+                        radial: rendering.radial,
+                        highPrecisionEnabled: rendering.sortHighPrecisionEnabled,
                     },
                 },
-            });
-        } else {
-            setViewerConfig(viewer, {
-                pipeline: {
-                    Splatting: {
-                        pack: {
-                            highPrecisionEnabled: false,
-                            cameraRelativeEnabled: true,
-                        },
-                    },
-                },
-            });
-        }
+            },
+        });
         LodConfig.maxBudget = LodConfig.maxBudgetMillions * 1_000_000;
         splat.setConfig(LodConfig);
+        requestRender();
     };
     applyConfig();
 
     const panel = configPanel.createPane({ title: 'Splatting LOD Stream' });
     panel.addBinding(LodConfig, 'highPrecisionEnabled', { label: 'High precision' }).on('change', applyConfig);
+    panel.addBinding(rendering, 'repackEnabled', { label: 'Repack textures' }).on('change', applyConfig);
+    const sorting = panel.addFolder({ title: 'Sorting', expanded: false });
+    sorting.addBinding(rendering, 'radial', { label: 'Radial' }).on('change', applyConfig);
+    sorting.addBinding(rendering, 'sortHighPrecisionEnabled', { label: 'High precision' }).on('change', applyConfig);
+
     const budget = panel.addFolder({ title: 'LOD Budget', expanded: true });
     budget.addBinding(LodConfig, 'pixelLimitEnabled', { label: 'Pixel limit' }).on('change', applyConfig);
     budget

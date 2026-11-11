@@ -248,6 +248,11 @@ export interface ISplattingPluginConfig {
     pack?: {
         highPrecisionEnabled?: boolean;
         precalculateEnabled?: boolean;
+        /**
+         * Repack WebGL rendering textures in sorted order. Uses additional GPU memory and a repack pass.
+         * @default `false`
+         */
+        repackEnabled?: boolean;
         cameraRelativeEnabled?: boolean;
         cameraRelativeUpdateDistanceThreshold?: number;
     };
@@ -273,6 +278,15 @@ export interface ISplattingPluginConfig {
      * gaussian sorting
      */
     sort?: {
+        /**
+         * Sort by distance from the camera instead of view-direction depth.
+         * @default `false`
+         */
+        radial?: boolean;
+        /**
+         * Use stable sorting on the upper 24 bits of float32 sort keys on WebGL.
+         * @default `false`
+         */
         highPrecisionEnabled?: boolean;
         minIntervalMs?: number;
         sortSplatDistance?: number;

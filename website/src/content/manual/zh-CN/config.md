@@ -25,6 +25,37 @@ function setViewerConfig(ctx: Viewer | Viewport, config: IViewerConfig);
 
 [完整参数说明](api:IViewerConfig)
 
+## Splatting 排序与纹理重排
+
+1.13 新增 `pipeline.Splatting.sort.radial` 和 `pipeline.Splatting.pack.repackEnabled`，默认均为 `false`。
+
+```typescript
+import { setViewerConfig } from '@manycore/aholo-viewer';
+
+setViewerConfig(viewer, {
+    pipeline: {
+        Splatting: {
+            enabled: true,
+            sort: {
+                radial: true,
+                highPrecisionEnabled: true,
+            },
+            pack: {
+                repackEnabled: true,
+            },
+        },
+    },
+});
+```
+
+| 参数                        | 默认值  | 说明                                                                                          |
+| --------------------------- | ------- | --------------------------------------------------------------------------------------------- |
+| `sort.radial`               | `false` | 按高斯中心到相机的距离排序；关闭时按视线方向深度排序。                                        |
+| `sort.highPrecisionEnabled` | `false` | WebGL 开启后按 float32 排序键的高 24 位稳定排序；关闭时使用半精度浮点排序。                   |
+| `pack.repackEnabled`        | `false` | 在 WebGL 中按排序结果重排渲染纹理，减少光栅化时的间接纹理寻址；会增加显存占用和一次重排过程。 |
+
+径向距离与视线深度会产生不同的透明混合顺序，应结合实际场景评估。纹理重排的收益取决于场景和设备，可在 [Splatting 基础样例](/zh-CN/examples/splatting-basic/) 和 [LOD 流式加载样例](/zh-CN/examples/splatting-lod-stream/) 中切换对比。
+
 ## Splatting 合成与色调映射
 
 `pipeline.Splatting.composite` 统一控制 3DGS 的离屏合成、色调映射和曝光，与顶层 `pipeline.Composite` 的输出合成配置相互独立。
@@ -59,6 +90,8 @@ setViewerConfig(viewer, {
 ## Splatting 配置迁移
 
 高斯衰减现在统一使用归一化的 `fastExp` 公式，原 `raster.normalizedFalloff` 开关已移除。新增 `raster.detailCullingAlphaEnabled`，默认 `false`；开启后细节剔除会计入高斯透明度，与 `raster.detailCullingThreshold` 配合使用。WebGL 与 WebGPU 使用相同配置。
+
+1.13 起，直接构造 `CompressedSplat` 或 `SuperCompressedSplat` 时，源纹理宽度必须为 2 的幂，否则会抛出异常。自定义纹理和反序列化的 sampler 数据都需满足该约束。新增的 `pack.repackEnabled` 需单独启用，旧 `pack.sortedLayoutEnabled` 仍需删除。
 
 | 旧配置                                   | 迁移方式                                         |
 | ---------------------------------------- | ------------------------------------------------ |

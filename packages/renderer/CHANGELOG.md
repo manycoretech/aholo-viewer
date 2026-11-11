@@ -1,5 +1,17 @@
 # ChangeLOG
 
+## 1.13.0
+
+1. Features
+    - add `Splatting.sort.radial`, disabled by default, to sort splats by distance from the camera instead of view-direction depth.
+    - add `Splatting.pack.repackEnabled`, disabled by default, to repack WebGL rendering textures in sorted order.
+2. Fixes
+    - improve Gaussian rendering stability and opacity clipping.
+3. Changes
+    - improve sorting responsiveness for large WebGL splat scenes.
+4. Breaking Changes
+    - require power-of-two source texture widths when constructing `CompressedSplat` or `SuperCompressedSplat`; invalid widths now throw. Update custom textures and serialized samplers accordingly.
+
 ## 1.12.0
 
 1. Features

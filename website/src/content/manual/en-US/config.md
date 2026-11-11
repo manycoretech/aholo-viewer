@@ -25,6 +25,37 @@ function setViewerConfig(ctx: Viewer | Viewport, config: IViewerConfig);
 
 [Full Parameter Reference](api:IViewerConfig)
 
+## Splatting Sorting and Texture Repacking
+
+Version 1.13 adds `pipeline.Splatting.sort.radial` and `pipeline.Splatting.pack.repackEnabled`. Both default to `false`.
+
+```typescript
+import { setViewerConfig } from '@manycore/aholo-viewer';
+
+setViewerConfig(viewer, {
+    pipeline: {
+        Splatting: {
+            enabled: true,
+            sort: {
+                radial: true,
+                highPrecisionEnabled: true,
+            },
+            pack: {
+                repackEnabled: true,
+            },
+        },
+    },
+});
+```
+
+| Parameter                   | Default | Description                                                                                                                                        |
+| --------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sort.radial`               | `false` | Sorts Gaussian centers by distance from the camera instead of view-direction depth.                                                                |
+| `sort.highPrecisionEnabled` | `false` | On WebGL, enables stable sorting on the upper 24 bits of float32 sort keys. When disabled, WebGL uses half-float sorting.                          |
+| `pack.repackEnabled`        | `false` | Repacks WebGL rendering textures in sorted order to reduce indirect texture lookups during rasterization. Adds GPU memory usage and a repack pass. |
+
+Radial distance and view-direction depth can produce different transparency blending orders; evaluate them with the target scene. Repacking performance depends on the scene and device. Toggle the settings in the [Splatting Basic example](/en-US/examples/splatting-basic/) and [LOD streaming example](/en-US/examples/splatting-lod-stream/) to compare them.
+
 ## Splatting Composition and Tone Mapping
 
 `pipeline.Splatting.composite` controls offscreen composition, tone mapping, and exposure for 3DGS. It is independent of the top-level `pipeline.Composite` output composition settings.
@@ -59,6 +90,8 @@ For offscreen composition without a nonlinear tone curve, use `ToneMapping.Linea
 ## Splatting Configuration Migration
 
 Gaussian falloff now always uses the normalized `fastExp` formula. The `raster.normalizedFalloff` toggle has been removed. The new `raster.detailCullingAlphaEnabled` option defaults to `false`; enable it to include Gaussian opacity in detail culling alongside `raster.detailCullingThreshold`. WebGL and WebGPU use the same setting.
+
+From 1.13, source textures passed to `CompressedSplat` or `SuperCompressedSplat` must have power-of-two widths; invalid widths throw during construction. Custom textures and deserialized sampler data must satisfy this constraint. Enable the new `pack.repackEnabled` option separately and remove the former `pack.sortedLayoutEnabled` setting.
 
 | Previous Setting                         | Migration                                                                        |
 | ---------------------------------------- | -------------------------------------------------------------------------------- |

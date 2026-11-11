@@ -70,6 +70,8 @@ order: 4
 
 `Sog` 面向 sog 数据格式。它的体积最小，但画面可能更模糊。原始格式为 sog，且没有 `shN` 或对极限场景规模有要求时，可以优先考虑。
 
+1.13 起，`CompressedSplat` 和 `SuperCompressedSplat` 要求源纹理宽度为 2 的幂。使用自定义纹理、反序列化 sampler 数据或自定义 `maxTextureSize` 时需遵守此约束；默认解析配置生成符合要求的宽度。
+
 ## Preset List
 
 | 预设名     | 适用场景                                                                                                    |
@@ -82,6 +84,8 @@ order: 4
 | 极限性能 1 | 机器配置极低或场景规模极大，并且原始数据格式为 sog 时。满足条件时更建议使用这个配置，可打开更大的场景规模。 |
 
 高斯衰减统一使用归一化的 `fastExp` 公式，预设不再配置 `normalizedFalloff`。`detailCullingAlphaEnabled` 默认关闭；需要计入透明度时单独启用。
+
+`sort.radial` 和 `pack.repackEnabled` 默认关闭。径向排序会改变透明混合顺序；WebGL 纹理重排会增加显存和处理开销，需按场景与设备评估后启用，详见[排序与纹理重排](./config.md)。
 
 ### 极限效果
 
@@ -302,22 +306,24 @@ setViewerConfig(viewer, {
 });
 ```
 
-| 参数名                                         | 作用                         | 建议                                                                                                                                                                                                                                                  |
-| ---------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pack.highPrecisionEnabled`                    | 是否开启高精度数据合并。     | 决定最终用于渲染的数据精度。`compressed` 下通常需要开启；`sog` 下需要看具体场景。                                                                                                                                                                     |
-| `pack.precalculateEnabled`                     | 是否预计算球谐颜色。         | 根据观察方向计算 SH 颜色贡献；没有高阶 SH 数据时不会产生视角相关颜色。                                                                                                                                                                                |
-| `pack.cameraRelativeEnabled`                   | 是否开启相机相对位置计算。   | 如果center值较大，但设备性能不足以支持`highPrecisionEnabled`的启用，可以尝试开启，但需注意开启后会在gpu上按需pack数据，应该关掉autoFreeResourceOnGpuPacked防止贴图数据的重复上传，但如果是lod数据那由于实现本身就需要反复pack数据则可以免费做这件事。 |
-| `composite.enabled`                            | 开启离屏合成与色调映射。     | 默认关闭。使用曲线、曝光或高精度中间缓冲前需开启。                                                                                                                                                                                                    |
-| `composite.toneMapping` / `composite.exposure` | 控制色调映射曲线与曝光。     | 默认 `ToneMapping.Linear` 和 `1`。原 `Splatting.toneMapping` 配置迁移到此处，详见[配置迁移](./config.md)。                                                                                                                                            |
-| `composite.highPrecisionEnabled`               | 是否开启高精度渲染缓冲。     | 场景中出现水波扩散状条纹时可以考虑开启；对效果要求较高时也可开启；会增加显存开销。                                                                                                                                                                    |
-| `raster.detailCullingAlphaEnabled`             | 细节剔除计入高斯透明度。     | 默认 `false`。开启后，低透明度高斯更容易被剔除；与 `detailCullingThreshold` 配合评估画面和性能。                                                                                                                                                      |
-| `raster.preBlurAmount` / `raster.blurAmount`   | 控制模糊参数。               | 非 AA 训练结果通常使用 `0.3 / 0`；AA 训练结果通常使用 `0 / 0.3`。不建议设置其他值。                                                                                                                                                                   |
-| `raster.focalAdjustment`                       | 调整 splat 扩散缩放。        | 设置为 `2` 更接近参考结果。                                                                                                                                                                                                                           |
-| `raster.detailCullingThreshold`                | 近似细节剔除。               | 通常值在 `[0, 4]`。一般设置 `1` 对画面损失极小，具体性能收益取决于方案精细程度。                                                                                                                                                                      |
-| `raster.maxPixelRadius`                        | 高斯覆盖屏幕的最大像素范围。 | 默认 `1024`，建议在 `[128, 1024]` 之间。过小可能导致方案破碎。                                                                                                                                                                                        |
-| `raster.maxStdDev`                             | 高斯扩散的最大标准差。       | 范围应在 `sqrt(5)` 到 `sqrt(9)`。值越大性能越差，但效果越好；`sqrt(8)` 通常是效果和性能之间的折中点。                                                                                                                                                 |
-| `sort.highPrecisionEnabled`                    | 设置排序精度。               | 开启后用 float 进行排序，绝大多数渲染场景下对于效果的提升较小。                                                                                                                                                                                       |
-| `sort.minIntervalMs`                           | 设置排序最小发生间隔。       | 增大可降低排序频率，但快速移动时排序更新会滞后。可从 `16 * n` ms 开始评估，`n` 通常不大于 `10`；默认 `0`。                                                                                                                                            |
+| 参数名                                         | 作用                            | 建议                                                                                                                                                                                                                                                  |
+| ---------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pack.highPrecisionEnabled`                    | 是否开启高精度数据合并。        | 决定最终用于渲染的数据精度。`compressed` 下通常需要开启；`sog` 下需要看具体场景。                                                                                                                                                                     |
+| `pack.precalculateEnabled`                     | 是否预计算球谐颜色。            | 根据观察方向计算 SH 颜色贡献；没有高阶 SH 数据时不会产生视角相关颜色。                                                                                                                                                                                |
+| `pack.repackEnabled`                           | 按排序结果重排 WebGL 渲染纹理。 | 默认 `false`。减少光栅化时的间接纹理寻址，但会增加显存占用和重排过程；在目标场景和设备上测量后启用。                                                                                                                                                  |
+| `pack.cameraRelativeEnabled`                   | 是否开启相机相对位置计算。      | 如果center值较大，但设备性能不足以支持`highPrecisionEnabled`的启用，可以尝试开启，但需注意开启后会在gpu上按需pack数据，应该关掉autoFreeResourceOnGpuPacked防止贴图数据的重复上传，但如果是lod数据那由于实现本身就需要反复pack数据则可以免费做这件事。 |
+| `composite.enabled`                            | 开启离屏合成与色调映射。        | 默认关闭。使用曲线、曝光或高精度中间缓冲前需开启。                                                                                                                                                                                                    |
+| `composite.toneMapping` / `composite.exposure` | 控制色调映射曲线与曝光。        | 默认 `ToneMapping.Linear` 和 `1`。原 `Splatting.toneMapping` 配置迁移到此处，详见[配置迁移](./config.md)。                                                                                                                                            |
+| `composite.highPrecisionEnabled`               | 是否开启高精度渲染缓冲。        | 场景中出现水波扩散状条纹时可以考虑开启；对效果要求较高时也可开启；会增加显存开销。                                                                                                                                                                    |
+| `raster.detailCullingAlphaEnabled`             | 细节剔除计入高斯透明度。        | 默认 `false`。开启后，低透明度高斯更容易被剔除；与 `detailCullingThreshold` 配合评估画面和性能。                                                                                                                                                      |
+| `raster.preBlurAmount` / `raster.blurAmount`   | 控制模糊参数。                  | 非 AA 训练结果通常使用 `0.3 / 0`；AA 训练结果通常使用 `0 / 0.3`。不建议设置其他值。                                                                                                                                                                   |
+| `raster.focalAdjustment`                       | 调整 splat 扩散缩放。           | 设置为 `2` 更接近参考结果。                                                                                                                                                                                                                           |
+| `raster.detailCullingThreshold`                | 近似细节剔除。                  | 通常值在 `[0, 4]`。一般设置 `1` 对画面损失极小，具体性能收益取决于方案精细程度。                                                                                                                                                                      |
+| `raster.maxPixelRadius`                        | 高斯覆盖屏幕的最大像素范围。    | 默认 `1024`，建议在 `[128, 1024]` 之间。过小可能导致方案破碎。                                                                                                                                                                                        |
+| `raster.maxStdDev`                             | 高斯扩散的最大标准差。          | 范围应在 `sqrt(5)` 到 `sqrt(9)`。值越大性能越差，但效果越好；`sqrt(8)` 通常是效果和性能之间的折中点。                                                                                                                                                 |
+| `sort.radial`                                  | 使用径向距离排序。              | 默认 `false`，按视线方向深度排序；开启后改为按高斯中心到相机的距离排序，需评估透明混合效果。                                                                                                                                                          |
+| `sort.highPrecisionEnabled`                    | 设置 WebGL 排序精度。           | 默认 `false`，使用半精度浮点排序；开启后按 float32 排序键的高 24 位稳定排序。                                                                                                                                                                         |
+| `sort.minIntervalMs`                           | 设置排序最小发生间隔。          | 增大可降低排序频率，但快速移动时排序更新会滞后。可从 `16 * n` ms 开始评估，`n` 通常不大于 `10`；默认 `0`。                                                                                                                                            |
 
 ### 逐高斯禁用 SH
 

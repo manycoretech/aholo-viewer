@@ -8,7 +8,7 @@ export default async function runner({ renderer, control, loading, configPanel, 
             Splatting: { enabled: true },
         },
     });
-    initConfigPanel(viewer, configPanel);
+    initConfigPanel(viewer, configPanel, () => renderer.render());
 
     const camera = viewer.getCamera();
     camera.up.set(0, -1, 0);
@@ -47,9 +47,12 @@ function throwIfAborted(signal: AbortSignal) {
     }
 }
 
-function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel) {
+function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel, requestRender: () => void) {
     const params = {
         precalculateEnabled: true,
+        repackEnabled: false,
+        radial: false,
+        sortHighPrecisionEnabled: false,
         detailCullingAlphaEnabled: false,
         preBlurAmount: 0.3,
         blurAmount: 0,
@@ -67,6 +70,11 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel) {
                 Splatting: {
                     pack: {
                         precalculateEnabled: params.precalculateEnabled,
+                        repackEnabled: params.repackEnabled,
+                    },
+                    sort: {
+                        radial: params.radial,
+                        highPrecisionEnabled: params.sortHighPrecisionEnabled,
                     },
                     raster: {
                         detailCullingAlphaEnabled: params.detailCullingAlphaEnabled,
@@ -84,12 +92,14 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel) {
                 },
             },
         });
+        requestRender();
     };
 
     applyConfig();
 
     const pane = configPanel.createPane({ title: 'Splatting' });
     pane.addBinding(params, 'precalculateEnabled', { label: 'Precalculate SH' }).on('change', applyConfig);
+    pane.addBinding(params, 'repackEnabled', { label: 'Repack textures' }).on('change', applyConfig);
     pane.addBinding(params, 'detailCullingAlphaEnabled', { label: 'Cull by alpha' }).on('change', applyConfig);
     pane.addBinding(params, 'preBlurAmount', { label: 'Pre blur', max: 1, min: 0, step: 0.1 }).on(
         'change',
@@ -104,6 +114,10 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel) {
         'change',
         applyConfig,
     );
+
+    const sorting = pane.addFolder({ title: 'Sorting', expanded: false });
+    sorting.addBinding(params, 'radial', { label: 'Radial' }).on('change', applyConfig);
+    sorting.addBinding(params, 'sortHighPrecisionEnabled', { label: 'High precision' }).on('change', applyConfig);
 
     const composite = pane.addFolder({ title: 'Composite', expanded: false });
     composite.addBinding(params, 'compositeEnabled', { label: 'Enabled' }).on('change', applyConfig);
