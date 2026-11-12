@@ -14,14 +14,14 @@ order: 4
 
 先按业务约束选择 preset，再只微调最关键的参数。不要一开始就同时调整多个精度、排序和模糊参数。
 
-| 场景目标                                 | 建议起点   | 需要关注                                                                                                 |
-| ---------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------- |
-| 画质优先，用户设备性能强                 | 极限效果   | `compressed`、`pack.highPrecisionEnabled`、`composite.highPrecisionEnabled`、`sort.highPrecisionEnabled` |
-| 大场景且低精度容易出问题                 | 效果优先   | `compressed`、`pack.highPrecisionEnabled`                                                                |
-| 设备较弱但需要打开大规模方案             | 均衡       | `super-compressed`、`cameraRelativeEnabled`                                                              |
-| 设备较弱但仍需要较完整画面               | 性能优先   | `super-compressed`、`raster.detailCullingThreshold`、`raster.maxPixelRadius`                             |
-| 极大场景或极低设备配置                   | 极限性能 0 | `maxShDegree: 0`、`sort.minIntervalMs`、更激进的精度压缩                                                 |
-| 原始数据为 sog，且目标是打开更大规模场景 | 极限性能 1 | `sog`、`pack.precalculateEnabled`、显存占用                                                              |
+| 场景目标                                 | 建议起点   | 需要关注                                                                     |
+| ---------------------------------------- | ---------- | ---------------------------------------------------------------------------- |
+| 画质优先，用户设备性能强                 | 极限效果   | `compressed`、`pack.highPrecisionEnabled`、`composite.highPrecisionEnabled`  |
+| 大场景且低精度容易出问题                 | 效果优先   | `compressed`、`pack.highPrecisionEnabled`                                    |
+| 设备较弱但需要打开大规模方案             | 均衡       | `super-compressed`、`cameraRelativeEnabled`                                  |
+| 设备较弱但仍需要较完整画面               | 性能优先   | `super-compressed`、`raster.detailCullingThreshold`、`raster.maxPixelRadius` |
+| 极大场景或极低设备配置                   | 极限性能 0 | `maxShDegree: 0`、`sort.minIntervalMs`、更激进的精度压缩                     |
+| 原始数据为 sog，且目标是打开更大规模场景 | 极限性能 1 | `sog`、`pack.precalculateEnabled`、显存占用                                  |
 
 ## 3DGS 文件格式
 
@@ -85,6 +85,8 @@ order: 4
 
 高斯衰减统一使用归一化的 `fastExp` 公式，预设不再配置 `normalizedFalloff`。`detailCullingAlphaEnabled` 默认关闭；需要计入透明度时单独启用。
 
+1.14 起，所有预设在 WebGL 上均按 float32 深度键的高 24 位稳定排序，与 WebGPU 一致；应从预设中删除 `sort.highPrecisionEnabled`。`pack.highPrecisionEnabled` 和 `composite.highPrecisionEnabled` 仍分别控制数据合并与合成缓冲精度。
+
 `sort.radial` 和 `pack.repackEnabled` 默认关闭。径向排序会改变透明混合顺序；WebGL 纹理重排会增加显存和处理开销，需按场景与设备评估后启用，详见[排序与纹理重排](./config.md)。
 
 ### 极限效果
@@ -112,9 +114,6 @@ setViewerConfig(viewer, {
             },
             raster: {
                 detailCullingThreshold: 0,
-            },
-            sort: {
-                highPrecisionEnabled: true,
             },
             composite: {
                 enabled: true,
@@ -322,7 +321,6 @@ setViewerConfig(viewer, {
 | `raster.maxPixelRadius`                        | 高斯覆盖屏幕的最大像素范围。    | 默认 `1024`，建议在 `[128, 1024]` 之间。过小可能导致方案破碎。                                                                                                                                                                                        |
 | `raster.maxStdDev`                             | 高斯扩散的最大标准差。          | 范围应在 `sqrt(5)` 到 `sqrt(9)`。值越大性能越差，但效果越好；`sqrt(8)` 通常是效果和性能之间的折中点。                                                                                                                                                 |
 | `sort.radial`                                  | 使用径向距离排序。              | 默认 `false`，按视线方向深度排序；开启后改为按高斯中心到相机的距离排序，需评估透明混合效果。                                                                                                                                                          |
-| `sort.highPrecisionEnabled`                    | 设置 WebGL 排序精度。           | 默认 `false`，使用半精度浮点排序；开启后按 float32 排序键的高 24 位稳定排序。                                                                                                                                                                         |
 | `sort.minIntervalMs`                           | 设置排序最小发生间隔。          | 增大可降低排序频率，但快速移动时排序更新会滞后。可从 `16 * n` ms 开始评估，`n` 通常不大于 `10`；默认 `0`。                                                                                                                                            |
 
 ### 逐高斯禁用 SH

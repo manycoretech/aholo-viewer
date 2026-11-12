@@ -108,7 +108,6 @@ function initConfigPanel(
     const rendering = {
         repackEnabled: false,
         radial: false,
-        sortHighPrecisionEnabled: false,
     };
     const applyConfig = () => {
         setViewerConfig(viewer, {
@@ -121,7 +120,6 @@ function initConfigPanel(
                     },
                     sort: {
                         radial: rendering.radial,
-                        highPrecisionEnabled: rendering.sortHighPrecisionEnabled,
                     },
                 },
             },
@@ -137,7 +135,6 @@ function initConfigPanel(
     panel.addBinding(rendering, 'repackEnabled', { label: 'Repack textures' }).on('change', applyConfig);
     const sorting = panel.addFolder({ title: 'Sorting', expanded: false });
     sorting.addBinding(rendering, 'radial', { label: 'Radial' }).on('change', applyConfig);
-    sorting.addBinding(rendering, 'sortHighPrecisionEnabled', { label: 'High precision' }).on('change', applyConfig);
 
     const budget = panel.addFolder({ title: 'LOD Budget', expanded: true });
     budget.addBinding(LodConfig, 'pixelLimitEnabled', { label: 'Pixel limit' }).on('change', applyConfig);

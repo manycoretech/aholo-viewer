@@ -121,7 +121,6 @@ interface ViewerParams {
     sortSplatCoorient: number;
     sortCameraDistance: number;
     sortCameraCoorient: number;
-    sortHighPrecisionEnabled: boolean;
     compositeEnabled: boolean;
     toneMapping: ToneMappingValue;
     exposure: number;
@@ -178,7 +177,6 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             focalAdjustment: 2,
             detailCullingThreshold: 0,
             maxPixelRadius: 1024,
-            sortHighPrecisionEnabled: true,
         },
     },
     qualityFirst: {
@@ -199,7 +197,6 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             focalAdjustment: 2,
             detailCullingThreshold: 1,
             maxPixelRadius: 1024,
-            sortHighPrecisionEnabled: false,
         },
     },
     balanced: {
@@ -220,7 +217,6 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             focalAdjustment: 2,
             detailCullingThreshold: 1,
             maxPixelRadius: 1024,
-            sortHighPrecisionEnabled: false,
         },
     },
     performanceFirst: {
@@ -241,7 +237,6 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             focalAdjustment: 2,
             detailCullingThreshold: 1,
             maxPixelRadius: 1024,
-            sortHighPrecisionEnabled: false,
         },
     },
     extremePerformance0: {
@@ -262,7 +257,6 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             focalAdjustment: 2,
             detailCullingThreshold: 4,
             maxPixelRadius: 1024,
-            sortHighPrecisionEnabled: false,
         },
     },
     extremePerformance1: {
@@ -283,7 +277,6 @@ const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<View
             focalAdjustment: 2,
             detailCullingThreshold: 4,
             maxPixelRadius: 1024,
-            sortHighPrecisionEnabled: false,
         },
     },
 };
@@ -871,7 +864,6 @@ function createDefaultParams(): ViewerParams {
         sortSplatCoorient: 0.99999,
         sortCameraDistance: 1,
         sortCameraCoorient: 0.99,
-        sortHighPrecisionEnabled: false,
         compositeEnabled: false,
         toneMapping: ToneMapping.Linear,
         exposure: 1,
@@ -1045,10 +1037,6 @@ function setupConfigPanel(
         'change',
         handleSplattingParamChange,
     );
-    sort.addBinding(params, 'sortHighPrecisionEnabled', { label: 'High precision' }).on(
-        'change',
-        handleSplattingParamChange,
-    );
     composite.addBinding(params, 'compositeEnabled', { label: 'Enabled' }).on('change', handleSplattingParamChange);
     composite
         .addBinding(params, 'renderAttachHighPrecisionEnabled', { label: 'High precision attach' })
@@ -1141,7 +1129,6 @@ function applyViewerConfig(viewer: Viewer, params: ViewerParams) {
                     maxStdDev: globalThis.Math.sqrt(params.maxStdDev),
                 },
                 sort: {
-                    highPrecisionEnabled: params.sortHighPrecisionEnabled,
                     minIntervalMs: params.minIntervalMs,
                     sortSplatDistance: params.sortSplatDistance,
                     sortSplatCoorient: params.sortSplatCoorient,

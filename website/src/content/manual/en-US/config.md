@@ -27,7 +27,7 @@ function setViewerConfig(ctx: Viewer | Viewport, config: IViewerConfig);
 
 ## Splatting Sorting and Texture Repacking
 
-Version 1.13 adds `pipeline.Splatting.sort.radial` and `pipeline.Splatting.pack.repackEnabled`. Both default to `false`.
+`pipeline.Splatting.sort.radial` and `pipeline.Splatting.pack.repackEnabled` both default to `false`.
 
 ```typescript
 import { setViewerConfig } from '@manycore/aholo-viewer';
@@ -38,7 +38,6 @@ setViewerConfig(viewer, {
             enabled: true,
             sort: {
                 radial: true,
-                highPrecisionEnabled: true,
             },
             pack: {
                 repackEnabled: true,
@@ -48,13 +47,16 @@ setViewerConfig(viewer, {
 });
 ```
 
-| Parameter                   | Default | Description                                                                                                                                        |
-| --------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sort.radial`               | `false` | Sorts Gaussian centers by distance from the camera instead of view-direction depth.                                                                |
-| `sort.highPrecisionEnabled` | `false` | On WebGL, enables stable sorting on the upper 24 bits of float32 sort keys. When disabled, WebGL uses half-float sorting.                          |
-| `pack.repackEnabled`        | `false` | Repacks WebGL rendering textures in sorted order to reduce indirect texture lookups during rasterization. Adds GPU memory usage and a repack pass. |
+| Parameter            | Default | Description                                                                                                                                        |
+| -------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sort.radial`        | `false` | Sorts Gaussian centers by distance from the camera instead of view-direction depth.                                                                |
+| `pack.repackEnabled` | `false` | Repacks WebGL rendering textures in sorted order to reduce indirect texture lookups during rasterization. Adds GPU memory usage and a repack pass. |
 
-Radial distance and view-direction depth can produce different transparency blending orders; evaluate them with the target scene. Repacking performance depends on the scene and device. Toggle the settings in the [Splatting Basic example](/en-US/examples/splatting-basic/) and [LOD streaming example](/en-US/examples/splatting-lod-stream/) to compare them.
+From 1.14, WebGL always uses stable sorting on the upper 24 bits of float32 depth keys, matching WebGPU. The worker uses WebAssembly SIMD and falls back to JavaScript if initialization fails; no manual implementation selection is required.
+
+When only the camera changes and splat center data remains unchanged, WebGL reuses that data to reduce GPU readbacks and overlaps sorting with sorted-index texture uploads.
+
+Radial distance and view-direction depth can produce different transparency blending orders; evaluate them with the target scene. Repacking performance depends on the scene and device. Toggle the settings in the [Splatting Basic example](/en-US/examples/splatting-basic/) and [LOD streaming example](/en-US/examples/splatting-lod-stream/) to compare them. Changing `pack.precalculateEnabled` or `pack.repackEnabled` through `setViewerConfig()` automatically updates the affected shaders.
 
 ## Splatting Composition and Tone Mapping
 
@@ -93,6 +95,8 @@ Gaussian falloff now always uses the normalized `fastExp` formula. The `raster.n
 
 From 1.13, source textures passed to `CompressedSplat` or `SuperCompressedSplat` must have power-of-two widths; invalid widths throw during construction. Custom textures and deserialized sampler data must satisfy this constraint. Enable the new `pack.repackEnabled` option separately and remove the former `pack.sortedLayoutEnabled` setting.
 
+From 1.14, `Splatting.sort.highPrecisionEnabled` no longer has any effect. Remove it from configuration and presets. `pack.highPrecisionEnabled` and `composite.highPrecisionEnabled` still control data packing and composition buffer precision, respectively.
+
 | Previous Setting                         | Migration                                                                        |
 | ---------------------------------------- | -------------------------------------------------------------------------------- |
 | `Splatting.toneMapping.enabled`          | Use `Splatting.composite.enabled`.                                               |
@@ -100,6 +104,7 @@ From 1.13, source textures passed to `CompressedSplat` or `SuperCompressedSplat`
 | `Splatting.toneMapping.exposure`         | Use `Splatting.composite.exposure`.                                              |
 | `Splatting.pack.sortedLayoutEnabled`     | Removed. Delete it from configuration and presets.                               |
 | `Splatting.raster.normalizedFalloff`     | Removed. Delete it from configuration and presets; falloff is always normalized. |
+| `Splatting.sort.highPrecisionEnabled`    | Ignored since 1.14. Remove it from configuration and presets.                    |
 | `Splatting.sort.frustumCullingEnabled`   | Removed upstream. Delete it from existing integrations.                          |
 | `Splatting.sort.frustumCullingClipScale` | Removed upstream. Delete it from existing integrations.                          |
 

@@ -275,7 +275,9 @@ export interface ISplattingPluginConfig {
         selectedColor?: Vector4;
     };
     /**
-     * gaussian sorting
+     * Gaussian sorting. WebGL always uses stable sorting on the upper 24 bits of float32 depth keys.
+     * @remarks
+     * WebGL uses WebAssembly SIMD and falls back to JavaScript if initialization fails.
      */
     sort?: {
         /**
@@ -284,8 +286,7 @@ export interface ISplattingPluginConfig {
          */
         radial?: boolean;
         /**
-         * Use stable sorting on the upper 24 bits of float32 sort keys on WebGL.
-         * @default `false`
+         * @deprecated Ignored since 1.14.0. WebGL always uses stable 24-bit depth keys; remove this option.
          */
         highPrecisionEnabled?: boolean;
         minIntervalMs?: number;

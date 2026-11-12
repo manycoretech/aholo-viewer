@@ -52,7 +52,6 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel, reques
         precalculateEnabled: true,
         repackEnabled: false,
         radial: false,
-        sortHighPrecisionEnabled: false,
         detailCullingAlphaEnabled: false,
         preBlurAmount: 0.3,
         blurAmount: 0,
@@ -74,7 +73,6 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel, reques
                     },
                     sort: {
                         radial: params.radial,
-                        highPrecisionEnabled: params.sortHighPrecisionEnabled,
                     },
                     raster: {
                         detailCullingAlphaEnabled: params.detailCullingAlphaEnabled,
@@ -117,7 +115,6 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel, reques
 
     const sorting = pane.addFolder({ title: 'Sorting', expanded: false });
     sorting.addBinding(params, 'radial', { label: 'Radial' }).on('change', applyConfig);
-    sorting.addBinding(params, 'sortHighPrecisionEnabled', { label: 'High precision' }).on('change', applyConfig);
 
     const composite = pane.addFolder({ title: 'Composite', expanded: false });
     composite.addBinding(params, 'compositeEnabled', { label: 'Enabled' }).on('change', applyConfig);

@@ -14,14 +14,14 @@ This page summarizes common data formats, `packType` differences, preset options
 
 Choose the preset according to product constraints first, then tune only the most important parameters. Avoid changing precision, sorting, and blur parameters at the same time at the start.
 
-| Target Scenario                                           | Recommended Preset    | Key Settings                                                                                             |
-| --------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------- |
-| Image quality first, with strong user hardware            | Max Quality           | `compressed`, `pack.highPrecisionEnabled`, `composite.highPrecisionEnabled`, `sort.highPrecisionEnabled` |
-| Large scenes that can fail under low precision            | Quality First         | `compressed`, `pack.highPrecisionEnabled`                                                                |
-| Weaker devices that still need to open large-scale scenes | Balanced              | `super-compressed`, `pack.cameraRelativeEnabled`                                                         |
-| Weaker devices that still need a mostly complete image    | Performance First     | `super-compressed`, `raster.detailCullingThreshold`, `raster.maxPixelRadius`                             |
-| Very large scenes or very low-end devices                 | Extreme Performance 0 | `maxShDegree: 0`, `sort.minIntervalMs`, more aggressive precision compression                            |
-| Source data is sog and the goal is to open larger scenes  | Extreme Performance 1 | `sog`, `pack.precalculateEnabled`, GPU memory usage                                                      |
+| Target Scenario                                           | Recommended Preset    | Key Settings                                                                  |
+| --------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------- |
+| Image quality first, with strong user hardware            | Max Quality           | `compressed`, `pack.highPrecisionEnabled`, `composite.highPrecisionEnabled`   |
+| Large scenes that can fail under low precision            | Quality First         | `compressed`, `pack.highPrecisionEnabled`                                     |
+| Weaker devices that still need to open large-scale scenes | Balanced              | `super-compressed`, `pack.cameraRelativeEnabled`                              |
+| Weaker devices that still need a mostly complete image    | Performance First     | `super-compressed`, `raster.detailCullingThreshold`, `raster.maxPixelRadius`  |
+| Very large scenes or very low-end devices                 | Extreme Performance 0 | `maxShDegree: 0`, `sort.minIntervalMs`, more aggressive precision compression |
+| Source data is sog and the goal is to open larger scenes  | Extreme Performance 1 | `sog`, `pack.precalculateEnabled`, GPU memory usage                           |
 
 ## 3DGS File Formats
 
@@ -85,6 +85,8 @@ From 1.13, `CompressedSplat` and `SuperCompressedSplat` require power-of-two sou
 
 Gaussian falloff always uses the normalized `fastExp` formula, so presets no longer configure `normalizedFalloff`. `detailCullingAlphaEnabled` defaults to `false`; enable it separately to account for opacity.
 
+From 1.14, all presets on WebGL use stable sorting on the upper 24 bits of float32 depth keys, matching WebGPU. Remove `sort.highPrecisionEnabled` from presets. `pack.highPrecisionEnabled` and `composite.highPrecisionEnabled` still control data packing and composition buffer precision, respectively.
+
 `sort.radial` and `pack.repackEnabled` default to `false`. Radial sorting changes transparency blending order. WebGL texture repacking adds GPU memory and processing overhead; evaluate it with the target scene and device before enabling it. See [sorting and texture repacking](./config.md).
 
 ### Max Quality
@@ -112,9 +114,6 @@ setViewerConfig(viewer, {
             },
             raster: {
                 detailCullingThreshold: 0,
-            },
-            sort: {
-                highPrecisionEnabled: true,
             },
             composite: {
                 enabled: true,
@@ -322,7 +321,6 @@ setViewerConfig(viewer, {
 | `raster.maxPixelRadius`                        | Maximum screen-space range covered by a Gaussian. | Default is `1024`; the recommended range is `[128, 1024]`. Too small a value can make the scene look broken.                                                                                                                                                                                                                   |
 | `raster.maxStdDev`                             | Maximum standard deviation of Gaussian spread.    | Should be between `sqrt(5)` and `sqrt(9)`. Larger values cost more performance but improve quality; `sqrt(8)` is usually a practical quality/performance midpoint.                                                                                                                                                             |
 | `sort.radial`                                  | Uses radial distance for sorting.                 | Defaults to `false`, sorting by view-direction depth. Enable it to sort by distance from the camera and evaluate the resulting transparency blending.                                                                                                                                                                          |
-| `sort.highPrecisionEnabled`                    | Controls WebGL sorting precision.                 | Defaults to `false`, using half-float sorting. Enable it for stable sorting on the upper 24 bits of float32 sort keys.                                                                                                                                                                                                         |
 | `sort.minIntervalMs`                           | Minimum interval between sorting operations.      | Increasing it reduces sort frequency but can delay ordering updates during fast motion. Start with `16 * n` ms, typically with `n` no greater than `10`; the default is `0`.                                                                                                                                                   |
 
 ### Disable SH per Gaussian
