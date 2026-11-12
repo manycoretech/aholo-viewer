@@ -15,6 +15,7 @@ import {
 } from '@manycore/aholo-viewer';
 import { Pane } from 'tweakpane';
 import { CameraControl } from './camera-control.js';
+import { mountCameraPoseCopy } from './camera-pose-copy.js';
 import {
     abortable as abortableWithMessage,
     syncCameraAspect,
@@ -75,6 +76,8 @@ interface ViewerLabels {
     unsupportedFileType: string;
     emptyFiles: string;
     removeFile: string;
+    copiedPose: string;
+    poseNoFile: string;
 }
 
 type Source =
@@ -330,6 +333,14 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
     let keepPrecalculateDisabled = false;
     const lodSplats: LodSplatInstance[] = [];
     const records: FileRecord[] = [];
+    const poseCopy = mountCameraPoseCopy({
+        root,
+        getCamera: () => camera,
+        getWorldUpPreset: () => coordSelect.value,
+        hasLoadedFiles: () => records.some(record => record.status === 'ready'),
+        labels: config.labels,
+        onError: error => setStatus('error', getErrorMessage(error)),
+    });
     const estimateFps = createFpsEstimator();
 
     configureFileInputForPlatform(fileInput);
@@ -838,6 +849,7 @@ export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfi
         if (rafId !== undefined) {
             window.cancelAnimationFrame(rafId);
         }
+        poseCopy.dispose();
         control.dispose();
         clearScene();
         fullscreenMode.dispose();

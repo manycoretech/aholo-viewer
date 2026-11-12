@@ -8,6 +8,7 @@
     ".build": "astro build",
     ".preview": "astro preview --host 127.0.0.1",
     ".check": "astro check",
+    "test:camera-pose-copy": "node --test tests/camera-pose-copy.test.mjs",
     ".clean": "node scripts/clean.mjs"
   },
   "dependencies": {
