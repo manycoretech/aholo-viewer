@@ -11,10 +11,10 @@
     ".clean": "node scripts/clean.mjs"
   },
   "dependencies": {
-    "@astrojs/markdown-satteri": "^0.4.6",
+    "@astrojs/markdown-satteri": "^0.4.8",
     "@manycore/aholo-viewer": "workspace:*",
     "@tweakpane/plugin-essentials": "^0.2.1",
-    "astro": "^7.4.5",
+    "astro": "^7.4.10",
     "lz-string": "^1.5.0",
     "monaco-editor": "^0.57.0",
     "tslib": "catalog:",
@@ -26,6 +26,6 @@
     "@tweakpane/core": "^2.0.5",
     "@types/node": "^22.20.0",
     "typescript": "catalog:",
-    "vite-plugin-checker": "^0.14.5"
+    "vite-plugin-checker": "^1.0.0"
   }
 }
