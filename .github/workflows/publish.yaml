@@ -30,7 +30,14 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Plan package publish
         id: publish-plan
-        run: bash ./ci/publish.sh --plan
+        run: |
+          npm install npm -g
+          npm install corepack -g
+          corepack enable
+          corepack install
+          pnpm install
+          node scripts/publish-packages.mjs --plan
+
       - name: Resolve latest native build
         if: steps.publish-plan.outputs.needs_native == 'true'
         id: native-build

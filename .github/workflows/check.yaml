@@ -21,5 +21,11 @@ jobs:
         with:
           node-version: 24
       - run: |
-          chmod a+x ./ci/check.sh
-          ./ci/check.sh
+          npm install npm -g
+          npm install corepack -g
+          corepack enable
+          corepack install
+
+          pnpm install
+          pnpm --filter @manycore/aholo-splat-transform run build
+          pnpm check
