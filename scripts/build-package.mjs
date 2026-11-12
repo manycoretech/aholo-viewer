@@ -231,7 +231,7 @@ function textureLoaderPatchPlugin() {
                     const source = await readFile(args.path, 'utf8');
                     const nodeBranchShim =
                         'var fs={readFileSync:function(){throw new Error("Node file loading is not available in the browser build.");}};';
-                    const contents = source.replace(/var fs=require\("fs"\);/, nodeBranchShim);
+                    const contents = source.replace(/var fs=require\("(?:node:)?fs"\);/, nodeBranchShim);
 
                     if (contents === source) {
                         throw new Error('Unable to patch basis_transcoder.js node file-system branch.');

@@ -1,5 +1,17 @@
 # ChangeLOG
 
+## DEV
+
+1. Features
+    - upgrade the bundled Basis Universal transcoder to support XUASTC and XUBC7 KTX2 textures, including matching ASTC block sizes when transcoding XUASTC.
+    - prefer BC7 output for XUBC7 textures when supported by the device.
+2. Fixes
+    - fix initialization of the bundled Basis transcoder WebAssembly module.
+    - keep renderer builds compatible with the updated Basis transcoder.
+    - improve KTX2 transcoding errors by rejecting zero-byte mip output sizes before transcoding.
+3. Changes
+    - align the BC7 output format ID with the transcoder's exported constant.
+
 ## 1.13.0
 
 1. Features
