@@ -137,16 +137,19 @@ Reads and combines multiple inputs while retaining input-block order for `Modify
 
 Writes a single splat to a file or a LOD / split bundle to a directory. The output extension or bundle filenames determine the format.
 
-| Parameter          | Type / default      | Description                                                                                      |
-| ------------------ | ------------------- | ------------------------------------------------------------------------------------------------ |
-| `input`            | `string`, required  | Input resource key.                                                                              |
-| `output`           | `string`, required  | Single-file path or bundle output directory.                                                     |
-| `enableMortonSort` | `boolean` / `true`  | Applies Morton ordering for output; disabled for bundle files that must preserve interval order. |
-| `version`          | `3 \| 4` / `3`      | Applies to `.spz` only; `.uspz` always writes uncompressed v3.                                   |
-| `compressLevel`    | `number` / `6`      | SPZ only: v3 uses gzip (typically `0–9`); v4 uses zstd and follows its level range.              |
-| `highPrecision`    | `boolean` / `false` | ESZ only: `false` selects low precision, `true` selects high precision.                          |
+| Parameter          | Type / default            | Description                                                                                                                                                                            |
+| ------------------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `input`            | `string`, required        | Input resource key.                                                                                                                                                                    |
+| `output`           | `string`, required        | Single-file path or bundle output directory.                                                                                                                                           |
+| `enableMortonSort` | `boolean` / `true`        | Applies Morton ordering for output; disabled for bundle files that must preserve interval order.                                                                                       |
+| `version`          | `number` / format default | SOG supports `2` and `3`, defaulting to `2`; SPZ supports `3` and `4`, defaulting to `3`. Unsupported versions fall back to the format default. `.uspz` always writes uncompressed v3. |
+| `compressLevel`    | `number` / `6`            | SPZ only: v3 uses gzip (typically `0–9`); v4 uses zstd and follows its level range.                                                                                                    |
+| `paletteSize`      | `number` / `0`            | SOG SH palette size: up to `65536` for v2 or `262144` for v3, capped by the input point count. `0` keeps automatic sizing.                                                             |
+| `highPrecision`    | `boolean` / `false`       | ESZ only: `false` selects low precision, `true` selects high precision.                                                                                                                |
 
 Starting with `2.1.2`, the default compression level is `6` for both SPZ v3 and v4. Version `2.1.1` uses `6` for v3 and `7` for v4. Set `compressLevel: 7` explicitly to retain the SPZ v4 level used by `2.1.1`.
+
+SOG input supports v1/v2/v3. Output defaults to v2; set `version: 3` to enable v3. V3 stores exp-map rotations in the RGB channels of a separate `quats.webp` texture, uses square-root opacity encoding up to `1.5625`, and supports 24-bit SH labels. SH remains limited to degree 3. Optional blind data, extras, and comments are not retained. SOG v2 clamps opacity to 1.
 
 Concurrent CPU bundle file writes are limited by top-level pipeline `cpuWorkers`; the former `parallelCounts` option is no longer used. Files requiring GPU processing are written sequentially. CPU texture encoding within a SOG file still uses the shared pool.
 

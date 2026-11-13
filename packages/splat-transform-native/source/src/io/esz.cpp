@@ -89,7 +89,8 @@ splat::Splat read_esz_stream(StreamReader& source, uint32_t max_sh_degree) {
             require_size(quaternions, output.size() * 4);
             parallel_rows(output.size(), [&](size_t first, size_t end) {
                 for (size_t i = first; i < end; ++i) {
-                    codec::decode_quaternion(std::span(quaternions).subspan(i * 4, 4), output, i);
+                    output.gaussians[i].rotation = codec::decode_quaternion(std::span(quaternions).subspan(i * 4, 4));
+                    output.gaussians[i].rotation.normalize();
                 }
             });
         }
@@ -139,7 +140,8 @@ splat::Splat read_esz_stream(StreamReader& source, uint32_t max_sh_degree) {
                 for (size_t c = 0; c < 3; ++c) {
                     output.gaussians[i].attribute(splat::ScaleX + c) = std::exp(from_half(attributes.read<uint16_t>()));
                 }
-                codec::decode_oct_quaternion(attributes.read<uint32_t>(), output, i);
+                output.gaussians[i].rotation = codec::decode_oct_quaternion(attributes.read<uint32_t>());
+                output.gaussians[i].rotation.normalize();
             }
         });
         for (size_t group = 0; group < source_sh_count / 3; group += 4) {
@@ -206,7 +208,7 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             for (size_t c = 0; c < 3; ++c) {
                 append(segment, to_half(std::log(float(data.gaussians[index].attribute(splat::ScaleX + c)))));
             }
-            append(segment, codec::encode_oct_quaternion(data, index));
+            append(segment, codec::encode_oct_quaternion(data.gaussians[index].rotation));
         }
         append_segment(output, segment);
         for (size_t group = 0; group < data.sh_count() / 3; group += 4) {
@@ -258,7 +260,7 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         auto quats_time = logger.time("ESZ encoding quats");
         std::fill(pixels.begin(), pixels.end(), std::byte {});
         for (size_t i = 0; i < indices.size(); ++i) {
-            const auto quat = codec::encode_quaternion(data, indices[i], true);
+            const auto quat = codec::encode_quaternion(data.gaussians[indices[i]].rotation, true);
             std::copy(quat.begin(), quat.end(), pixels.begin() + i * 4);
         }
         write_image(pixels, width, height);

@@ -70,7 +70,7 @@ splat::Splat LccFile::read(const FileInput& source) const {
             for (size_t c = 0; c < 4; ++c) {
                 result.gaussians[output].attribute(splat::QuatX + c) = static_cast<float>(q[c]);
             }
-            result.normalize_rotation(output);
+            result.gaussians[output].rotation.normalize();
             for (size_t coefficient = 0; coefficient < result.sh_count() / 3; ++coefficient) {
                 const auto packed_sh = sh_reader.read_at<uint32_t>(static_cast<size_t>(start) * 2 + i * 64 + coefficient * 4);
                 const std::array<float, 3> v { (packed_sh & 2047) / 2047.0f, ((packed_sh >> 11) & 1023) / 1023.0f, ((packed_sh >> 21) & 2047) / 2047.0f };

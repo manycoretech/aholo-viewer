@@ -98,7 +98,7 @@ void read_float_vertices(const Element& element, std::span<const int32_t> bindin
                     sh[c - splat::ShOffset + 3] = value(c);
                 }
             }
-            gaussian.normalize_rotation();
+            gaussian.rotation.normalize();
         }
     };
     constexpr size_t MIN_PARALLEL_VERTICES = 65536;
@@ -300,7 +300,7 @@ splat::Splat read_ply(const Header& header, Reader& reader, uint32_t max_sh_degr
                 result.gaussians[i].attribute(splat::Alpha) = float(packed[3] & 255) / 255;
             }
             if (element.name == "vertex") {
-                result.normalize_rotation(i);
+                result.gaussians[i].rotation.normalize();
             }
         }
     }

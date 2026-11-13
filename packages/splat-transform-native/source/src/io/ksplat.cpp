@@ -100,7 +100,7 @@ splat::Splat KsplatFile::read(const FileInput& source) const {
                 result.gaussians[output].attribute(splat::ShOffset + c) = compression == 0 ? sh.read_at<float>(SH_INDEX[c] * 4) : compression == 1 ? from_half(sh.read_at<uint16_t>(SH_INDEX[c] * 2))
                                                                                                                                                    : (sh_min + sh.read_at<uint8_t>(SH_INDEX[c]) / 255.0f * (sh_max - sh_min));
             }
-            result.normalize_rotation(output);
+            result.gaussians[output].rotation.normalize();
         }
         section_base = data_base + stride * capacity;
     }

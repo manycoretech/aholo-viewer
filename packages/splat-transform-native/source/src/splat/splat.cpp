@@ -75,13 +75,6 @@ ShCoefficients& ShCoefficients::add_multiplied(const ShCoefficients& other, floa
 
 ShCoefficients::~ShCoefficients() noexcept = default;
 
-void Gaussian::normalize_rotation() {
-    rotation.normalize();
-    if (rotation.w() < 0) {
-        rotation.coeffs() *= -1;
-    }
-}
-
 Eigen::AlignedBox3f Gaussian::bounding_box(float k) const {
     const Eigen::Matrix3f rotation = this->rotation.toRotationMatrix();
     // The ellipsoid's world-axis radii are the square roots of the covariance diagonal.
@@ -220,10 +213,9 @@ Splat Splat::select(std::span<const uint32_t> indices) && {
 
 void Splat::prepare_lod() {
     for (auto& gaussian : gaussians) {
-        gaussian.rotation.normalize();
         gaussian.make_valid();
     }
-    compute_bounding_box();
+    this->compute_bounding_box();
 }
 
 Splat combine(std::vector<Splat>&& source, bool minimum_sh) {

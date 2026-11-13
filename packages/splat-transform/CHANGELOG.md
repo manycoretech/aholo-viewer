@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.0
+
+- Add SOG v3 input and output with exp-map quaternion textures, square-root opacity encoding, and 24-bit SH labels; retain v2 output by default and limit SH to degree 3
+- Add `Write.paletteSize` and native `palette_size` for SOG SH palettes, with limits of `65536` for v2 and `262144` for v3; omit it or use `0` to retain automatic sizing capped at `65536`
+- Reuse `Write.version` for SOG and SPZ output, falling back to SOG v2 or SPZ v3 for unsupported versions; rename native output fields to `version` and `compress_level`, with compression level applied only to SPZ
+- Use `Eigen::Quaternionf` directly in native quaternion encoders and decoders, default Gaussian rotations to identity, and remove redundant LOD rotation normalization
+- Preserve quaternion component signs during normalization and handle format-specific sign conventions during encoding, retaining legacy SPLAT output bytes
+
 ## 2.1.3
 
 - Standardize native binary buffers, RGBA image storage, compression streams, and shader assets on `std::byte`; adapt pointers at codec library boundaries

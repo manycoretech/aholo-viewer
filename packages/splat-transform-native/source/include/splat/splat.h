@@ -76,12 +76,11 @@ struct Gaussian {
     Eigen::Vector3f mean = Eigen::Vector3f::Zero();
     Eigen::Vector3f scale = Eigen::Vector3f::Zero();
     float opacity = 0;
-    Eigen::Quaternionf rotation { 0, 0, 0, 0 };
+    Eigen::Quaternionf rotation = Eigen::Quaternionf::Identity();
     ShCoefficients sh;
 
     float& attribute(size_t index) { return field(*this, index); }
     const float& attribute(size_t index) const { return field(*this, index); }
-    void normalize_rotation();
     Eigen::Matrix3f covariance() const;
     void set_covariance(const Eigen::Matrix3f& covariance);
     Eigen::AlignedBox3f bounding_box(float k = 3.0f) const;
@@ -123,7 +122,6 @@ struct Splat {
     size_t size() const noexcept { return gaussians.size(); }
     size_t sh_count() const { return SH_COUNTS.at(sh_degree); }
     size_t attribute_count() const { return ShOffset + sh_count(); }
-    void normalize_rotation(size_t index) { gaussians.at(index).normalize_rotation(); }
     void limit_sh_degree(uint32_t maximum);
     Splat select(std::span<const uint32_t> indices) const&;
     Splat select(std::span<const uint32_t> indices) &&;

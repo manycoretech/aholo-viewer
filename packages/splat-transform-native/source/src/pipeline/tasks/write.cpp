@@ -7,8 +7,9 @@ using io::Json;
 namespace {
 io::FileOptions file_options(const Json& config) {
     io::FileOptions options;
-    options.spz_version = config.value("version", options.spz_version);
-    options.spz_compress_level = config.value("compressLevel", options.spz_compress_level);
+    options.version = config.value("version", options.version);
+    options.compress_level = config.value("compressLevel", options.compress_level);
+    options.palette_size = config.value("paletteSize", options.palette_size);
     options.high_precision = config.value("highPrecision", options.high_precision);
     options.enable_morton_sort = config.value("enableMortonSort", options.enable_morton_sort);
     return options;

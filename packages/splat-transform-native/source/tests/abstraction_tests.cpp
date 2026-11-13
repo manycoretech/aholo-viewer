@@ -99,8 +99,14 @@ void native_rotation() {
 }
 void gaussian_rotation() {
     splat::Gaussian gaussian;
-    gaussian.normalize_rotation();
-    require(gaussian.rotation.coeffs().isZero(), "Default rotation must remain zero");
+    require(gaussian.rotation.coeffs() == Eigen::Vector4f(0, 0, 0, 1), "Default Gaussian rotation must be identity");
+    const splat::Splat defaults(2, 0);
+    for (const auto& point : defaults.gaussians) {
+        require(point.rotation.coeffs() == Eigen::Vector4f(0, 0, 0, 1), "Default Splat rotation must be identity");
+    }
+    gaussian.rotation.coeffs().setZero();
+    gaussian.rotation.normalize();
+    require(gaussian.rotation.coeffs().isZero(), "Zero rotation must remain zero");
 
     gaussian.rotation = Eigen::Quaternionf(4, 1, 2, 3);
     const auto& view = gaussian;
@@ -112,10 +118,15 @@ void gaussian_rotation() {
         "Rotation attribute writes do not update the quaternion");
 
     gaussian.rotation = Eigen::Quaternionf(-4, 3, 0, 0);
-    gaussian.normalize_rotation();
-    require(gaussian.rotation.coeffs().isApprox(Eigen::Vector4f(-0.6f, 0, 0, 0.8f)), "Rotation normalization lost unit length or canonical sign");
+    gaussian.rotation.normalize();
+    require(gaussian.rotation.coeffs().isApprox(Eigen::Vector4f(0.6f, 0, 0, -0.8f)), "Rotation normalization changed unit length or component signs");
     gaussian.scale = Eigen::Vector3f(1, 2, 3);
     const auto covariance = gaussian.covariance();
+    const auto bounds = gaussian.bounding_box();
+    gaussian.rotation.coeffs() *= -1;
+    require(gaussian.covariance().isApprox(covariance, 1e-6f), "Quaternion sign changed covariance");
+    const auto opposite_bounds = gaussian.bounding_box();
+    require(opposite_bounds.min().isApprox(bounds.min(), 1e-6f) && opposite_bounds.max().isApprox(bounds.max(), 1e-6f), "Quaternion sign changed Gaussian bounds");
     splat::Gaussian restored;
     restored.set_covariance(covariance);
     require(restored.covariance().isApprox(covariance, 1e-5f), "Quaternion covariance round trip changed geometry");
@@ -128,7 +139,7 @@ void formats() {
         auto& gaussian = source.gaussians[i];
         gaussian.mean = Eigen::Vector3f(float(i), float(i) / 4, -float(i));
         gaussian.scale.setConstant(0.125f);
-        gaussian.rotation.w() = 1;
+        gaussian.rotation = Eigen::Quaternionf(-float(i + 1), 1, 2, 3).normalized();
         gaussian.opacity = 0.75f;
         for (size_t c = 0; c < gaussian.sh.size(); ++c) {
             gaussian.sh[c] = float(std::sin(i + c) / 4);
@@ -136,9 +147,12 @@ void formats() {
     }
     for (const auto extension : { ".ply", ".spz", ".uspz", ".esz" }) {
         for (bool variant : { false, true }) {
-            auto file = io::create_file(extension, { .spz_version = variant ? 4 : 3, .high_precision = variant }, io::FileOperation::Write);
+            auto file = io::create_file(extension, { .version = variant ? 4 : 3, .high_precision = variant }, io::FileOperation::Write);
             const auto bytes = file->write(source, indices);
             const auto full = file->read({ {}, bytes, 3 });
+            for (size_t i = 0; i < source.size(); ++i) {
+                require(full.gaussians[i].rotation.angularDistance(source.gaussians[i].rotation) < 0.025f, "Format changed a negative-w rotation");
+            }
             for (uint32_t degree : { 0u, 1u, 2u }) {
                 const auto limited = file->read({ {}, bytes, degree });
                 require(limited.sh_degree == degree && limited.size() == source.size(), "Format ignored maxShDegree");

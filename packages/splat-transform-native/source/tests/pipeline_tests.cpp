@@ -145,7 +145,7 @@ int main() {
                 }
             }
         }
-        io::write_splat(directory / "v4.spz", points, { .spz_version = 4, .enable_morton_sort = false });
+        io::write_splat(directory / "v4.spz", points, { .version = 4, .enable_morton_sort = false });
         require(io::read_splat(directory / "v4.spz").size() == points.size(), "SPZ v4 roundtrip failed");
         io::write_splat(directory / "high.esz", points, { .high_precision = true, .enable_morton_sort = false });
         const auto high = io::read_splat(directory / "high.esz");
@@ -169,13 +169,15 @@ int main() {
                 }
             }
             io::write_splat(directory / "rotations.ply", rotations, { .enable_morton_sort = false });
-            const auto canonical = io::read_splat(directory / "rotations.ply");
-            require(canonical.gaussians[0].attribute(splat::QuatW) > 0, "Negative-w quaternion was not canonicalized");
+            const auto normalized = io::read_splat(directory / "rotations.ply");
+            require(normalized.gaussians[0].rotation.w() < 0 && normalized.gaussians[1].rotation.w() > 0, "Input normalization changed quaternion signs");
+            require(std::abs(normalized.gaussians[0].rotation.norm() - 1) < 1e-6f, "Input normalization did not produce a unit quaternion");
+            require(normalized.gaussians[0].rotation.angularDistance(normalized.gaussians[1].rotation) < 1e-6f, "Equivalent quaternion signs changed rotation");
             for (size_t c = splat::QuatX; c <= splat::QuatW; ++c) {
-                require(canonical.gaussians[0].attribute(c) == canonical.gaussians[1].attribute(c), "Equivalent quaternion signs produced different values");
-                require(canonical.gaussians[2].attribute(c) == 0, "Zero quaternion changed during input normalization");
+                require(normalized.gaussians[0].attribute(c) == -normalized.gaussians[1].attribute(c), "Input normalization changed quaternion component signs");
+                require(normalized.gaussians[2].attribute(c) == 0, "Zero quaternion changed during input normalization");
             }
-            io::write_splat(directory / "rotations.splat", canonical, { .enable_morton_sort = false });
+            io::write_splat(directory / "rotations.splat", normalized, { .enable_morton_sort = false });
             const auto encoded = io::read_bytes(directory / "rotations.splat");
             constexpr std::array<std::byte, 4> EXPECTED { std::byte { 168 }, std::byte { 88 }, std::byte { 209 }, std::byte { 47 } };
             for (size_t c = 0; c < 4; ++c) {

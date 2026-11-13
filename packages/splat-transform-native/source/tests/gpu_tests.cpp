@@ -146,6 +146,28 @@ int main(int argc, char** argv) {
             }
         }
         {
+            splat::Splat points(3, 0);
+            for (size_t i = 0; i < points.size(); ++i) {
+                auto& g = points.gaussians[i];
+                g.mean = { float(i) * 0.25f - 0.25f, 0.1f, -0.1f };
+                g.scale = { 0.18f, 0.07f, 0.11f };
+                g.opacity = 0.8f;
+                g.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(0.6f + float(i) * 0.3f, Eigen::Vector3f(1, 2, 3).normalized()));
+            }
+            const Eigen::AlignedBox3f bounds(Eigen::Vector3f::Constant(-1), Eigen::Vector3f::Ones());
+            const auto prepared = voxel::prepare(points);
+            const auto cpu = voxel::cpu_backend()->voxelize(prepared, bounds, 0.125f, 0.2f);
+            const auto gpu = voxel::gpu_backend()->voxelize(prepared, bounds, 0.125f, 0.2f);
+            for (auto& g : points.gaussians) {
+                g.rotation.coeffs() *= -1;
+            }
+            const auto opposite = voxel::prepare(points);
+            if (cpu.masks != voxel::cpu_backend()->voxelize(opposite, bounds, 0.125f, 0.2f).masks ||
+                gpu.masks != voxel::gpu_backend()->voxelize(opposite, bounds, 0.125f, 0.2f).masks) {
+                throw std::runtime_error("Quaternion sign changed CPU or GPU voxel occupancy");
+            }
+        }
+        {
             splat::Splat points(512, 0);
             for (size_t i = 0; i < points.size(); ++i) {
                 auto& g = points.gaussians[i];

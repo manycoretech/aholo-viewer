@@ -276,6 +276,11 @@ if(BUILD_TESTING)
     set_target_properties(splat_transform_tests PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_link_libraries(splat_transform_tests PRIVATE splat_transform_core)
     add_test(NAME core COMMAND splat_transform_tests)
+    add_executable(splat_transform_sog_tests)
+    target_sources(splat_transform_sog_tests PRIVATE tests/sog_tests.cpp)
+    target_link_libraries(splat_transform_sog_tests PRIVATE splat_transform_core)
+    add_test(NAME sog_contracts COMMAND splat_transform_sog_tests)
+    set_tests_properties(sog_contracts PROPERTIES TIMEOUT 120)
     add_executable(splat_transform_pipeline_tests)
     target_sources(splat_transform_pipeline_tests PRIVATE tests/pipeline_tests.cpp)
     set_target_properties(splat_transform_pipeline_tests PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -311,6 +316,7 @@ if(BUILD_TESTING)
     target_include_directories(splat_transform_compute_tests PRIVATE "${SHADER_OUTPUT_DIR}")
     target_link_libraries(splat_transform_compute_tests PRIVATE splat_transform_core)
     if(SPLAT_TRANSFORM_TEST_GPU)
+        add_test(NAME sog_gpu_contracts COMMAND splat_transform_sog_tests --gpu)
         add_test(NAME gpu_contracts COMMAND splat_transform_gpu_tests)
         add_test(NAME compute_contracts COMMAND splat_transform_compute_tests)
     endif()
@@ -323,7 +329,7 @@ if(BUILD_TESTING)
         splat_transform_voxel_fallback_tests
         splat_transform_streaming_tests
         splat_transform_logging_tests
-        splat_transform_abstraction_tests splat_transform_geometry_tests splat_transform_tests splat_transform_pipeline_tests
+        splat_transform_abstraction_tests splat_transform_geometry_tests splat_transform_tests splat_transform_sog_tests splat_transform_pipeline_tests
         splat_transform_data_task_tests
         splat_transform_frozen_pipeline_tests
         splat_transform_threading_tests splat_transform_shader_tests splat_transform_gpu_tests splat_transform_compute_tests)

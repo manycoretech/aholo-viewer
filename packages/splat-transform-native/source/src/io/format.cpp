@@ -25,11 +25,13 @@ std::unique_ptr<IFile> make_file(const FileOptions&) {
 const std::array FORMATS {
     Format { ".ply", true, make_file<PlyFile> },
     Format { ".spz", true, [](const FileOptions& options) -> std::unique_ptr<IFile> {
-                return std::make_unique<SpzFile>(options.spz_version, options.spz_compress_level);
+                return std::make_unique<SpzFile>(options.version, options.compress_level);
             } },
     Format { ".uspz", true, [](const FileOptions&) -> std::unique_ptr<IFile> { return std::make_unique<SpzFile>(3, -1); } },
     Format { ".splat", true, make_file<SplatFile> },
-    Format { ".sog", true, make_file<SogFile> },
+    Format { ".sog", true, [](const FileOptions& options) -> std::unique_ptr<IFile> {
+                return std::make_unique<SogFile>(options.version, options.palette_size);
+            } },
     Format { ".json", false, make_file<SogFile> },
     Format { ".esz", true, [](const FileOptions& options) -> std::unique_ptr<IFile> { return std::make_unique<EszFile>(options.high_precision); } },
     Format { ".ksplat", false, make_file<KsplatFile> },
