@@ -1,272 +1,434 @@
 ---
-import { dictionary } from '../i18n/dictionary.js';
+import { getViewerLabels } from '../client/viewer-labels.js';
 import type { Locale } from '../i18n/locales.js';
-
 interface Props {
   lang: Locale;
 }
-
 const { lang } = Astro.props;
-const t = dictionary[lang];
-const labels =
-  lang === 'zh-CN'
-    ? {
-        import: '导入',
-        selectFiles: '选择文件',
-        fileFormatHint: 'PLY / SPZ / SPLAT / KSPLAT / SOG / ESZ / JSON / ZIP（LCC / LCC2）',
-        urlLabel: 'URL',
-        urlPlaceholder: '粘贴 .ply / .spz / .zip（LCC / LCC2） / .sog / .esz / .json 地址',
-        loadUrl: '加载 URL',
-        loadClipboard: '从剪贴板加载',
-        removeFile: '删除文件',
-        files: '导入文件',
-        emptyFiles: '尚未导入文件',
-        camera: '相机',
-        coordSystem: '坐标系',
-        far: '远裁剪面',
-        useOrbit: '环绕',
-        copyCamera: '复制状态',
-        pasteCamera: '粘贴状态',
-        resetCamera: '重置视角',
-        settings: '渲染参数',
-        preset: '预设',
-        presetCustom: '自定义',
-        presetMaxQuality: '极限效果',
-        presetQualityFirst: '效果优先',
-        presetBalanced: '均衡模式',
-        presetPerformanceFirst: '性能优先',
-        presetExtremePerformance0: '极限性能 0',
-        presetExtremePerformance1: '极限性能 1',
-        presetPackTypeTip: '预设会影响 Pack type，请在导入前选择。',
-        packTypeTip: '导入前生效',
-        statusReady: '',
-        statusLoading: '正在加载',
-        statusError: '加载失败',
-        unsupportedFileType: '不支持的文件类型',
-        statsFps: 'FPS',
-        dropOverlayTitle: '释放文件以导入项目',
-        dropOverlayHint: '支持 3DGS 文件及 LCC / LCC2 ZIP 包',
-        collapseLeft: '收起左侧设置',
-        expandLeft: '展开左侧设置',
-        collapseRight: '收起渲染参数',
-        expandRight: '展开渲染参数',
-      }
-    : {
-        import: 'Import',
-        selectFiles: 'Choose Files',
-        fileFormatHint: 'PLY / SPZ / SPLAT / KSPLAT / SOG / ESZ / JSON / ZIP (LCC / LCC2)',
-        urlLabel: 'URL',
-        urlPlaceholder: 'Paste .ply / .spz / .zip(LCC, LCC2) / .sog / .esz / .json URLs',
-        loadUrl: 'Load URL',
-        loadClipboard: 'Load Clipboard',
-        removeFile: 'Remove File',
-        files: 'Imported Files',
-        emptyFiles: 'No imported files',
-        camera: 'Camera',
-        coordSystem: 'Coordinate System',
-        far: 'Far Plane',
-        useOrbit: 'Orbit',
-        copyCamera: 'Copy State',
-        pasteCamera: 'Paste State',
-        resetCamera: 'Reset View',
-        settings: 'Render Settings',
-        preset: 'Preset',
-        presetCustom: 'Custom',
-        presetMaxQuality: 'Max Quality',
-        presetQualityFirst: 'Quality First',
-        presetBalanced: 'Balanced',
-        presetPerformanceFirst: 'Performance First',
-        presetExtremePerformance0: 'Extreme Performance 0',
-        presetExtremePerformance1: 'Extreme Performance 1',
-        presetPackTypeTip: 'Presets affect Pack type. Choose before import.',
-        packTypeTip: 'Before import',
-        statusReady: '',
-        statusLoading: 'Loading',
-        statusError: 'Load failed',
-        unsupportedFileType: 'Unsupported file type',
-        statsFps: 'FPS',
-        dropOverlayTitle: 'Release files to import',
-        dropOverlayHint: 'Supports 3DGS files and LCC / LCC2 ZIP archives',
-        collapseLeft: 'Collapse left settings',
-        expandLeft: 'Expand left settings',
-        collapseRight: 'Collapse render settings',
-        expandRight: 'Expand render settings',
-      };
+const labels = getViewerLabels(lang);
+const ASSET_ACCEPT = '.ply,.spz,.splat,.ksplat,.zip,.sog,.esz,.json,.gltf,.glb,.bin,.png,.jpg,.jpeg,.webp,.ktx2';
 const configJson = JSON.stringify({ labels }).replace(/</g, '\\u003c');
-const supportedFormats = '.ply,.spz,.splat,.ksplat,.zip,.sog,.esz,.json';
 ---
 
-<script is:inline>
-  (() => {
-    const compact = window.matchMedia('(max-width: 720px)').matches;
-    const readCollapsed = storageKey => {
-      if (compact) {
-        return true;
-      }
-
-      try {
-        const stored = localStorage.getItem(storageKey);
-        if (stored !== null) {
-          return stored === 'true';
-        }
-      } catch {
-        // Keep the responsive default when storage is unavailable.
-      }
-
-      return false;
-    };
-
-    document.documentElement.dataset.viewerLeftCollapsed = String(readCollapsed('aholo:viewer:left-collapsed'));
-    document.documentElement.dataset.viewerRightCollapsed = String(readCollapsed('aholo:viewer:right-collapsed'));
-  })();
-</script>
-
-<main class="viewer-shell" data-viewer data-left-collapsed="auto" data-right-collapsed="auto">
-  <section class="viewer-stage" aria-label={t.viewer.title} data-viewer-stage>
-    <div class="viewer-render-surface" data-render-surface></div>
-    <div class="viewer-status" data-status data-state="ready" aria-live="polite"></div>
-    <output class="viewer-stats" aria-label={labels.statsFps} data-stat-fps>0</output>
+<main
+  class="viewer-shell"
+  data-viewer
+  data-layout="single"
+  data-active-view="A"
+  data-drawer-open="false"
+  data-controls-open="false"
+>
+  <section class="viewer-stage" data-viewer-stage aria-label={labels.workspace}>
+    {(['A', 'B', 'C', 'D'] as const).map((id) => (
+      <section
+        class="viewer-view"
+        data-view={id}
+        data-active={id === 'A' ? 'true' : 'false'}
+        hidden={id !== 'A'}
+        aria-label={`${labels.view} ${id}`}
+      >
+        <div class="viewer-render-surface" data-render-surface></div>
+        <header class="viewer-view-header">
+          <div class="viewer-view-label" data-view-label data-active={id === 'A'} title={labels.renameHint}>
+            <span>{id}</span>
+            <button type="button" data-activate-view={id} aria-pressed={id === 'A'}>
+              <strong data-view-title>
+                {labels.view} {id}
+              </strong>
+            </button>
+            <input type="text" data-view-name-input aria-label={labels.renameView} maxlength="64" hidden />
+          </div>
+        </header>
+        <button type="button" class="viewer-empty-scene viewer-import-prompt" data-empty-scene data-empty-import={id}>
+          <span class="viewer-import-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 4v16m-5-5 5 5 5-5" />
+            </svg>
+          </span>
+          <strong>{labels.emptyScene}</strong>
+          <span class="viewer-format-hint">{labels.emptyHint}</span>
+        </button>
+        <div class="viewer-view-status" data-view-status hidden role="status" aria-live="polite">
+          <span data-view-message></span>
+          <button type="button" data-view-reload hidden>
+            {labels.reload}
+          </button>
+        </div>
+        <div class="viewer-drop-target" data-drop-target title={labels.dropHint} hidden>
+          <div class="viewer-import-prompt">
+            <span class="viewer-import-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 4v16m-5-5 5 5 5-5" />
+              </svg>
+            </span>
+            <strong data-drop-label>{labels.emptyScene}</strong>
+            <span class="viewer-format-hint" data-drop-hint>
+              {labels.emptyHint}
+            </span>
+          </div>
+        </div>
+        <footer class="viewer-view-footer">
+          <span data-preview-label hidden>
+            {labels.previewing}
+          </span>
+        </footer>
+      </section>
+    ))}
+    {(['column', 'row'] as const).map((axis) => (
+      <div
+        class="viewer-splitter"
+        data-splitter={axis}
+        role="separator"
+        tabindex="0"
+        aria-label={axis === 'column' ? labels.resizeColumns : labels.resizeRows}
+        aria-orientation={axis === 'column' ? 'vertical' : 'horizontal'}
+        aria-valuemin="15"
+        aria-valuemax="85"
+        aria-valuenow="50"
+        title={labels.resizeHint}
+        hidden
+      ></div>
+    ))}
+    <nav class="viewer-view-switcher" data-view-switcher aria-label={labels.activeView} hidden>
+      {(['A', 'B', 'C', 'D'] as const).map((id, index) => (
+        <button
+          type="button"
+          data-select-view={id}
+          aria-pressed={id === 'A'}
+          aria-keyshortcuts={String(index + 1)}
+          aria-label={`${labels.view} ${id}`}
+        >
+          <span>{id}</span>
+        </button>
+      ))}
+    </nav>
   </section>
 
   <button
-    class="viewer-left-toggle"
     type="button"
-    aria-controls="viewer-left-rail"
+    class="viewer-controls-toggle"
+    data-controls-toggle
+    aria-controls="viewer-controls"
     aria-expanded="false"
-    aria-label={labels.expandLeft}
-    title={labels.expandLeft}
-    data-left-toggle
-    data-expand-label={labels.expandLeft}
+    title={labels.openControls}
+    aria-label={labels.openControls}
   >
-    <span class="viewer-collapse-icon" aria-hidden="true"></span>
+    <span data-fps>-- FPS</span>
   </button>
+
+  <aside id="viewer-controls" class="viewer-controls" data-controls aria-label={labels.controls} inert>
+    <section class="viewer-control-section viewer-performance" title={labels.fpsHint}>
+      <header class="viewer-section-heading">
+        <h2>FPS</h2>
+        <span class="viewer-heading-line"></span>
+        <button
+          type="button"
+          class="viewer-icon-button"
+          data-controls-close
+          title={labels.closeControls}
+          aria-label={labels.closeControls}
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="m6 6 8 8m0-8-8 8" />
+          </svg>
+        </button>
+      </header>
+      <div class="viewer-tweakpane" data-fps-graph></div>
+    </section>
+
+    <section class="viewer-control-section viewer-layout-section">
+      <header class="viewer-section-heading">
+        <h2>{labels.view}</h2>
+        <span class="viewer-heading-line"></span>
+      </header>
+      <div class="viewer-segmented" role="group" aria-label={labels.workspace}>
+        <button
+          type="button"
+          data-layout-button="single"
+          aria-pressed="true"
+          title={labels.singleView}
+          aria-label={labels.singleView}
+        >
+          <span class="viewer-layout-icon" aria-hidden="true"></span>
+        </button>
+        <button
+          type="button"
+          data-layout-button="split"
+          aria-pressed="false"
+          title={labels.splitView}
+          aria-label={labels.splitView}
+        >
+          <span class="viewer-layout-icon is-split" aria-hidden="true"></span>
+        </button>
+        <button
+          type="button"
+          data-layout-button="quad"
+          aria-pressed="false"
+          title={labels.quadView}
+          aria-label={labels.quadView}
+        >
+          <span class="viewer-layout-icon is-quad" aria-hidden="true"></span>
+        </button>
+      </div>
+      <button
+        class="viewer-config-button"
+        type="button"
+        data-drawer-toggle
+        aria-controls="viewer-inspector"
+        aria-expanded="false"
+        title={labels.viewSettings}
+      >
+        <span class="viewer-view-badge" data-active-view-id>
+          A
+        </span>
+        <span>{labels.viewSettings}</span>
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="m8 5 5 5-5 5" />
+        </svg>
+      </button>
+    </section>
+
+    <details class="viewer-control-section viewer-disclosure" data-global-scene>
+      <summary title={labels.globalImportHint}>
+        <span>{labels.scene}</span>
+        <span class="viewer-scope-label">{labels.allViews}</span>
+      </summary>
+      <div class="viewer-section-body">
+        <div class="viewer-button-row">
+          <label class="viewer-file-button" title={labels.gltfHint}>
+            <input type="file" accept={ASSET_ACCEPT} multiple data-global-file-input />
+            <span>{labels.loadFiles}</span>
+          </label>
+          <button type="button" class="viewer-control-button" data-global-clipboard-load>
+            {labels.loadClipboard}
+          </button>
+        </div>
+        <form class="viewer-url-form" data-global-url-form>
+          <label class="viewer-field viewer-inline-field">
+            <span>{labels.urlLabel}</span>
+            <input type="url" placeholder="https://…" data-global-url-input />
+          </label>
+        </form>
+      </div>
+    </details>
+
+    <details class="viewer-control-section viewer-disclosure" data-camera-section>
+      <summary title={labels.cameraHint}>
+        <span>{labels.camera}</span>
+      </summary>
+      <div class="viewer-section-body">
+        <label class="viewer-check-field viewer-sync">
+          <input type="checkbox" data-camera-sync checked />
+          {labels.syncCamera}
+        </label>
+        <label class="viewer-field viewer-inline-field">
+          <span>{labels.coordSystem}</span>
+          <span class="viewer-select">
+            <select data-camera-coord>
+              <option value="opencv">OpenCV · −Y</option>
+              <option value="opengl">OpenGL · +Y</option>
+              <option value="aholo">Aholo · +Z</option>
+            </select>
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M5 7h6l-3 3z" />
+            </svg>
+          </span>
+        </label>
+        <label class="viewer-field viewer-inline-field">
+          <span>{labels.far}</span>
+          <input type="number" min="1" step="100" value="2000" data-camera-far />
+        </label>
+        <label class="viewer-field viewer-inline-field viewer-switch-field">
+          <span>{labels.useOrbit}</span>
+          <input type="checkbox" role="switch" data-camera-use-orbit />
+        </label>
+        <div class="viewer-camera-actions">
+          <button
+            type="button"
+            class="viewer-icon-button"
+            data-camera-frame
+            title={labels.focusModel}
+            aria-label={labels.focusModel}
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M7 3H3v4m10-4h4v4M3 13v4h4m6 0h4v-4" />
+              <circle cx="10" cy="10" r="3" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="viewer-icon-button"
+            data-camera-reset
+            title={labels.resetCamera}
+            aria-label={labels.resetCamera}
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3 9a7 7 0 1 1 1.8 5.7M3 3v6h6" />
+            </svg>
+          </button>
+          <span class="viewer-camera-action-divider" aria-hidden="true"></span>
+          <button
+            type="button"
+            class="viewer-icon-button"
+            data-camera-copy
+            title={labels.copyCamera}
+            aria-label={labels.copyCamera}
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="7" y="7" width="10" height="10" rx="2" />
+              <path d="M4 13H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v1" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="viewer-icon-button"
+            data-camera-paste
+            title={labels.pasteCamera}
+            aria-label={labels.pasteCamera}
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="6" y="2" width="8" height="4" rx="1.5" />
+              <path d="M6 4H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-2M7 10h6m-6 4h6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </details>
+
+    <details class="viewer-control-section viewer-disclosure" data-convert-section>
+      <summary>
+        <span>{labels.convertTab}</span>
+      </summary>
+      <div class="viewer-section-body">
+        <label class="viewer-file-button">
+          <input
+            type="file"
+            accept=".ply,.spz,.splat,.ksplat,.zip,.sog,.esz,.json"
+            multiple
+            data-convert-input
+            aria-label={labels.chooseConvert}
+          />
+          <span data-convert-files>{labels.chooseConvert}</span>
+        </label>
+        <label class="viewer-field viewer-inline-field">
+          <span>{labels.targetFormat}</span>
+          <span class="viewer-select">
+            <select data-convert-target>
+              <option value="ply">PLY</option>
+              <option value="spz">SPZ</option>
+              <option value="splat">SPLAT</option>
+            </select>
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M5 7h6l-3 3z" />
+            </svg>
+          </span>
+        </label>
+        <button type="button" class="viewer-control-button" data-convert-save disabled>
+          {labels.convertSave}
+        </button>
+        <button type="button" class="viewer-control-button" data-convert-cancel hidden>
+          {labels.cancel}
+        </button>
+        <p class="viewer-help" role="status" aria-live="polite" data-convert-status></p>
+      </div>
+    </details>
+  </aside>
 
   <button
-    class="viewer-right-toggle"
     type="button"
-    aria-controls="viewer-right-rail"
-    aria-expanded="false"
-    aria-label={labels.expandRight}
-    title={labels.expandRight}
-    data-right-toggle
-    data-expand-label={labels.expandRight}
-  >
-    <span class="viewer-settings-icon" aria-hidden="true"></span>
-  </button>
-
-  <aside id="viewer-left-rail" class="viewer-rail viewer-left-rail" aria-label={labels.import} data-left-rail>
-    <header class="viewer-left-header">
+    class="viewer-drawer-backdrop"
+    data-drawer-backdrop
+    aria-label={labels.closeDrawer}
+    hidden
+  ></button>
+  <aside id="viewer-inspector" class="viewer-inspector" data-inspector aria-label={labels.viewSettings} inert>
+    <div class="viewer-inspector-toolbar">
+      <h2 data-inspector-view-title>{labels.view} A</h2>
       <button
-        class="viewer-left-close"
         type="button"
-        aria-controls="viewer-left-rail"
-        aria-label={labels.collapseLeft}
-        title={labels.collapseLeft}
-        data-left-close
+        class="viewer-icon-button viewer-inspector-close"
+        data-drawer-close
+        title={labels.closeDrawer}
+        aria-label={labels.closeDrawer}
       >
-        <span class="viewer-close-icon" aria-hidden="true"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M15 3v18m-7-12 3 3-3 3" />
+        </svg>
       </button>
-    </header>
-    <section class="viewer-panel-section viewer-import-section" aria-label={labels.import}>
-      <label class="viewer-file-picker">
-        <input type="file" accept={supportedFormats} multiple data-file-input />
-        <span class="viewer-file-picker-copy">{labels.selectFiles}</span>
-        <span class="viewer-file-picker-meta">{labels.fileFormatHint}</span>
-      </label>
-      <form class="viewer-field viewer-url-form" data-url-form>
-        <textarea
-          id="viewer-url"
-          rows="2"
-          placeholder={labels.urlPlaceholder}
-          aria-label={labels.urlLabel}
-          data-url-input></textarea>
-        <div class="viewer-url-actions">
-          <button type="button" class="secondary" data-clipboard-load>{labels.loadClipboard}</button>
-          <button type="submit">{labels.loadUrl}</button>
-        </div>
-      </form>
-    </section>
-
-    <section class="viewer-panel-section viewer-files-section" aria-label={labels.files}>
-      <ul class="viewer-file-list" data-file-list>
-        <li class="viewer-empty-file">{labels.emptyFiles}</li>
-      </ul>
-    </section>
-
-    <section class="viewer-panel-section viewer-camera-section">
-      <header class="viewer-section-header viewer-camera-header">
-        <h2>{labels.camera}</h2>
-        <label class="viewer-check-field viewer-camera-toggle">
-          <span class="viewer-check-label">{labels.useOrbit}</span>
-          <input id="viewer-use-orbit" type="checkbox" data-camera-use-orbit />
-          <span class="viewer-toggle-switch" aria-hidden="true"></span>
-        </label>
-      </header>
-      <div class="viewer-field-grid">
-        <div class="viewer-field">
-          <label for="viewer-coord">{labels.coordSystem}</label>
-          <select id="viewer-coord" data-camera-coord>
-            <option value="aholo">Aholo</option>
-            <option value="opengl">OpenGL</option>
-            <option value="opencv" selected>OpenCV</option>
-          </select>
-        </div>
-        <div class="viewer-field">
-          <label for="viewer-far">{labels.far}</label>
-          <input id="viewer-far" type="number" min="100" max="10000" step="100" value="2000" data-camera-far />
-        </div>
-      </div>
-      <div class="viewer-button-row viewer-camera-actions">
-        <button type="button" data-camera-copy>{labels.copyCamera}</button>
-        <button type="button" data-camera-paste>{labels.pasteCamera}</button>
-        <button type="button" class="secondary" data-camera-reset>{labels.resetCamera}</button>
-      </div>
-    </section>
-  </aside>
-
-  <aside
-    id="viewer-right-rail"
-    class="viewer-rail viewer-right-rail viewer-config-panel tool-panel-window"
-    aria-label={labels.settings}
-    data-right-rail
-    data-config-panel
-  >
-    <button
-      class="viewer-right-close"
-      type="button"
-      aria-controls="viewer-right-rail"
-      aria-label={labels.collapseRight}
-      title={labels.collapseRight}
-      data-right-close
-    >
-      <span class="viewer-close-icon" aria-hidden="true"></span>
-    </button>
-  </aside>
-
-  <div class="viewer-drag-overlay" aria-hidden="true" data-drag-overlay>
-    <div class="viewer-drag-overlay-panel">
-      <span class="viewer-drag-overlay-icon" aria-hidden="true"></span>
-      <strong>{labels.dropOverlayTitle}</strong>
-      <span>{labels.dropOverlayHint}</span>
     </div>
-  </div>
-
+    <div class="viewer-inspector-content">
+      <details class="viewer-panel-section viewer-disclosure viewer-resource-section" data-scene-resources>
+        <summary>
+          <span>{labels.sceneResources}</span>
+          <span class="viewer-asset-summary" data-asset-summary></span>
+        </summary>
+        <div class="viewer-resource-content">
+          <ul class="viewer-file-list" data-file-list></ul>
+          <button type="button" class="viewer-text-button viewer-clear-scene" data-clear-scene hidden>
+            {labels.clearScene}
+          </button>
+          <section class="viewer-asset-import" data-view-import>
+            <h3 title={labels.gltfHint}>{labels.importCurrent}</h3>
+            <div class="viewer-section-body">
+              <div class="viewer-button-row">
+                <label class="viewer-file-button" title={labels.gltfHint}>
+                  <input type="file" accept={ASSET_ACCEPT} multiple data-file-input />
+                  <span>{labels.loadFiles}</span>
+                </label>
+                <button type="button" class="viewer-control-button" data-clipboard-load>
+                  {labels.loadClipboard}
+                </button>
+              </div>
+              <form class="viewer-url-form" data-url-form>
+                <label class="viewer-field viewer-inline-field">
+                  <span>{labels.urlLabel}</span>
+                  <input type="text" placeholder="https://…" data-url-input />
+                </label>
+              </form>
+            </div>
+          </section>
+        </div>
+      </details>
+      <section class="viewer-panel-section viewer-render-section" data-render-settings>
+        <header class="viewer-section-heading">
+          <h3>{labels.renderSettings}</h3>
+          <button
+            type="button"
+            class="viewer-reset-button"
+            data-settings-reset
+            title={labels.resetSettings}
+            aria-label={labels.resetSettings}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 11a9 9 0 1 1 2.4 6.2M3 4v7h7" />
+            </svg>
+          </button>
+        </header>
+        <div class="viewer-tweakpane viewer-render-config" data-config-panel></div>
+      </section>
+    </div>
+    <div class="viewer-notice" data-notice role="status" aria-live="polite" hidden></div>
+  </aside>
   <script is:inline type="application/json" data-viewer-config set:html={configJson} />
 </main>
 
 <script>
   import { mountViewerPage } from '../client/viewer.js';
-
   const root = document.querySelector<HTMLElement>('[data-viewer]');
-  const configElement = document.querySelector<HTMLScriptElement>('[data-viewer-config]');
-
-  if (root && configElement?.textContent) {
-    mountViewerPage(root, JSON.parse(configElement.textContent)).catch(error => {
-      const status = root.querySelector<HTMLElement>('[data-status]');
-      if (status) {
-        status.textContent = error instanceof Error ? error.message : String(error);
-        status.dataset.state = 'error';
+  const config = root?.querySelector('[data-viewer-config]');
+  if (root && config?.textContent) {
+    try {
+      mountViewerPage(root, JSON.parse(config.textContent));
+    } catch (error) {
+      const message = root.querySelector<HTMLElement>('[data-view-message]');
+      if (message) {
+        message.textContent = error instanceof Error ? error.message : String(error);
       }
-    });
+      const status = root.querySelector<HTMLElement>('[data-view-status]');
+      if (status) {
+        status.hidden = false;
+      }
+    }
   }
 </script>

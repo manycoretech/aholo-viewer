@@ -18,7 +18,6 @@ interface WorkspaceFullscreenController {
 const fullscreenQueryParam = 'fullscreen';
 const viewQueryParam = 'view';
 const fullscreenViewValue = 'fullscreen';
-const keyboardEnterGraceMs = 900;
 const keyboardExitSuppressMs = 900;
 const fullscreenViewportTolerance = 12;
 const browserChromeTolerance = 24;
@@ -30,7 +29,6 @@ export function mountWorkspaceFullscreenMode(options: WorkspaceFullscreenOptions
     let queryMode = readQueryMode();
     let keyboardRequested = false;
     let observedBrowserFullscreen = false;
-    let keyboardEnterDeadline = 0;
     let browserSuppressUntil = 0;
     let active = false;
     let source: WorkspaceFullscreenSource = 'none';
@@ -72,7 +70,7 @@ export function mountWorkspaceFullscreenMode(options: WorkspaceFullscreenOptions
     };
 
     function handleKeydown(event: KeyboardEvent) {
-        if (event.key !== 'F11' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        if (event.key !== 'F11' || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
             return;
         }
 
@@ -85,15 +83,12 @@ export function mountWorkspaceFullscreenMode(options: WorkspaceFullscreenOptions
         if (active) {
             keyboardRequested = false;
             observedBrowserFullscreen = false;
-            keyboardEnterDeadline = 0;
             browserSuppressUntil = now + keyboardExitSuppressMs;
             scheduleStateSync(keyboardExitSuppressMs);
         } else {
             keyboardRequested = true;
             observedBrowserFullscreen = false;
-            keyboardEnterDeadline = now + keyboardEnterGraceMs;
             browserSuppressUntil = 0;
-            scheduleStateSync(keyboardEnterGraceMs);
         }
 
         sync();
@@ -207,7 +202,6 @@ export function mountWorkspaceFullscreenMode(options: WorkspaceFullscreenOptions
 
         if (browserFullscreen && !browserSuppressed) {
             keyboardRequested = false;
-            keyboardEnterDeadline = 0;
             clearStateTimer();
 
             return {
@@ -226,7 +220,6 @@ export function mountWorkspaceFullscreenMode(options: WorkspaceFullscreenOptions
             if (observedBrowserFullscreen && !browserFullscreen) {
                 keyboardRequested = false;
                 observedBrowserFullscreen = false;
-                keyboardEnterDeadline = 0;
                 clearStateTimer();
 
                 return {
@@ -235,19 +228,10 @@ export function mountWorkspaceFullscreenMode(options: WorkspaceFullscreenOptions
                 };
             }
 
-            if (keyboardEnterDeadline > now) {
-                scheduleStateSync(keyboardEnterDeadline - now);
-
-                return {
-                    active: true,
-                    source: 'keyboard',
-                };
-            }
-
-            keyboardRequested = false;
-            observedBrowserFullscreen = false;
-            keyboardEnterDeadline = 0;
-            clearStateTimer();
+            return {
+                active: true,
+                source: 'keyboard',
+            };
         }
 
         return {

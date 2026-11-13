@@ -14,3 +14,5 @@ cmakeUserPresets.json
 packages/splat-transform-native/splat-transform-*/splat-transform
 packages/splat-transform-native/splat-transform-*/splat-transform.exe
 packages/splat-transform-native/splat-transform-*/THIRD_PARTY_LICENSES.txt
+.codex
+!.codex/skills

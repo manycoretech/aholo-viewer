@@ -1,1494 +1,1004 @@
-import {
-    BackgroundMode,
-    Color,
-    PerspectiveCamera,
-    Scene3D,
-    SplatLoader,
-    SplatUtils,
-    ToneMapping,
-    Vector3,
-    createViewer,
-    createViewerContext,
-    setViewerConfig,
-    type Object3D,
-    type Viewer,
-} from '@manycore/aholo-viewer';
 import { Pane } from 'tweakpane';
-import { CameraControl } from './camera-control.js';
-import {
-    abortable as abortableWithMessage,
-    syncCameraAspect,
-    throwIfAborted as throwIfAbortedWithMessage,
-} from './rendering.js';
+import * as EssentialsPlugin from '@tweakpane/plugin-essentials';
+import type { FpsGraphBladeApi } from '@tweakpane/plugin-essentials';
+import { createDefaultParams, restoreViewerParams, saveViewerParams, setupConfigPanel } from './viewer-config.js';
+import { droppedFiles, fileSources, formatBytes, urlSources, type AssetSource } from './viewer-assets.js';
+import { ViewerScene, type CoordinateSystem, type ViewId } from './viewer-scene.js';
+import { mountViewerConversion } from './viewer-convert.js';
 import { mountWorkspaceFullscreenMode } from './workspace-fullscreen.js';
+import type { ViewerLabels } from './viewer-labels.js';
 
-const { SplatFileType, SplatPackType, detectSplatFileType, parseSplatData } = SplatLoader;
-const { LodSplat, createSplat } = SplatUtils;
-const LOD_MAGIC_CODE = 0x262834;
-const VIEWER_ABORT_MESSAGE = 'Viewer loading was aborted.';
-const LEFT_RAIL_COLLAPSED_STORAGE_KEY = 'aholo:viewer:left-collapsed';
-const RIGHT_RAIL_COLLAPSED_STORAGE_KEY = 'aholo:viewer:right-collapsed';
-const FPS_DISPLAY_INTERVAL_MS = 250;
-const FPS_SMOOTHING_FACTOR = 0.08;
-const SUPPORTED_FILE_EXTENSIONS = ['.ply', '.spz', '.splat', '.ksplat', '.zip', '.sog', '.esz', '.json'] as const;
+const VIEW_IDS: readonly ViewId[] = ['A', 'B', 'C', 'D'];
+const MIN_SPLIT_RATIO = 0.15;
+const MAX_SPLIT_RATIO = 0.85;
+const SPLIT_SNAP_THRESHOLD = 0.025;
+const SPLIT_RELEASE_THRESHOLD = 0.05;
 
-type SplatFileTypeValue = (typeof SplatFileType)[keyof typeof SplatFileType];
-type SplatPackTypeValue = (typeof SplatPackType)[keyof typeof SplatPackType];
-type ToneMappingValue = (typeof ToneMapping)[keyof typeof ToneMapping];
-type SplattingPresetId =
-    | 'custom'
-    | 'maxQuality'
-    | 'qualityFirst'
-    | 'balanced'
-    | 'performanceFirst'
-    | 'extremePerformance0'
-    | 'extremePerformance1';
-type SplatObject = Awaited<ReturnType<typeof createSplat>>;
-type LodSplatInstance = InstanceType<typeof LodSplat>;
-type LodMeta = ConstructorParameters<typeof LodSplat>[0] & {
-    counts?: number;
-    files?: string[];
-    levels?: number;
-    magicCode?: number;
-    type?: string;
-};
-
-interface ViewerPageConfig {
-    labels: ViewerLabels;
-}
-
-interface ViewerLabels {
-    settings: string;
-    preset: string;
-    presetCustom: string;
-    presetMaxQuality: string;
-    presetQualityFirst: string;
-    presetBalanced: string;
-    presetPerformanceFirst: string;
-    presetExtremePerformance0: string;
-    presetExtremePerformance1: string;
-    presetPackTypeTip: string;
-    packTypeTip: string;
-    statusReady: string;
-    statusLoading: string;
-    statusError: string;
-    unsupportedFileType: string;
-    emptyFiles: string;
-    removeFile: string;
-}
-
-type Source =
-    | {
-          kind: 'file';
-          file: File;
-          name: string;
-          size: number;
-      }
-    | {
-          kind: 'url';
-          url: string;
-          name: string;
-          size?: number;
-      };
-
-interface FileRecord {
-    name: string;
-    format: string;
-    size: string;
-    status: 'loading' | 'ready' | 'error';
-    error?: string;
-}
-
-interface ViewerParams {
-    splattingPreset: SplattingPresetId;
-    pixelRatio: number;
-    splatPackType: SplatPackTypeValue;
-    maxSh: number;
-    maxStdDev: number;
-    packHighPrecisionEnabled: boolean;
-    precalculateEnabled: boolean;
-    cameraRelativeEnabled: boolean;
-    autoFreeResourceOnGpuPacked: boolean;
-    renderAttachHighPrecisionEnabled: boolean;
-    detailCullingAlphaEnabled: boolean;
-    preBlurAmount: number;
-    blurAmount: number;
-    focalAdjustment: number;
-    detailCullingThreshold: number;
-    maxPixelRadius: number;
-    minIntervalMs: number;
-    sortSplatDistance: number;
-    sortSplatCoorient: number;
-    sortCameraDistance: number;
-    sortCameraCoorient: number;
-    compositeEnabled: boolean;
-    toneMapping: ToneMappingValue;
-    exposure: number;
-    highlightEnabled: boolean;
-    highlightSize: number;
-    highlightColor: string;
-    lodMinLevel: number;
-    lodMovingMinLevel: number;
-    lodMaxBudget: number;
-    lodPixelLimitEnabled: boolean;
-    lodFrustumCullingEnabled: boolean;
-    lodHysteresisTicks: number;
-    lodSchedulerParallelCounts: number;
-    lodSchedulerExistingTaskLimit: number;
-    lodSchedulerMinDuration: number;
-}
-
-const DEFAULT_SORT_PARAMS: Pick<
-    ViewerParams,
-    'minIntervalMs' | 'sortSplatDistance' | 'sortSplatCoorient' | 'sortCameraDistance' | 'sortCameraCoorient'
-> = {
-    minIntervalMs: 0,
-    sortSplatDistance: 0.1,
-    sortSplatCoorient: 0.99999,
-    sortCameraDistance: 1,
-    sortCameraCoorient: 0.99,
-};
-
-const EXTREME_PERFORMANCE_SORT_PARAMS: typeof DEFAULT_SORT_PARAMS = {
-    ...DEFAULT_SORT_PARAMS,
-    minIntervalMs: 160,
-    sortSplatCoorient: 0.999999,
-};
-
-const VIEWER_SPLATTING_PRESETS: Record<SplattingPresetId, { params: Partial<ViewerParams> }> = {
-    custom: {
-        params: {},
-    },
-    maxQuality: {
-        params: {
-            ...DEFAULT_SORT_PARAMS,
-            splatPackType: SplatPackType.Compressed,
-            maxSh: 3,
-            maxStdDev: 8,
-            packHighPrecisionEnabled: true,
-            precalculateEnabled: true,
-            cameraRelativeEnabled: false,
-            autoFreeResourceOnGpuPacked: true,
-            compositeEnabled: true,
-            renderAttachHighPrecisionEnabled: true,
-            detailCullingAlphaEnabled: false,
-            preBlurAmount: 0.3,
-            blurAmount: 0,
-            focalAdjustment: 2,
-            detailCullingThreshold: 0,
-            maxPixelRadius: 1024,
-        },
-    },
-    qualityFirst: {
-        params: {
-            ...DEFAULT_SORT_PARAMS,
-            splatPackType: SplatPackType.Compressed,
-            maxSh: 3,
-            maxStdDev: 8,
-            packHighPrecisionEnabled: true,
-            precalculateEnabled: true,
-            cameraRelativeEnabled: false,
-            autoFreeResourceOnGpuPacked: true,
-            compositeEnabled: false,
-            renderAttachHighPrecisionEnabled: false,
-            detailCullingAlphaEnabled: false,
-            preBlurAmount: 0.3,
-            blurAmount: 0,
-            focalAdjustment: 2,
-            detailCullingThreshold: 1,
-            maxPixelRadius: 1024,
-        },
-    },
-    balanced: {
-        params: {
-            ...DEFAULT_SORT_PARAMS,
-            splatPackType: SplatPackType.SuperCompressed,
-            maxSh: 3,
-            maxStdDev: 8,
-            packHighPrecisionEnabled: false,
-            precalculateEnabled: true,
-            cameraRelativeEnabled: true,
-            autoFreeResourceOnGpuPacked: false,
-            compositeEnabled: false,
-            renderAttachHighPrecisionEnabled: false,
-            detailCullingAlphaEnabled: false,
-            preBlurAmount: 0.3,
-            blurAmount: 0,
-            focalAdjustment: 2,
-            detailCullingThreshold: 1,
-            maxPixelRadius: 1024,
-        },
-    },
-    performanceFirst: {
-        params: {
-            ...DEFAULT_SORT_PARAMS,
-            splatPackType: SplatPackType.SuperCompressed,
-            maxSh: 3,
-            maxStdDev: 5,
-            packHighPrecisionEnabled: false,
-            precalculateEnabled: true,
-            cameraRelativeEnabled: false,
-            autoFreeResourceOnGpuPacked: true,
-            compositeEnabled: false,
-            renderAttachHighPrecisionEnabled: false,
-            detailCullingAlphaEnabled: false,
-            preBlurAmount: 0.3,
-            blurAmount: 0,
-            focalAdjustment: 2,
-            detailCullingThreshold: 1,
-            maxPixelRadius: 1024,
-        },
-    },
-    extremePerformance0: {
-        params: {
-            ...EXTREME_PERFORMANCE_SORT_PARAMS,
-            splatPackType: SplatPackType.SuperCompressed,
-            maxSh: 0,
-            maxStdDev: 5,
-            packHighPrecisionEnabled: false,
-            precalculateEnabled: false,
-            cameraRelativeEnabled: false,
-            autoFreeResourceOnGpuPacked: true,
-            compositeEnabled: false,
-            renderAttachHighPrecisionEnabled: false,
-            detailCullingAlphaEnabled: false,
-            preBlurAmount: 0.3,
-            blurAmount: 0,
-            focalAdjustment: 2,
-            detailCullingThreshold: 4,
-            maxPixelRadius: 1024,
-        },
-    },
-    extremePerformance1: {
-        params: {
-            ...EXTREME_PERFORMANCE_SORT_PARAMS,
-            splatPackType: SplatPackType.Sog,
-            maxSh: 0,
-            maxStdDev: 5,
-            packHighPrecisionEnabled: false,
-            precalculateEnabled: false,
-            cameraRelativeEnabled: false,
-            autoFreeResourceOnGpuPacked: true,
-            compositeEnabled: false,
-            renderAttachHighPrecisionEnabled: false,
-            detailCullingAlphaEnabled: false,
-            preBlurAmount: 0.3,
-            blurAmount: 0,
-            focalAdjustment: 2,
-            detailCullingThreshold: 4,
-            maxPixelRadius: 1024,
-        },
-    },
-};
-
-export async function mountViewerPage(root: HTMLElement, config: ViewerPageConfig) {
-    const surface = query<HTMLElement>(root, '[data-render-surface]');
-    const stage = query<HTMLElement>(root, '[data-viewer-stage]');
-    const status = query<HTMLElement>(root, '[data-status]');
-    const leftRail = query<HTMLElement>(root, '[data-left-rail]');
-    const leftToggle = query<HTMLButtonElement>(root, '[data-left-toggle]');
-    const leftClose = query<HTMLButtonElement>(root, '[data-left-close]');
-    const rightRail = query<HTMLElement>(root, '[data-right-rail]');
-    const rightToggle = query<HTMLButtonElement>(root, '[data-right-toggle]');
-    const rightClose = query<HTMLButtonElement>(root, '[data-right-close]');
-    const fileInput = query<HTMLInputElement>(root, '[data-file-input]');
-    const urlForm = query<HTMLFormElement>(root, '[data-url-form]');
-    const urlInput = query<HTMLTextAreaElement>(root, '[data-url-input]');
-    const clipboardLoad = query<HTMLButtonElement>(root, '[data-clipboard-load]');
-    const fileList = query<HTMLElement>(root, '[data-file-list]');
-    const coordSelect = query<HTMLSelectElement>(root, '[data-camera-coord]');
-    const farInput = query<HTMLInputElement>(root, '[data-camera-far]');
-    const useOrbitInput = query<HTMLInputElement>(root, '[data-camera-use-orbit]');
-    const copyCameraButton = query<HTMLButtonElement>(root, '[data-camera-copy]');
-    const pasteCameraButton = query<HTMLButtonElement>(root, '[data-camera-paste]');
-    const resetCameraButton = query<HTMLButtonElement>(root, '[data-camera-reset]');
-    const configPanel = query<HTMLElement>(root, '[data-config-panel]');
-    const fpsStat = query<HTMLElement>(root, '[data-stat-fps]');
-    const supportedFileExtensions = getSupportedFileExtensions(fileInput);
-
-    const params = createDefaultParams();
-    const viewer = createViewer(`aholo-viewer-page-${Date.now()}`, surface, { antialiasing: false });
-    const scene = new Scene3D();
-    const camera = new PerspectiveCamera(60, 1, 0.1, Number(farInput.value) || 2000);
-    const control = new CameraControl(camera, surface, { enabled: true });
-
+export function mountViewerPage(root: HTMLElement, { labels }: { labels: ViewerLabels }) {
+    const get = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
+    const stage = get('[data-viewer-stage]');
+    const splitters = Array.from(root.querySelectorAll<HTMLElement>('[data-splitter]'));
+    const inspector = get<HTMLElement>('[data-inspector]');
+    const controls = get<HTMLElement>('[data-controls]');
+    const controlsToggle = get<HTMLButtonElement>('[data-controls-toggle]');
+    const drawerToggle = get<HTMLButtonElement>('[data-drawer-toggle]');
+    const drawerClose = get<HTMLButtonElement>('[data-drawer-close]');
+    const backdrop = get<HTMLButtonElement>('[data-drawer-backdrop]');
+    const fileInput = get<HTMLInputElement>('[data-file-input]');
+    const globalFileInput = get<HTMLInputElement>('[data-global-file-input]');
+    const fileList = get<HTMLElement>('[data-file-list]');
+    const syncInput = get<HTMLInputElement>('[data-camera-sync]');
+    const coordinate = get<HTMLSelectElement>('[data-camera-coord]');
+    const far = get<HTMLInputElement>('[data-camera-far]');
+    const orbit = get<HTMLInputElement>('[data-camera-use-orbit]');
+    const notice = get<HTMLElement>('[data-notice]');
+    const lifetime = new AbortController();
+    const { signal } = lifetime;
+    const mobile = window.matchMedia('(max-width: 800px)');
+    const views = new Map<ViewId, ViewerScene>();
+    const viewNames = new Map<ViewId, string>();
+    const panels = new Map<ViewId, { element: HTMLElement; config: ReturnType<typeof setupConfigPanel> }>();
+    let activeId: ViewId = 'A';
+    let previousActiveId: ViewId | undefined;
+    let layout: 'single' | 'split' | 'quad' = 'single';
+    let previewId: ViewId | undefined;
+    let maximized = false;
+    const splitRatios = { split: 0.5, column: 0.5, row: 0.5 };
+    let endResize: (() => void) | undefined;
+    let drawerOpen = false;
+    let controlsOpen = false;
     let disposed = false;
-    let rafId: number | undefined;
-    let lastFrameTime = 0;
-    let renderRequested = true;
-    let loadAbortController: AbortController | undefined;
-    let leftRailCollapsed = readLeftRailCollapsed();
-    let rightRailCollapsed = readRightRailCollapsed();
-    let fileDragDepth = 0;
-    let keepPrecalculateDisabled = false;
-    const lodSplats: LodSplatInstance[] = [];
-    const records: FileRecord[] = [];
-    const estimateFps = createFpsEstimator();
+    let frameId = 0;
+    let previousTime = 0;
 
-    configureFileInputForPlatform(fileInput);
+    function showError(error: unknown) {
+        notice.textContent = error instanceof Error ? error.message : String(error);
+        notice.hidden = false;
+        setDrawer(true);
+    }
 
-    const pane = setupConfigPanel(
-        configPanel,
-        config.labels,
-        params,
-        () => keepPrecalculateDisabled,
-        () => {
-            applyViewerConfig(viewer, params);
-            syncLodConfig();
-            requestRender();
-        },
-    );
-    const fullscreenMode = mountWorkspaceFullscreenMode({
-        onChange() {
-            resize();
-        },
-    });
-    const resizeObserver = new ResizeObserver(() => resize());
-
-    syncLeftRail();
-    syncRightRail();
-    viewer.setScene(scene);
-    viewer.setCamera(camera);
-    applyViewerConfig(viewer, params);
-    applyCoordinateSystem(coordSelect.value);
-    resizeObserver.observe(stage);
-    resize();
-    tick();
-    setStatus('ready', config.labels.statusReady);
-
-    fileInput.addEventListener('change', () => {
-        const files = Array.from(fileInput.files ?? []);
-        if (files.length > 0) {
-            void loadSources(files.map(fileToSource));
+    function ensureView(id: ViewId) {
+        const existing = views.get(id);
+        if (existing) {
+            return existing;
         }
-        fileInput.value = '';
-    });
-    root.addEventListener('dragenter', handleDragEnter);
-    root.addEventListener('dragover', handleDragOver);
-    root.addEventListener('dragleave', handleDragLeave);
-    root.addEventListener('drop', handleDrop);
-    urlForm.addEventListener('submit', event => {
-        event.preventDefault();
-        const sources = parseUrls(urlInput.value).map(urlToSource);
-        if (sources.length > 0) {
-            void loadSources(sources);
-        }
-    });
-    clipboardLoad.addEventListener('click', async () => {
+        let params = createDefaultParams();
         try {
-            const text = await navigator.clipboard.readText();
-            urlInput.value = text;
-            const sources = parseUrls(text).map(urlToSource);
-            if (sources.length > 0) {
-                void loadSources(sources);
-            }
+            params = restoreViewerParams(id);
         } catch (error) {
-            setStatus('error', getErrorMessage(error));
+            showError(`${labels.storageError}: ${error instanceof Error ? error.message : error}`);
         }
-    });
-    fileList.addEventListener('click', event => {
-        const target = event.target;
-        if (!(target instanceof Element)) {
-            return;
-        }
-
-        const deleteButton = target.closest<HTMLButtonElement>('[data-file-delete]');
-        if (!deleteButton || !fileList.contains(deleteButton)) {
-            return;
-        }
-
-        clearLoadedScene();
-    });
-    coordSelect.addEventListener('change', () => {
-        applyCoordinateSystem(coordSelect.value);
-        requestRender();
-    });
-    farInput.addEventListener('change', () => {
-        const far = Number(farInput.value);
-        if (Number.isFinite(far) && far > camera.near) {
-            camera.far = far;
-            camera.updateProjectionMatrix();
-            requestRender();
-        }
-    });
-    useOrbitInput.addEventListener('change', () => {
-        control.setOptions({ useOrbit: useOrbitInput.checked });
-        requestRender();
-    });
-    copyCameraButton.addEventListener('click', () => {
-        void navigator.clipboard.writeText(JSON.stringify(serializeCamera(camera)));
-    });
-    pasteCameraButton.addEventListener('click', async () => {
-        try {
-            applyCameraState(camera, JSON.parse(await navigator.clipboard.readText()));
-            farInput.value = String(camera.far);
-            requestRender();
-        } catch (error) {
-            setStatus('error', getErrorMessage(error));
-        }
-    });
-    resetCameraButton.addEventListener('click', () => {
-        applyCoordinateSystem(coordSelect.value);
-        requestRender();
-    });
-    window.addEventListener('resize', resize);
-    window.addEventListener('beforeunload', dispose, { once: true });
-    document.addEventListener('astro:before-swap', dispose, { once: true });
-    leftToggle.addEventListener('click', handleLeftExpandClick);
-    leftClose.addEventListener('click', handleLeftCloseClick);
-    rightToggle.addEventListener('click', handleRightExpandClick);
-    rightClose.addEventListener('click', handleRightCloseClick);
-
-    function handleLeftExpandClick() {
-        setLeftRailCollapsed(false);
-    }
-
-    function handleLeftCloseClick() {
-        setLeftRailCollapsed(true);
-    }
-
-    function handleRightExpandClick() {
-        setRightRailCollapsed(false);
-    }
-
-    function handleRightCloseClick() {
-        setRightRailCollapsed(true);
-    }
-
-    function setLeftRailCollapsed(nextCollapsed: boolean) {
-        leftRailCollapsed = nextCollapsed;
-        writeLeftRailCollapsed(nextCollapsed);
-        syncLeftRail();
-        resize();
-    }
-
-    function setRightRailCollapsed(nextCollapsed: boolean) {
-        rightRailCollapsed = nextCollapsed;
-        writeRightRailCollapsed(nextCollapsed);
-        syncRightRail();
-        resize();
-    }
-
-    function syncLeftRail() {
-        root.dataset.leftCollapsed = String(leftRailCollapsed);
-        document.documentElement.dataset.viewerLeftCollapsed = String(leftRailCollapsed);
-        leftRail.setAttribute('aria-hidden', String(leftRailCollapsed));
-        leftRail.toggleAttribute('inert', leftRailCollapsed);
-        leftToggle.setAttribute('aria-expanded', String(!leftRailCollapsed));
-        const label = leftToggle.dataset.expandLabel;
-        if (label) {
-            leftToggle.setAttribute('aria-label', label);
-            leftToggle.title = label;
-        }
-    }
-
-    function syncRightRail() {
-        root.dataset.rightCollapsed = String(rightRailCollapsed);
-        document.documentElement.dataset.viewerRightCollapsed = String(rightRailCollapsed);
-        rightRail.setAttribute('aria-hidden', String(rightRailCollapsed));
-        rightRail.toggleAttribute('inert', rightRailCollapsed);
-        rightToggle.setAttribute('aria-expanded', String(!rightRailCollapsed));
-        const label = rightToggle.dataset.expandLabel;
-        if (label) {
-            rightToggle.setAttribute('aria-label', label);
-            rightToggle.title = label;
-        }
-    }
-
-    async function loadSources(sources: Source[]) {
-        const abortController = new AbortController();
-        loadAbortController?.abort();
-        loadAbortController = abortController;
-        clearScene();
-        keepPrecalculateDisabled = false;
-        records.length = 0;
-        records.push(...sources.map(createFileRecord));
-        renderRecords();
-        setStatus('loading', config.labels.statusLoading);
-
-        let loaded = 0;
-        for (let index = 0; index < sources.length; index++) {
-            const source = sources[index];
-            const record = records[index];
-            if (!record) {
-                continue;
-            }
-
-            try {
-                validateImportSource(source, supportedFileExtensions, config.labels.unsupportedFileType);
-                await loadSource(source, record, abortController.signal);
-                if (abortController.signal.aborted) {
+        const element = get<HTMLElement>(`[data-view="${id}"]`);
+        const view = new ViewerScene(
+            id,
+            element.querySelector<HTMLElement>('[data-render-surface]')!,
+            params,
+            labels,
+            () => {
+                if (disposed) {
                     return;
                 }
-                record.status = 'ready';
-                loaded++;
-            } catch (error) {
-                if (abortController.signal.aborted) {
-                    return;
-                }
-                record.status = 'error';
-                record.error = getErrorMessage(error);
-            }
-            renderRecords();
-            requestRender();
-        }
-
-        if (loadAbortController === abortController) {
-            loadAbortController = undefined;
-        }
-
-        setStatus(loaded > 0 ? 'ready' : 'error', loaded > 0 ? config.labels.statusReady : config.labels.statusError);
-        requestRender();
-    }
-
-    function clearLoadedScene() {
-        loadAbortController?.abort();
-        clearScene();
-        keepPrecalculateDisabled = false;
-        records.length = 0;
-        renderRecords();
-        setStatus('ready', config.labels.statusReady);
-        requestRender();
-    }
-
-    async function loadSource(source: Source, record: FileRecord, signal: AbortSignal) {
-        throwIfAborted(signal);
-        const json = await readJsonIfNeeded(source, signal);
-
-        if (json && isLodMeta(json)) {
-            record.format = 'LOD JSON';
-            await loadLodMeta(json, source.kind === 'url' ? source.url : undefined, signal);
-            return;
-        }
-
-        const archive = getSourceExtension(source) === '.zip' ? await readZipSource(source, signal) : undefined;
-        const probe = archive ?? (await getDetectionProbe(source, json));
-        throwIfAborted(signal);
-        const type = detectSplatFileType(source.name.toLowerCase(), probe);
-
-        if (type === undefined) {
-            throw new Error(`Unsupported file type: ${source.name}`);
-        }
-
-        record.format = getFileTypeLabel(type);
-        const input = archive ?? (source.kind === 'url' ? source.url : source.file);
-        const data = await parseSourceData(input, type, signal);
-        throwIfAborted(signal);
-        applyImportedSplatDefaults(data);
-        const splat = await createSplat(data);
-        if (signal.aborted) {
-            splat.destroy();
-            throwIfAborted(signal);
-        }
-        splat.autoFreeResourceOnGpuPacked = params.autoFreeResourceOnGpuPacked;
-        scene.add(splat as Object3D);
-    }
-
-    async function parseSourceData(input: File | string | Uint8Array, type: SplatFileTypeValue, signal: AbortSignal) {
-        return parseSplatData(type, input, params.splatPackType, {
-            maxShDegree: params.maxSh,
-            maxTextureSize: 8192,
-            signal,
-        });
-    }
-
-    function applyImportedSplatDefaults(data: { readonly shDegree: number }) {
-        if (data.shDegree !== 0) {
-            return;
-        }
-
-        keepPrecalculateDisabled = true;
-        params.precalculateEnabled = false;
-        pane.refreshProgrammatic();
-        applyViewerConfig(viewer, params);
-        requestRender();
-    }
-
-    async function loadLodMeta(meta: LodMeta, baseUrl: string | undefined, signal: AbortSignal) {
-        let rejectResourceError: (error: unknown) => void = () => {};
-        const resourceError = new Promise<never>((_resolve, reject) => {
-            rejectResourceError = reject;
-        });
-        resourceError.catch(() => {});
-
-        const lodSplat = new LodSplat(
-            meta,
-            {
-                ...getLodConfig(params),
-                minLevel: getInitialLodLevel(meta, params),
-                schedulerParallelCounts: 99999,
-                schedulerExistingTaskLimit: 99999,
-                schedulerMinDuration: 0,
-            },
-            createViewerContext(viewer),
-            async (url: string, resourceSignal?: AbortSignal) => {
-                const combinedSignal = resourceSignal ? AbortSignal.any([signal, resourceSignal]) : signal;
-                try {
-                    return await loadLodResource(url, baseUrl, combinedSignal);
-                } catch (error) {
-                    if (!combinedSignal.aborted) {
-                        rejectResourceError(error);
-                    }
-                    throw error;
+                const current = views.get(id);
+                if (current) {
+                    updateView(current);
                 }
             },
         );
-
-        lodSplats.push(lodSplat);
-        scene.add(lodSplat.container);
-        lodSplat.tick(camera);
-        lodSplat.start();
-        requestRender();
-
-        await Promise.race([abortable(lodSplat.onFinishSchedule(), signal), resourceError]);
-        throwIfAborted(signal);
-        lodSplat.setConfig(getLodConfig(params));
-        lodSplat.tick(camera);
-    }
-
-    async function loadLodResource(url: string, baseUrl: string | undefined, signal: AbortSignal) {
-        throwIfAborted(signal);
-        const resourceUrl = resolveResourceUrl(url, baseUrl);
-        const type = detectSplatFileType(resourceUrl, new Uint8Array());
-
-        if (type === undefined) {
-            throw new Error(`Unsupported LOD resource: ${resourceUrl}`);
+        views.set(id, view);
+        const configElement = document.createElement('div');
+        configElement.dataset.configView = id;
+        get('[data-config-panel]').append(configElement);
+        const config = setupConfigPanel(
+            configElement,
+            labels,
+            params,
+            () => view.keepPrecalculateDisabled,
+            () => {
+                view.applySettings();
+                saveSettings(view);
+            },
+        );
+        panels.set(id, { element: configElement, config });
+        if (id !== activeId && syncInput.checked) {
+            view.copyCameraFrom(activeView());
         }
-
-        const data = await parseSplatData(type, resourceUrl, SplatPackType.Compressed, { signal });
-        throwIfAborted(signal);
-        applyImportedSplatDefaults(data);
-        return data;
+        updateView(view);
+        return view;
     }
 
-    function clearScene() {
-        for (const lodSplat of lodSplats.splice(0)) {
-            lodSplat.destroy();
+    function destroyView(id: ViewId) {
+        const view = views.get(id);
+        if (!view) {
+            return;
         }
+        views.delete(id);
+        view.dispose();
+        const panel = panels.get(id)!;
+        panel.config.dispose();
+        panel.element.remove();
+        panels.delete(id);
+        viewNames.delete(id);
+        viewElement(id).hidden = true;
+        viewElement(id).inert = true;
+    }
 
-        for (const child of scene.removeAllChildren()) {
-            disposeSceneObject(child);
+    function saveSettings(view: ViewerScene) {
+        try {
+            saveViewerParams(view.id, view.params);
+        } catch {
+            showError(labels.storageError);
         }
-        scene.notifySceneChange();
     }
 
-    function syncLodConfig() {
-        const lodConfig = getLodConfig(params);
-        for (const lodSplat of lodSplats) {
-            lodSplat.setConfig(lodConfig);
-            lodSplat.tick(camera);
+    function activeView() {
+        return views.get(activeId)!;
+    }
+    function viewElement(id: ViewId) {
+        return get<HTMLElement>(`[data-view="${id}"]`);
+    }
+    function viewName(view: ViewerScene) {
+        return (
+            viewNames.get(view.id) ??
+            (view.records.length === 1 ? view.records[0].source.name : `${labels.view} ${view.id}`)
+        );
+    }
+    function setActive(id: ViewId) {
+        if (id === activeId) {
+            return;
+        }
+        ensureView(id);
+        previousActiveId = activeId;
+        activeId = id;
+        previewId = undefined;
+        syncLayout();
+        updateInspector();
+    }
+
+    function syncLayout() {
+        root.dataset.layout = layout;
+        root.dataset.activeView = activeId;
+        root.dataset.preview = previewId ?? '';
+        root.dataset.maximized = String(maximized);
+        const showingOne = layout === 'single' || maximized;
+        for (const [id, view] of views) {
+            const element = viewElement(id);
+            element.hidden = showingOne && id !== (previewId ?? activeId);
+            element.dataset.active = String(id === activeId);
+            element.inert = element.hidden || previewId !== undefined;
+            view.control.enabled = !element.hidden && previewId === undefined && !endResize && !view.contextLost;
+            element.querySelector('[data-activate-view]')?.setAttribute('aria-pressed', String(id === activeId));
+            element.querySelector<HTMLElement>('[data-view-label]')!.dataset.active = String(id === activeId);
+            element.querySelector<HTMLElement>('[data-preview-label]')!.hidden = previewId !== id;
+            panels.get(id)!.element.hidden = id !== activeId;
+            if (!element.hidden) {
+                view.resize();
+            }
+        }
+        for (const button of root.querySelectorAll<HTMLButtonElement>('[data-select-view]')) {
+            const id = button.dataset.selectView as ViewId;
+            button.hidden = !views.has(id);
+            button.setAttribute('aria-pressed', String(id === (previewId ?? activeId)));
+        }
+        for (const button of root.querySelectorAll('[data-layout-button]')) {
+            button.setAttribute('aria-pressed', String((button as HTMLElement).dataset.layoutButton === layout));
+        }
+        syncInput.disabled = views.size < 2;
+        get('[data-view-switcher]').hidden = !showingOne || views.size < 2;
+        root.dataset.multipleViews = String(views.size > 1);
+        updateSplitters();
+    }
+
+    function splitAxis(splitter: HTMLElement) {
+        return layout === 'split' && mobile.matches ? 'row' : splitter.dataset.splitter;
+    }
+
+    function splitRatioKey(splitter: HTMLElement) {
+        return layout === 'split' ? 'split' : (splitter.dataset.splitter as 'column' | 'row');
+    }
+
+    function updateSplitters() {
+        stage.style.setProperty(
+            '--split-column',
+            `${(layout === 'split' ? splitRatios.split : splitRatios.column) * 100}%`,
+        );
+        stage.style.setProperty('--split-row', `${splitRatios.row * 100}%`);
+        for (const splitter of splitters) {
+            const horizontal = splitAxis(splitter) === 'row';
+            splitter.hidden =
+                maximized || layout === 'single' || (layout === 'split' && splitter.dataset.splitter === 'row');
+            splitter.setAttribute('aria-orientation', horizontal ? 'horizontal' : 'vertical');
+            splitter.setAttribute('aria-label', horizontal ? labels.resizeRows : labels.resizeColumns);
+            splitter.setAttribute('aria-valuenow', String(Math.round(splitRatios[splitRatioKey(splitter)] * 100)));
         }
     }
 
-    function resize() {
-        viewer.resize();
-        syncCameraAspect(camera, viewer);
-        requestRender();
+    function setSplitRatio(splitter: HTMLElement, ratio: number) {
+        splitRatios[splitRatioKey(splitter)] = Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, ratio));
+        updateSplitters();
     }
 
-    function requestRender() {
-        renderRequested = true;
+    for (const splitter of splitters) {
+        splitter.addEventListener('dblclick', () => setSplitRatio(splitter, 0.5), { signal });
+        splitter.addEventListener(
+            'keydown',
+            event => {
+                if (event.key === 'Home' || event.key === 'Enter') {
+                    event.preventDefault();
+                    setSplitRatio(splitter, 0.5);
+                    return;
+                }
+                const keys = splitAxis(splitter) === 'column' ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown'];
+                const direction = keys.indexOf(event.key);
+                if (direction !== -1) {
+                    event.preventDefault();
+                    setSplitRatio(splitter, splitRatios[splitRatioKey(splitter)] + (direction === 0 ? -0.02 : 0.02));
+                }
+            },
+            { signal },
+        );
+        splitter.addEventListener(
+            'pointerdown',
+            event => {
+                if (event.button !== 0) {
+                    return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                endResize?.();
+                splitter.focus({ preventScroll: true });
+                splitter.setPointerCapture(event.pointerId);
+                const axis = splitAxis(splitter);
+                stage.dataset.resizing = axis;
+                let snapped = Math.abs(splitRatios[splitRatioKey(splitter)] - 0.5) <= SPLIT_SNAP_THRESHOLD;
+                for (const view of views.values()) {
+                    view.control.stop();
+                    view.control.enabled = false;
+                }
+                const move = (moveEvent: PointerEvent) => {
+                    if (moveEvent.pointerId !== event.pointerId) {
+                        return;
+                    }
+                    const rect = stage.getBoundingClientRect();
+                    let ratio =
+                        axis === 'column'
+                            ? (moveEvent.clientX - rect.left) / rect.width
+                            : (moveEvent.clientY - rect.top) / rect.height;
+                    const distance = Math.abs(ratio - 0.5);
+                    snapped = distance <= (snapped ? SPLIT_RELEASE_THRESHOLD : SPLIT_SNAP_THRESHOLD);
+                    if (snapped) {
+                        ratio = 0.5;
+                    }
+                    splitter.classList.toggle('is-snapped', snapped);
+                    setSplitRatio(splitter, ratio);
+                };
+                const stop = () => {
+                    splitter.removeEventListener('pointermove', move);
+                    splitter.removeEventListener('pointerup', stop);
+                    splitter.removeEventListener('pointercancel', stop);
+                    splitter.removeEventListener('lostpointercapture', stop);
+                    if (splitter.hasPointerCapture(event.pointerId)) {
+                        splitter.releasePointerCapture(event.pointerId);
+                    }
+                    splitter.classList.remove('is-snapped');
+                    delete stage.dataset.resizing;
+                    endResize = undefined;
+                    if (!disposed) {
+                        syncLayout();
+                    }
+                };
+                endResize = stop;
+                splitter.addEventListener('pointermove', move);
+                splitter.addEventListener('pointerup', stop);
+                splitter.addEventListener('pointercancel', stop);
+                splitter.addEventListener('lostpointercapture', stop);
+            },
+            { signal },
+        );
     }
 
-    function tick(time = performance.now()) {
+    function syncCameras(source = activeView()) {
+        if (!syncInput.checked) {
+            return;
+        }
+        for (const view of views.values()) {
+            if (view !== source) {
+                view.copyCameraFrom(source);
+            }
+        }
+    }
+
+    function updateView(view: ViewerScene) {
+        const element = viewElement(view.id);
+        const loading = view.records.filter(record => record.status === 'loading').length;
+        const status = element.querySelector<HTMLElement>('[data-view-status]')!;
+        const message = element.querySelector<HTMLElement>('[data-view-message]')!;
+        const reload = element.querySelector<HTMLButtonElement>('[data-view-reload]')!;
+        const empty = element.querySelector<HTMLElement>('[data-empty-scene]')!;
+        empty.hidden = view.records.length > 0 || view.contextLost;
+        status.hidden = !loading && !view.contextLost;
+        status.dataset.state = view.contextLost ? 'lost' : 'loading';
+        message.textContent = view.contextLost
+            ? `${labels.lostTitle}\n${labels.lostHint}`
+            : `${labels.loading} ${loading}`;
+        reload.hidden = !view.contextLost;
+        element.querySelector<HTMLElement>('[data-view-title]')!.textContent = viewName(view);
+        panels.get(view.id)?.config.refreshProgrammatic();
+        if (view.id === activeId) {
+            updateInspector();
+        }
+    }
+
+    function updateInspector() {
+        const view = views.get(activeId);
+        if (!view) {
+            return;
+        }
+        coordinate.value = view.coordinateSystem;
+        const title = get<HTMLElement>('[data-inspector-view-title]');
+        title.textContent = viewName(view);
+        title.title = viewName(view);
+        far.value = String(view.camera.far);
+        orbit.checked = view.control.useOrbit;
+        for (const element of root.querySelectorAll<HTMLElement>('[data-active-view-id]')) {
+            element.textContent = view.id;
+        }
+        fileInput.disabled = view.contextLost;
+        get<HTMLButtonElement>('[data-clipboard-load]').disabled = view.contextLost;
+        get<HTMLInputElement>('[data-url-input]').disabled = view.contextLost;
+        get<HTMLButtonElement>('[data-clear-scene]').hidden = view.records.length === 0;
+        renderFiles(view);
+    }
+
+    function renderFiles(view: ViewerScene) {
+        fileList.replaceChildren();
+        const summary = get('[data-asset-summary]');
+        const ready = view.records.filter(record => record.status === 'ready');
+        const count = ready.reduce((total, record) => total + (record.asset?.splatCount ?? 0), 0);
+        summary.textContent = `${view.records.length} ${labels.filesCount}${count ? ` · ${count.toLocaleString()} GS` : ''}`;
+        if (!view.records.length) {
+            const empty = document.createElement('li');
+            empty.className = 'viewer-empty-file';
+            empty.textContent = labels.emptyFiles;
+            fileList.append(empty);
+        }
+        for (const record of view.records) {
+            const item = document.createElement('li');
+            item.className = 'viewer-file-item';
+            item.dataset.state = record.status;
+            item.dataset.recordId = String(record.id);
+            const header = document.createElement('div');
+            header.className = 'viewer-file-heading';
+            const name = document.createElement('strong');
+            name.textContent = record.source.name;
+            name.title = record.source.name;
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'viewer-icon-button';
+            remove.dataset.removeFile = String(record.id);
+            remove.title = `${record.status === 'loading' ? labels.cancel : labels.removeFile}: ${record.source.name}`;
+            remove.setAttribute('aria-label', remove.title);
+            remove.innerHTML =
+                '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M8 5V3h4v2M5 5l1 12h8l1-12M8 8v6m4-6v6" /></svg>';
+            header.append(name, remove);
+            const stats = document.createElement('div');
+            stats.className = 'viewer-file-stats';
+            const values = [
+                record.asset?.format ?? record.source.name.split('.').pop()?.toUpperCase(),
+                formatBytes(record.source.kind === 'file' ? record.source.file.size : undefined),
+            ];
+            if (record.asset?.splatCount !== undefined) {
+                values.push(`${record.asset.splatCount.toLocaleString()} GS`, `SH ${record.asset.shDegree ?? '—'}`);
+            }
+            if (record.asset?.meshCount !== undefined) {
+                values.push(`${record.asset.meshCount} ${labels.meshes}`);
+            }
+            for (const value of values) {
+                const stat = document.createElement('span');
+                stat.textContent = value ?? '';
+                stats.append(stat);
+            }
+            item.append(header, stats);
+            if (record.status === 'loading') {
+                const loading = document.createElement('span');
+                loading.className = 'viewer-file-progress';
+                loading.textContent = labels.loading;
+                item.append(loading);
+            }
+            if (record.error) {
+                const error = document.createElement('p');
+                error.className = 'viewer-file-error';
+                error.textContent = record.error;
+                const retry = document.createElement('button');
+                retry.type = 'button';
+                retry.className = 'viewer-text-button';
+                retry.dataset.retryFile = String(record.id);
+                retry.textContent = labels.retry;
+                item.append(error, retry);
+            }
+            fileList.append(item);
+        }
+    }
+
+    function setDrawer(open: boolean) {
+        drawerOpen = open;
+        root.dataset.drawerOpen = String(open);
+        inspector.inert = !open;
+        backdrop.hidden = !open || !mobile.matches;
+        drawerToggle.setAttribute('aria-expanded', String(open));
+        controls.inert = !controlsOpen || (mobile.matches && open);
+        controlsToggle.inert = mobile.matches && open;
+        stage.inert = mobile.matches && open;
+        inspector.setAttribute('role', mobile.matches ? 'dialog' : 'complementary');
+        if (mobile.matches) {
+            inspector.setAttribute('aria-modal', String(open));
+        } else {
+            inspector.removeAttribute('aria-modal');
+        }
+        if (open && mobile.matches) {
+            drawerClose.focus({ preventScroll: true });
+        }
+    }
+
+    function setControlsOpen(open: boolean) {
+        controlsOpen = open;
+        root.dataset.controlsOpen = String(open);
+        controls.inert = !open || (mobile.matches && drawerOpen);
+        controlsToggle.hidden = open;
+        controlsToggle.setAttribute('aria-expanded', String(open));
+    }
+
+    function focusControls() {
+        if (controlsOpen) {
+            drawerToggle.focus();
+        } else {
+            controlsToggle.focus();
+        }
+    }
+
+    async function load(sources: AssetSource[], view = activeView(), append = true) {
+        notice.hidden = true;
+        try {
+            await view.importSources(sources, append);
+            if (!disposed && views.get(view.id) === view) {
+                syncCameras(view);
+                updateInspector();
+            }
+        } catch (error) {
+            if (!disposed) {
+                showError(error);
+            }
+        }
+    }
+
+    async function loadAll(sources: AssetSource[]) {
+        await Promise.all([...views.values()].map(view => load(sources, view, false)));
+    }
+
+    globalFileInput.addEventListener(
+        'change',
+        () => {
+            const sources = fileSources(
+                Array.from(globalFileInput.files ?? [], file => ({ file, path: file.webkitRelativePath || file.name })),
+            );
+            globalFileInput.value = '';
+            void loadAll(sources);
+        },
+        { signal },
+    );
+    get<HTMLFormElement>('[data-global-url-form]').addEventListener(
+        'submit',
+        event => {
+            event.preventDefault();
+            try {
+                void loadAll(urlSources(get<HTMLInputElement>('[data-global-url-input]').value));
+            } catch (error) {
+                showError(error);
+            }
+        },
+        { signal },
+    );
+    get('[data-global-clipboard-load]').addEventListener(
+        'click',
+        () => {
+            void navigator.clipboard
+                .readText()
+                .then(text => {
+                    get<HTMLInputElement>('[data-global-url-input]').value = text;
+                    return loadAll(urlSources(text));
+                })
+                .catch(showError);
+        },
+        { signal },
+    );
+
+    fileInput.addEventListener(
+        'change',
+        () => {
+            const sources = fileSources(
+                Array.from(fileInput.files ?? [], file => ({ file, path: file.webkitRelativePath || file.name })),
+            );
+            fileInput.value = '';
+            void load(sources);
+        },
+        { signal },
+    );
+    if (
+        /iP(?:ad|hone|od)/u.test(navigator.userAgent) ||
+        (/Macintosh/u.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
+    ) {
+        for (const input of root.querySelectorAll<HTMLInputElement>('input[type="file"]')) {
+            input.removeAttribute('accept');
+        }
+    }
+    get<HTMLFormElement>('[data-url-form]').addEventListener(
+        'submit',
+        event => {
+            event.preventDefault();
+            try {
+                void load(urlSources(get<HTMLInputElement>('[data-url-input]').value));
+            } catch (error) {
+                showError(error);
+            }
+        },
+        { signal },
+    );
+    get('[data-clipboard-load]').addEventListener(
+        'click',
+        () => {
+            void navigator.clipboard
+                .readText()
+                .then(text => {
+                    get<HTMLInputElement>('[data-url-input]').value = text;
+                    return load(urlSources(text));
+                })
+                .catch(showError);
+        },
+        { signal },
+    );
+
+    root.addEventListener(
+        'click',
+        event => {
+            const button = (event.target as Element).closest<HTMLElement>('button');
+            if (!button) {
+                return;
+            }
+            const data = button.dataset;
+            if (data.layoutButton) {
+                endResize?.();
+                previewId = undefined;
+                maximized = false;
+                layout = data.layoutButton as typeof layout;
+                const count = { single: 1, split: 2, quad: 4 }[layout];
+                VIEW_IDS.slice(count).forEach(destroyView);
+                if (!views.has(activeId)) {
+                    activeId = 'A';
+                }
+                if (previousActiveId && !views.has(previousActiveId)) {
+                    previousActiveId = undefined;
+                }
+                VIEW_IDS.slice(0, count).forEach(ensureView);
+                syncLayout();
+                updateInspector();
+            } else if (data.selectView || data.activateView) {
+                setActive((data.selectView ?? data.activateView) as ViewId);
+                activeView().surface.focus({ preventScroll: true });
+            } else if (data.emptyImport) {
+                setActive(data.emptyImport as ViewId);
+                fileInput.click();
+            } else if ('drawerToggle' in data) {
+                setDrawer(!drawerOpen);
+            } else if ('drawerClose' in data || 'drawerBackdrop' in data) {
+                setDrawer(false);
+                focusControls();
+            } else if ('controlsToggle' in data) {
+                setControlsOpen(true);
+            } else if ('controlsClose' in data) {
+                setControlsOpen(false);
+                controlsToggle.focus();
+            } else if ('clearScene' in data) {
+                activeView().clear();
+            } else if (data.removeFile) {
+                activeView().remove(Number(data.removeFile));
+            } else if (data.retryFile) {
+                const view = activeView();
+                const record = view.records.find(value => value.id === Number(data.retryFile));
+                if (record) {
+                    const { source } = record;
+                    view.remove(record.id);
+                    void load([source], view, true);
+                }
+            } else if ('viewReload' in data) {
+                window.location.reload();
+            } else if ('settingsReset' in data) {
+                const view = activeView();
+                Object.assign(view.params, createDefaultParams());
+                if (view.keepPrecalculateDisabled) {
+                    view.params.precalculateEnabled = false;
+                }
+                view.applySettings();
+                panels.get(activeId)!.config.refreshProgrammatic();
+                saveSettings(view);
+            } else if ('cameraFrame' in data) {
+                activeView().frameModels();
+                syncCameras();
+                updateInspector();
+            } else if ('cameraReset' in data) {
+                activeView().setCoordinateSystem(activeView().coordinateSystem);
+                syncCameras();
+                updateInspector();
+            } else if ('cameraCopy' in data) {
+                void navigator.clipboard.writeText(JSON.stringify(cameraState(activeView()))).catch(showError);
+            } else if ('cameraPaste' in data) {
+                void navigator.clipboard
+                    .readText()
+                    .then(text => {
+                        applyCameraState(activeView(), JSON.parse(text), labels.invalidCamera);
+                        syncCameras();
+                        updateInspector();
+                    })
+                    .catch(showError);
+            }
+        },
+        { signal },
+    );
+    root.addEventListener(
+        'pointerdown',
+        event => {
+            const pane = (event.target as Element).closest<HTMLElement>('[data-view]');
+            if (pane && !previewId) {
+                setActive(pane.dataset.view as ViewId);
+            }
+        },
+        { signal },
+    );
+    stage.addEventListener(
+        'dblclick',
+        event => {
+            const surface = (event.target as Element).closest<HTMLElement>('[data-render-surface]');
+            if (!surface || layout === 'single') {
+                return;
+            }
+            event.preventDefault();
+            setActive(surface.closest<HTMLElement>('[data-view]')!.dataset.view as ViewId);
+            maximized = !maximized;
+            previewId = undefined;
+            syncLayout();
+            activeView().surface.focus({ preventScroll: true });
+        },
+        { signal },
+    );
+    coordinate.addEventListener(
+        'change',
+        () => {
+            activeView().setCoordinateSystem(coordinate.value as CoordinateSystem);
+            syncCameras();
+        },
+        { signal },
+    );
+    orbit.addEventListener(
+        'change',
+        () => {
+            activeView().control.setOptions({ useOrbit: orbit.checked });
+        },
+        { signal },
+    );
+    far.addEventListener(
+        'change',
+        () => {
+            const value = Number(far.value);
+            if (Number.isFinite(value) && value > activeView().camera.near) {
+                activeView().camera.far = value;
+                activeView().camera.updateProjectionMatrix();
+                syncCameras();
+            } else {
+                far.value = String(activeView().camera.far);
+            }
+        },
+        { signal },
+    );
+    syncInput.addEventListener('change', () => syncCameras(), { signal });
+
+    for (const element of root.querySelectorAll<HTMLElement>('[data-view]')) {
+        const id = element.dataset.view as ViewId;
+        let dragDepth = 0;
+        const viewLabel = element.querySelector<HTMLElement>('[data-view-label]')!;
+        const nameButton = element.querySelector<HTMLButtonElement>('[data-activate-view]')!;
+        const nameInput = element.querySelector<HTMLInputElement>('[data-view-name-input]')!;
+        viewLabel.addEventListener(
+            'dblclick',
+            event => {
+                if (!nameInput.hidden) {
+                    return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                const view = views.get(id)!;
+                nameInput.value = viewName(view);
+                nameButton.hidden = true;
+                nameInput.hidden = false;
+                nameInput.focus({ preventScroll: true });
+                nameInput.select();
+            },
+            { signal },
+        );
+        nameInput.addEventListener(
+            'blur',
+            () => {
+                const name = nameInput.value.trim();
+                if (name) {
+                    viewNames.set(id, name);
+                } else {
+                    viewNames.delete(id);
+                }
+                nameInput.hidden = true;
+                nameButton.hidden = false;
+                updateView(views.get(id)!);
+            },
+            { signal },
+        );
+        const overlay = element.querySelector<HTMLElement>('[data-drop-target]')!;
+        const dropLabel = element.querySelector<HTMLElement>('[data-drop-label]')!;
+        const dropHint = element.querySelector<HTMLElement>('[data-drop-hint]')!;
+        const showDropTarget = (event: DragEvent) => {
+            const hasAssets = Boolean(views.get(id)?.records.length);
+            const append = event.ctrlKey;
+            dropLabel.textContent = hasAssets ? (append ? labels.dropAppend : labels.dropReplace) : labels.emptyScene;
+            dropHint.textContent = hasAssets ? labels.dropHint : labels.emptyHint;
+            overlay.hidden = false;
+        };
+        const isFileDrag = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes('Files');
+        element.addEventListener(
+            'dragenter',
+            event => {
+                if (!isFileDrag(event)) {
+                    return;
+                }
+                event.preventDefault();
+                dragDepth++;
+                showDropTarget(event);
+            },
+            { signal },
+        );
+        element.addEventListener(
+            'dragover',
+            event => {
+                if (!isFileDrag(event)) {
+                    return;
+                }
+                event.preventDefault();
+                if (event.dataTransfer) {
+                    event.dataTransfer.dropEffect = 'copy';
+                }
+                showDropTarget(event);
+            },
+            { signal },
+        );
+        element.addEventListener(
+            'dragleave',
+            event => {
+                if (!isFileDrag(event)) {
+                    return;
+                }
+                dragDepth = Math.max(0, dragDepth - 1);
+                overlay.hidden = dragDepth === 0;
+            },
+            { signal },
+        );
+        element.addEventListener(
+            'drop',
+            event => {
+                if (!event.dataTransfer || !isFileDrag(event)) {
+                    return;
+                }
+                event.preventDefault();
+                overlay.hidden = true;
+                dragDepth = 0;
+                setActive(id);
+                const view = ensureView(id);
+                const append = event.ctrlKey;
+                void droppedFiles(event.dataTransfer)
+                    .then(files => load(fileSources(files), view, append))
+                    .catch(showError);
+            },
+            { signal },
+        );
+    }
+
+    root.addEventListener(
+        'dragover',
+        event => {
+            if (Array.from(event.dataTransfer?.types ?? []).includes('Files')) {
+                event.preventDefault();
+            }
+        },
+        { signal },
+    );
+    root.addEventListener(
+        'drop',
+        event => {
+            if (
+                (event.target as Element).closest('[data-view]') ||
+                !event.dataTransfer ||
+                !Array.from(event.dataTransfer.types).includes('Files')
+            ) {
+                return;
+            }
+            event.preventDefault();
+            const view = activeView();
+            const append = event.ctrlKey;
+            void droppedFiles(event.dataTransfer)
+                .then(files => load(fileSources(files), view, append))
+                .catch(showError);
+        },
+        { signal },
+    );
+
+    function stopPreview() {
+        if (previewId) {
+            previewId = undefined;
+            syncLayout();
+            activeView().surface.focus({ preventScroll: true });
+        }
+    }
+    document.addEventListener(
+        'keydown',
+        event => {
+            const target = event.target as Element | null;
+            const editing = Boolean(target?.closest('input,textarea,select,[contenteditable="true"]'));
+            if (event.key === 'Escape' && !editing && drawerOpen) {
+                setDrawer(false);
+                focusControls();
+                return;
+            }
+            if (event.key === 'Escape' && !editing && maximized) {
+                maximized = false;
+                previewId = undefined;
+                syncLayout();
+                activeView().surface.focus({ preventScroll: true });
+                return;
+            }
+            if (!editing && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.repeat) {
+                const id = VIEW_IDS[Number(event.key) - 1];
+                if (id && views.has(id) && !(mobile.matches && drawerOpen)) {
+                    event.preventDefault();
+                    setActive(id);
+                    activeView().surface.focus({ preventScroll: true });
+                    return;
+                }
+            }
+            if (event.key === 'Tab' && mobile.matches && drawerOpen) {
+                const elements = Array.from(
+                    inspector.querySelectorAll<HTMLElement>(
+                        'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]',
+                    ),
+                ).filter(element => element.offsetParent !== null);
+                const first = elements[0];
+                const last = elements.at(-1);
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last?.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first?.focus();
+                }
+            }
+            if (
+                event.code !== 'Space' ||
+                event.repeat ||
+                event.altKey ||
+                event.ctrlKey ||
+                event.metaKey ||
+                event.shiftKey ||
+                target?.closest('input,textarea,select,button,summary,[contenteditable="true"],.tp-rotv') ||
+                (layout !== 'single' && !maximized) ||
+                views.size < 2
+            ) {
+                return;
+            }
+            event.preventDefault();
+            previewId =
+                previousActiveId && views.has(previousActiveId)
+                    ? previousActiveId
+                    : VIEW_IDS.find(id => id !== activeId && views.has(id));
+            syncLayout();
+        },
+        { signal },
+    );
+    window.addEventListener(
+        'keyup',
+        event => {
+            if (event.code === 'Space') {
+                stopPreview();
+            }
+        },
+        { signal },
+    );
+    window.addEventListener('blur', stopPreview, { signal });
+    window.addEventListener('blur', () => endResize?.(), { signal });
+    mobile.addEventListener(
+        'change',
+        () => {
+            endResize?.();
+            updateSplitters();
+            setDrawer(false);
+        },
+        { signal },
+    );
+
+    const fpsPane = new Pane({ container: get('[data-fps-graph]') });
+    fpsPane.registerPlugin(EssentialsPlugin);
+    const fps = fpsPane.addBlade({ view: 'fpsgraph', rows: 2 }) as FpsGraphBladeApi;
+    fps.on('tick', () => {
+        get('[data-fps]').textContent = fps.fps === null ? '-- FPS' : `${Math.round(fps.fps)} FPS`;
+    });
+    const conversion = mountViewerConversion(root, labels);
+    setDrawer(false);
+    ensureView('A');
+    syncLayout();
+    setControlsOpen(true);
+    const resize = () => {
+        for (const view of views.values()) {
+            if (!viewElement(view.id).hidden) {
+                view.resize();
+            }
+        }
+    };
+    const resizeObserver = new ResizeObserver(resize);
+    for (const element of root.querySelectorAll<HTMLElement>('[data-render-surface]')) {
+        resizeObserver.observe(element);
+    }
+    const fullscreen = mountWorkspaceFullscreenMode({ onChange: resize });
+
+    function tick(time: number) {
         if (disposed) {
             return;
         }
-
-        const delta = lastFrameTime > 0 ? Math.min((time - lastFrameTime) / 1000, 0.1) : 0;
-        lastFrameTime = time;
-        const controlUpdated = control.update(delta);
-        let lodUpdated = false;
-
-        for (const lodSplat of lodSplats) {
-            lodSplat.tick(camera);
-            lodUpdated = true;
+        fps.begin();
+        const delta = previousTime ? Math.min((time - previousTime) / 1000, 0.1) : 0;
+        previousTime = time;
+        let moved: ViewerScene | undefined;
+        for (const view of views.values()) {
+            if (view.control.enabled && view.control.update(delta)) {
+                moved = view;
+            }
         }
-
-        if (renderRequested || controlUpdated || lodUpdated) {
-            syncCameraAspect(camera, viewer);
-            scene.notifySceneChange();
+        if (moved) {
+            syncCameras(moved);
         }
-
-        renderRequested = false;
-        viewer.render();
-        updateStats();
-        rafId = window.requestAnimationFrame(tick);
-    }
-
-    function updateStats() {
-        fpsStat.textContent = estimateFps().toString();
-    }
-
-    function applyCoordinateSystem(value: string) {
-        switch (value) {
-            case 'aholo':
-                camera.up.set(0, 0, 1);
-                camera.position.set(0, -3, 1.2);
-                break;
-            case 'opengl':
-                camera.up.set(0, 1, 0);
-                camera.position.set(0, 1.2, 3);
-                break;
-            case 'opencv':
-            default:
-                camera.up.set(0, -1, 0);
-                camera.position.set(0, -1.2, 3);
-                break;
+        for (const view of views.values()) {
+            if (!viewElement(view.id).hidden) {
+                view.render();
+            }
         }
-
-        camera.lookAt(new Vector3(0, 0, 0));
-        camera.far = Number(farInput.value) || 2000;
-        camera.updateProjectionMatrix();
-        control.stop();
+        fps.end();
+        frameId = requestAnimationFrame(tick);
     }
-
-    function setStatus(state: 'loading' | 'ready' | 'error', message: string) {
-        status.dataset.state = state;
-        status.textContent = state === 'error' ? message : '';
-    }
-
-    function handleDragEnter(event: DragEvent) {
-        if (!isFileDrag(event)) {
-            return;
-        }
-
-        event.preventDefault();
-        fileDragDepth++;
-        setDropActive(true);
-    }
-
-    function handleDragOver(event: DragEvent) {
-        if (!isFileDrag(event)) {
-            return;
-        }
-
-        event.preventDefault();
-        if (event.dataTransfer) {
-            event.dataTransfer.dropEffect = 'copy';
-        }
-        setDropActive(true);
-    }
-
-    function handleDragLeave(event: DragEvent) {
-        if (!isFileDrag(event)) {
-            return;
-        }
-
-        event.preventDefault();
-        fileDragDepth = Math.max(0, fileDragDepth - 1);
-
-        if (fileDragDepth === 0) {
-            setDropActive(false);
-        }
-    }
-
-    function handleDrop(event: DragEvent) {
-        const files = Array.from(event.dataTransfer?.files ?? []);
-
-        if (files.length === 0) {
-            return;
-        }
-
-        event.preventDefault();
-        fileDragDepth = 0;
-        setDropActive(false);
-
-        if (files.length > 0) {
-            void loadSources(files.map(fileToSource));
-        }
-    }
-
-    function setDropActive(active: boolean) {
-        root.dataset.fileDragging = String(active);
-    }
-
-    function renderRecords() {
-        renderFileList(fileList, records, config);
-    }
-
-    function isFileDrag(event: DragEvent) {
-        return Array.from(event.dataTransfer?.types ?? []).includes('Files');
-    }
+    frameId = requestAnimationFrame(tick);
 
     function dispose() {
         if (disposed) {
             return;
         }
-
         disposed = true;
-        loadAbortController?.abort();
+        endResize?.();
+        lifetime.abort();
+        cancelAnimationFrame(frameId);
         resizeObserver.disconnect();
-        root.removeEventListener('dragenter', handleDragEnter);
-        root.removeEventListener('dragover', handleDragOver);
-        root.removeEventListener('dragleave', handleDragLeave);
-        root.removeEventListener('drop', handleDrop);
-        window.removeEventListener('resize', resize);
-        leftToggle.removeEventListener('click', handleLeftExpandClick);
-        leftClose.removeEventListener('click', handleLeftCloseClick);
-        rightToggle.removeEventListener('click', handleRightExpandClick);
-        rightClose.removeEventListener('click', handleRightCloseClick);
-        if (rafId !== undefined) {
-            window.cancelAnimationFrame(rafId);
+        fullscreen.dispose();
+        conversion.dispose();
+        fpsPane.dispose();
+        for (const id of views.keys()) {
+            destroyView(id);
         }
-        control.dispose();
-        clearScene();
-        fullscreenMode.dispose();
-        pane.dispose();
-        viewer.destroy();
     }
-
-    renderRecords();
+    window.addEventListener('beforeunload', dispose, { signal, once: true });
+    document.addEventListener('astro:before-swap', dispose, { signal, once: true });
+    return { dispose };
 }
 
-function createDefaultParams(): ViewerParams {
-    return {
-        splattingPreset: 'balanced',
-        pixelRatio: 1,
-        splatPackType: SplatPackType.SuperCompressed,
-        maxSh: 3,
-        maxStdDev: 8,
-        packHighPrecisionEnabled: false,
-        precalculateEnabled: true,
-        cameraRelativeEnabled: true,
-        autoFreeResourceOnGpuPacked: false,
-        renderAttachHighPrecisionEnabled: false,
-        detailCullingAlphaEnabled: false,
-        preBlurAmount: 0.3,
-        blurAmount: 0,
-        focalAdjustment: 2,
-        detailCullingThreshold: 1,
-        maxPixelRadius: 1024,
-        minIntervalMs: 0,
-        sortSplatDistance: 0.1,
-        sortSplatCoorient: 0.99999,
-        sortCameraDistance: 1,
-        sortCameraCoorient: 0.99,
-        compositeEnabled: false,
-        toneMapping: ToneMapping.Linear,
-        exposure: 1,
-        highlightEnabled: false,
-        highlightSize: 2,
-        highlightColor: '#0000ff',
-        lodMinLevel: 0,
-        lodMovingMinLevel: 2,
-        lodMaxBudget: 3_000_000,
-        lodPixelLimitEnabled: true,
-        lodFrustumCullingEnabled: true,
-        lodHysteresisTicks: 4,
-        lodSchedulerParallelCounts: 4,
-        lodSchedulerExistingTaskLimit: 64,
-        lodSchedulerMinDuration: 160,
-    };
-}
-
-function applySplattingPreset(
-    params: ViewerParams,
-    preset: SplattingPresetId,
-    options: { keepPrecalculateDisabled: boolean },
-) {
-    Object.assign(params, VIEWER_SPLATTING_PRESETS[preset].params, {
-        splattingPreset: preset,
-    });
-
-    if (options.keepPrecalculateDisabled) {
-        params.precalculateEnabled = false;
-    }
-}
-
-function createSplattingPresetOptions(labels: ViewerLabels) {
-    return {
-        [labels.presetCustom]: 'custom',
-        [labels.presetMaxQuality]: 'maxQuality',
-        [labels.presetQualityFirst]: 'qualityFirst',
-        [labels.presetBalanced]: 'balanced',
-        [labels.presetPerformanceFirst]: 'performanceFirst',
-        [labels.presetExtremePerformance0]: 'extremePerformance0',
-        [labels.presetExtremePerformance1]: 'extremePerformance1',
-    } satisfies Record<string, SplattingPresetId>;
-}
-
-function setupConfigPanel(
-    container: HTMLElement,
-    labels: ViewerLabels,
-    params: ViewerParams,
-    shouldKeepPrecalculateDisabled: () => boolean,
-    onChange: () => void,
-) {
-    const pane = new Pane({
-        container,
-        expanded: true,
-        title: labels.settings,
-    });
-    const presetBinding = pane.addBinding(params, 'splattingPreset', {
-        label: labels.preset,
-        options: createSplattingPresetOptions(labels),
-    });
-    addViewerConfigTip(presetBinding, labels.presetPackTypeTip);
-    let isApplyingSplattingPreset = false;
-    const refreshProgrammatic = () => {
-        isApplyingSplattingPreset = true;
-        pane.refresh();
-        queueMicrotask(() => {
-            isApplyingSplattingPreset = false;
-        });
-    };
-    presetBinding.on('change', event => {
-        isApplyingSplattingPreset = true;
-        applySplattingPreset(params, event.value, { keepPrecalculateDisabled: shouldKeepPrecalculateDisabled() });
-        pane.refresh();
-        onChange();
-        queueMicrotask(() => {
-            isApplyingSplattingPreset = false;
-        });
-    });
-    const pixelRatioBinding = pane.addBinding(params, 'pixelRatio', {
-        label: 'Pixel Ratio',
-        max: Math.max(2, window.devicePixelRatio),
-        min: 0.5,
-        step: 0.1,
-    });
-    pixelRatioBinding.on('change', onChange);
-    const markCustomPreset = () => {
-        if (isApplyingSplattingPreset || params.splattingPreset === 'custom') {
-            return;
-        }
-
-        params.splattingPreset = 'custom';
-        presetBinding.refresh();
-    };
-    const handleSplattingParamChange = () => {
-        markCustomPreset();
-        onChange();
-    };
-
-    const importOptions = pane.addFolder({ title: `Import · ${labels.packTypeTip}`, expanded: false });
-    const pack = pane.addFolder({ title: 'Pack', expanded: false });
-    const raster = pane.addFolder({ title: 'Raster', expanded: false });
-    const sort = pane.addFolder({ title: 'Sort', expanded: false });
-    const composite = pane.addFolder({ title: 'Composite', expanded: false });
-
-    importOptions
-        .addBinding(params, 'splatPackType', {
-            label: 'Pack type',
-            options: {
-                compressed: SplatPackType.Compressed,
-                superCompressed: SplatPackType.SuperCompressed,
-                sog: SplatPackType.Sog,
-            },
-        })
-        .on('change', markCustomPreset);
-    importOptions
-        .addBinding(params, 'maxSh', { label: 'Max SH', min: 0, max: 3, step: 1 })
-        .on('change', handleSplattingParamChange);
-    importOptions
-        .addBinding(params, 'autoFreeResourceOnGpuPacked', { label: 'Auto free packed data' })
-        .on('change', handleSplattingParamChange);
-    pack.addBinding(params, 'packHighPrecisionEnabled', { label: 'High precision' }).on(
-        'change',
-        handleSplattingParamChange,
-    );
-    pack.addBinding(params, 'precalculateEnabled', { label: 'Precalculate SH' }).on(
-        'change',
-        handleSplattingParamChange,
-    );
-    pack.addBinding(params, 'cameraRelativeEnabled', { label: 'Camera relative' }).on(
-        'change',
-        handleSplattingParamChange,
-    );
-    raster
-        .addBinding(params, 'detailCullingAlphaEnabled', { label: 'Cull by alpha' })
-        .on('change', handleSplattingParamChange);
-    raster
-        .addBinding(params, 'preBlurAmount', { label: 'Pre blur', min: 0, max: 1, step: 0.1 })
-        .on('change', handleSplattingParamChange);
-    raster
-        .addBinding(params, 'blurAmount', { label: 'Blur', min: 0, max: 1, step: 0.1 })
-        .on('change', handleSplattingParamChange);
-    raster
-        .addBinding(params, 'focalAdjustment', { label: 'Focal adjustment', min: 0.5, max: 2, step: 0.1 })
-        .on('change', handleSplattingParamChange);
-    raster
-        .addBinding(params, 'detailCullingThreshold', { label: 'Detail culling', min: 0, max: 8, step: 1 })
-        .on('change', handleSplattingParamChange);
-    raster
-        .addBinding(params, 'maxPixelRadius', { label: 'Max pixel radius', min: 1, max: 1024, step: 1 })
-        .on('change', handleSplattingParamChange);
-    raster
-        .addBinding(params, 'maxStdDev', { label: 'Max std dev', min: 5, max: 8, step: 1 })
-        .on('change', handleSplattingParamChange);
-    sort.addBinding(params, 'minIntervalMs', { label: 'Min duration', min: 0, max: 160, step: 16 }).on(
-        'change',
-        handleSplattingParamChange,
-    );
-    sort.addBinding(params, 'sortSplatDistance', { label: 'Splat distance', min: 0, max: 1, step: 0.01 }).on(
-        'change',
-        handleSplattingParamChange,
-    );
-    sort.addBinding(params, 'sortSplatCoorient', { label: 'Splat coorient', min: 0, max: 1, step: 0.01 }).on(
-        'change',
-        handleSplattingParamChange,
-    );
-    sort.addBinding(params, 'sortCameraDistance', { label: 'Camera distance', min: 0, max: 1, step: 0.01 }).on(
-        'change',
-        handleSplattingParamChange,
-    );
-    sort.addBinding(params, 'sortCameraCoorient', { label: 'Camera coorient', min: 0, max: 1, step: 0.01 }).on(
-        'change',
-        handleSplattingParamChange,
-    );
-    composite.addBinding(params, 'compositeEnabled', { label: 'Enabled' }).on('change', handleSplattingParamChange);
-    composite
-        .addBinding(params, 'renderAttachHighPrecisionEnabled', { label: 'High precision attach' })
-        .on('change', handleSplattingParamChange);
-    composite
-        .addBinding(params, 'toneMapping', {
-            label: 'Curve',
-            options: {
-                Linear: ToneMapping.Linear,
-                Reinhard: ToneMapping.Reinhard,
-                ACES: ToneMapping.ACES,
-                ACESFilmic: ToneMapping.ACESFilmic,
-                Neutral: ToneMapping.Neutral,
-            },
-        })
-        .on('change', onChange);
-    composite.addBinding(params, 'exposure', { label: 'Exposure', min: 0.1, max: 4, step: 0.1 }).on('change', onChange);
-
-    const highlight = pane.addFolder({ title: 'Highlight Kernel', expanded: false });
-    highlight.addBinding(params, 'highlightEnabled', { label: 'Enabled' }).on('change', onChange);
-    highlight.addBinding(params, 'highlightSize', { label: 'Size', min: 1, max: 10, step: 1 }).on('change', onChange);
-    highlight.addBinding(params, 'highlightColor', { label: 'Color' }).on('change', onChange);
-
-    const lod = pane.addFolder({ title: 'LOD Config', expanded: false });
-    lod.addBinding(params, 'lodMinLevel', { label: 'Min level', min: 0, max: 4, step: 1 }).on('change', onChange);
-    lod.addBinding(params, 'lodMovingMinLevel', { label: 'Moving min level', min: 0, max: 4, step: 1 }).on(
-        'change',
-        onChange,
-    );
-    lod.addBinding(params, 'lodMaxBudget', { label: 'Max budget', min: 1_000_000, max: 40_000_000, step: 100_000 }).on(
-        'change',
-        onChange,
-    );
-    lod.addBinding(params, 'lodPixelLimitEnabled', { label: 'Pixel limit' }).on('change', onChange);
-    lod.addBinding(params, 'lodFrustumCullingEnabled', { label: 'Frustum culling' }).on('change', onChange);
-    lod.addBinding(params, 'lodHysteresisTicks', { label: 'Hysteresis', min: 1, max: 10, step: 1 }).on(
-        'change',
-        onChange,
-    );
-    lod.addBinding(params, 'lodSchedulerParallelCounts', { label: 'Parallel', min: 1, max: 16, step: 1 }).on(
-        'change',
-        onChange,
-    );
-    lod.addBinding(params, 'lodSchedulerExistingTaskLimit', { label: 'Task limit', min: 1, max: 128, step: 1 }).on(
-        'change',
-        onChange,
-    );
-    lod.addBinding(params, 'lodSchedulerMinDuration', { label: 'Min duration', min: 16, max: 1600, step: 16 }).on(
-        'change',
-        onChange,
-    );
-
-    return {
-        dispose() {
-            pane.dispose();
-        },
-        refreshProgrammatic,
-    };
-}
-
-function addViewerConfigTip(target: { element: HTMLElement }, text: string) {
-    target.element.title = text;
-}
-
-function applyViewerConfig(viewer: Viewer, params: ViewerParams) {
-    setViewerConfig(viewer, {
-        pixelRatio: params.pixelRatio / window.devicePixelRatio,
-        pipeline: {
-            Background: {
-                background: {
-                    active: BackgroundMode.BasicBackground,
-                    basic: { color: new Color(0, 0, 0), alpha: 1 },
-                },
-                ground: { enabled: false },
-            },
-            Splatting: {
-                enabled: true,
-                pack: {
-                    highPrecisionEnabled: params.packHighPrecisionEnabled,
-                    precalculateEnabled: params.precalculateEnabled,
-                    cameraRelativeEnabled: params.cameraRelativeEnabled,
-                },
-                raster: {
-                    detailCullingAlphaEnabled: params.detailCullingAlphaEnabled,
-                    preBlurAmount: params.preBlurAmount,
-                    blurAmount: params.blurAmount,
-                    focalAdjustment: params.focalAdjustment,
-                    detailCullingThreshold: params.detailCullingThreshold,
-                    maxPixelRadius: params.maxPixelRadius,
-                    maxStdDev: globalThis.Math.sqrt(params.maxStdDev),
-                },
-                sort: {
-                    minIntervalMs: params.minIntervalMs,
-                    sortSplatDistance: params.sortSplatDistance,
-                    sortSplatCoorient: params.sortSplatCoorient,
-                    sortCameraDistance: params.sortCameraDistance,
-                    sortCameraCoorient: params.sortCameraCoorient,
-                },
-                composite: {
-                    enabled: params.compositeEnabled,
-                    highPrecisionEnabled: params.renderAttachHighPrecisionEnabled,
-                    toneMapping: params.toneMapping,
-                    exposure: params.exposure,
-                },
-                highlightKernel: {
-                    enabled: params.highlightEnabled,
-                    size: params.highlightSize,
-                    color: colorToNumber(params.highlightColor),
-                },
-            },
-            TAA: { enabled: false },
-        },
-    });
-}
-
-function getLodConfig(params: ViewerParams): Partial<SplatUtils.LodConfig> {
-    return {
-        minLevel: params.lodMinLevel,
-        movingMinLevel: params.lodMovingMinLevel,
-        maxBudget: params.lodMaxBudget,
-        pixelLimitEnabled: params.lodPixelLimitEnabled,
-        frustumCullingEnabled: params.lodFrustumCullingEnabled,
-        hysteresisTicks: params.lodHysteresisTicks,
-        schedulerParallelCounts: params.lodSchedulerParallelCounts,
-        schedulerExistingTaskLimit: params.lodSchedulerExistingTaskLimit,
-        schedulerMinDuration: params.lodSchedulerMinDuration,
-    };
-}
-
-function getInitialLodLevel(meta: LodMeta, params: ViewerParams) {
-    const levels = typeof meta.levels === 'number' ? meta.levels : 1;
-    return globalThis.Math.min(globalThis.Math.max(0, levels - 1), globalThis.Math.max(4, params.lodMinLevel));
-}
-
-function isLodMeta(value: unknown): value is LodMeta {
-    if (!value || typeof value !== 'object') {
-        return false;
-    }
-
-    const meta = value as Record<string, unknown>;
-    return (
-        meta.magicCode === LOD_MAGIC_CODE &&
-        meta.type === 'lod-splat' &&
-        typeof meta.counts === 'number' &&
-        typeof meta.levels === 'number' &&
-        Array.isArray(meta.files)
-    );
-}
-
-async function readJsonIfNeeded(source: Source, signal: AbortSignal) {
-    if (!source.name.toLowerCase().endsWith('.json')) {
-        return undefined;
-    }
-
-    const text =
-        source.kind === 'url'
-            ? await abortable(fetchText(source.url, signal), signal)
-            : await abortable(source.file.text(), signal);
-
-    return JSON.parse(text) as unknown;
-}
-
-async function fetchText(url: string, signal: AbortSignal) {
-    const response = await fetch(url, { signal });
-
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    }
-
-    return response.text();
-}
-
-async function readZipSource(source: Source, signal: AbortSignal) {
-    if (source.kind === 'file') {
-        return new Uint8Array(await abortable(source.file.arrayBuffer(), signal));
-    }
-
-    const response = await fetch(source.url, { signal });
-
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    }
-
-    return new Uint8Array(await response.arrayBuffer());
-}
-
-async function getDetectionProbe(source: Source, json: unknown) {
-    if (json !== undefined) {
-        return new TextEncoder().encode(JSON.stringify(json));
-    }
-
-    if (source.kind === 'file') {
-        return new Uint8Array(await source.file.slice(0, 4096).arrayBuffer());
-    }
-
-    return new Uint8Array();
-}
-
-function renderFileList(container: HTMLElement, records: FileRecord[], config: ViewerPageConfig) {
-    container.replaceChildren();
-
-    if (records.length === 0) {
-        const item = document.createElement('li');
-        item.className = 'viewer-empty-file';
-        item.textContent = config.labels.emptyFiles;
-        container.append(item);
-        return;
-    }
-
-    for (const record of records) {
-        const item = document.createElement('li');
-        item.className = 'viewer-file-item';
-        item.dataset.state = record.status;
-
-        const header = document.createElement('div');
-        header.className = 'viewer-file-item-header';
-
-        const info = document.createElement('div');
-        info.className = 'viewer-file-info';
-
-        const title = document.createElement('strong');
-        title.textContent = record.name;
-
-        const details = document.createElement('span');
-        details.textContent = `${record.format} / ${record.size}`;
-        info.append(title, details);
-
-        const state = document.createElement('span');
-        state.className = 'viewer-file-state';
-        state.dataset.state = record.status;
-        state.setAttribute('aria-label', record.error ?? record.status);
-        state.title = record.error ?? record.status;
-
-        const deleteButton = document.createElement('button');
-        deleteButton.type = 'button';
-        deleteButton.className = 'viewer-file-delete';
-        deleteButton.dataset.fileDelete = '';
-        deleteButton.setAttribute('aria-label', `${config.labels.removeFile}: ${record.name}`);
-        deleteButton.title = config.labels.removeFile;
-
-        const deleteIcon = createTrashIcon();
-        deleteButton.append(deleteIcon);
-        header.append(info, state, deleteButton);
-
-        item.append(header);
-        container.append(item);
-    }
-}
-
-function readLeftRailCollapsed() {
-    return readRailCollapsed(LEFT_RAIL_COLLAPSED_STORAGE_KEY);
-}
-
-function readRightRailCollapsed() {
-    return readRailCollapsed(RIGHT_RAIL_COLLAPSED_STORAGE_KEY);
-}
-
-function readRailCollapsed(storageKey: string) {
-    if (isCompactViewerLayout()) {
-        return true;
-    }
-
-    try {
-        const stored = localStorage.getItem(storageKey);
-        if (stored !== null) {
-            return stored === 'true';
-        }
-    } catch {
-        // Fall through to the responsive default when storage is unavailable.
-    }
-
-    return false;
-}
-
-function createTrashIcon() {
-    const namespace = 'http://www.w3.org/2000/svg';
-    const icon = document.createElementNS(namespace, 'svg');
-    icon.setAttribute('class', 'viewer-delete-icon');
-    icon.setAttribute('viewBox', '0 0 24 24');
-    icon.setAttribute('aria-hidden', 'true');
-
-    for (const attributes of [
-        { d: 'M3 6h18' },
-        { d: 'M8 6V4h8v2' },
-        { d: 'M6 6l1 15h10l1-15' },
-        { d: 'M10 11v6' },
-        { d: 'M14 11v6' },
-    ]) {
-        const path = document.createElementNS(namespace, 'path');
-        path.setAttribute('d', attributes.d);
-        icon.append(path);
-    }
-
-    return icon;
-}
-
-function writeLeftRailCollapsed(collapsed: boolean) {
-    writeRailCollapsed(LEFT_RAIL_COLLAPSED_STORAGE_KEY, collapsed);
-}
-
-function writeRightRailCollapsed(collapsed: boolean) {
-    writeRailCollapsed(RIGHT_RAIL_COLLAPSED_STORAGE_KEY, collapsed);
-}
-
-function writeRailCollapsed(storageKey: string, collapsed: boolean) {
-    try {
-        localStorage.setItem(storageKey, String(collapsed));
-    } catch {
-        // Persisting the panel state is optional; the viewer should still run.
-    }
-}
-
-function isCompactViewerLayout() {
-    return window.matchMedia('(max-width: 720px)').matches;
-}
-
-function createFileRecord(source: Source): FileRecord {
-    return {
-        name: source.name,
-        format: getInitialFormat(source.name),
-        size: source.size === undefined ? '-' : formatBytes(source.size),
-        status: 'loading',
-    };
-}
-
-function fileToSource(file: File): Source {
-    return {
-        kind: 'file',
-        file,
-        name: file.name,
-        size: file.size,
-    };
-}
-
-function urlToSource(url: string): Source {
-    return {
-        kind: 'url',
-        url,
-        name: getUrlFileName(url),
-    };
-}
-
-function parseUrls(value: string) {
-    return value
-        .split(/[\s,]+/u)
-        .map(item => item.trim())
-        .filter(Boolean);
-}
-
-function configureFileInputForPlatform(fileInput: HTMLInputElement) {
-    if (isIosFilePicker()) {
-        fileInput.removeAttribute('accept');
-    }
-}
-
-function isIosFilePicker() {
-    const userAgent = navigator.userAgent;
-
-    return /iP(?:ad|hone|od)/u.test(userAgent) || (/Macintosh/u.test(userAgent) && navigator.maxTouchPoints > 1);
-}
-
-function getSupportedFileExtensions(fileInput: HTMLInputElement) {
-    const extensions = fileInput.accept
-        .split(',')
-        .map(item => item.trim().toLowerCase())
-        .filter(item => item.startsWith('.'));
-
-    return extensions.length > 0 ? extensions : [...SUPPORTED_FILE_EXTENSIONS];
-}
-
-function validateImportSource(source: Source, supportedExtensions: readonly string[], unsupportedLabel: string) {
-    if (supportedExtensions.includes(getSourceExtension(source))) {
-        return;
-    }
-
-    throw new Error(`${unsupportedLabel}: ${source.name} (${supportedExtensions.join(', ')})`);
-}
-
-function getSourceExtension(source: Source) {
-    const name = source.name.trim().toLowerCase();
-    const queryIndex = name.search(/[?#]/u);
-    const filename = queryIndex === -1 ? name : name.slice(0, queryIndex);
-    const extensionIndex = filename.lastIndexOf('.');
-
-    return extensionIndex === -1 ? '' : filename.slice(extensionIndex);
-}
-
-function getUrlFileName(url: string) {
-    try {
-        const parsed = new URL(url);
-        const pathname = decodeURIComponent(parsed.pathname);
-        return pathname.split('/').filter(Boolean).pop() || parsed.hostname;
-    } catch {
-        return url;
-    }
-}
-
-function getInitialFormat(name: string) {
-    const extension = name.split('.').pop();
-    return extension ? extension.toUpperCase() : 'Unknown';
-}
-
-function getFileTypeLabel(type: SplatFileTypeValue) {
-    switch (type) {
-        case SplatFileType.PLY:
-            return 'PLY';
-        case SplatFileType.SPZ:
-            return 'SPZ';
-        case SplatFileType.SPLAT:
-            return 'SPLAT';
-        case SplatFileType.KSPLAT:
-            return 'KSPLAT';
-        case SplatFileType.LCC:
-            return 'LCC';
-        case SplatFileType.LCC2:
-            return 'LCC2';
-        case SplatFileType.SOG:
-            return 'SOG';
-        case SplatFileType.ESZ:
-            return 'ESZ';
-        default:
-            return 'Unknown';
-    }
-}
-
-function formatBytes(bytes: number) {
-    if (bytes <= 0) {
-        return '0 B';
-    }
-
-    const units = ['B', 'KB', 'MB', 'GB'];
-    const exponent = globalThis.Math.min(
-        globalThis.Math.floor(globalThis.Math.log(bytes) / globalThis.Math.log(1024)),
-        units.length - 1,
-    );
-    const value = bytes / 1024 ** exponent;
-    return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
-}
-
-function colorToNumber(value: string) {
-    return Number.parseInt(value.replace(/^#/u, ''), 16);
-}
-
-function resolveResourceUrl(url: string, baseUrl: string | undefined) {
-    try {
-        return new URL(url, baseUrl ?? window.location.href).toString();
-    } catch {
-        return url;
-    }
-}
-
-function serializeCamera(camera: PerspectiveCamera) {
+function cameraState(view: ViewerScene) {
+    const { camera } = view;
     return {
         position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
         rotation: { x: camera.rotation.x, y: camera.rotation.y, z: camera.rotation.z, order: camera.rotation.order },
@@ -1496,15 +1006,32 @@ function serializeCamera(camera: PerspectiveCamera) {
         fov: camera.fov,
         near: camera.near,
         far: camera.far,
+        orbitCenter: view.control.getState().orbitCenter,
     };
 }
 
-function applyCameraState(camera: PerspectiveCamera, state: unknown) {
+function applyCameraState(view: ViewerScene, state: unknown, errorMessage: string) {
     if (!state || typeof state !== 'object') {
-        throw new Error('Invalid camera state.');
+        throw new Error(errorMessage);
     }
-
-    const value = state as ReturnType<typeof serializeCamera>;
+    const value = state as ReturnType<typeof cameraState>;
+    const vectorValid = (vector: { x: number; y: number; z: number } | undefined) =>
+        vector && [vector.x, vector.y, vector.z].every(Number.isFinite);
+    if (
+        !vectorValid(value.position) ||
+        !vectorValid(value.rotation) ||
+        !vectorValid(value.up) ||
+        !['XYZ', 'YZX', 'ZXY', 'XZY', 'YXZ', 'ZYX'].includes(value.rotation.order) ||
+        ![value.fov, value.near, value.far].every(Number.isFinite) ||
+        value.fov <= 0 ||
+        value.fov >= 180 ||
+        value.near <= 0 ||
+        value.far <= value.near ||
+        (value.orbitCenter !== undefined && !vectorValid(value.orbitCenter))
+    ) {
+        throw new Error(errorMessage);
+    }
+    const { camera } = view;
     camera.position.set(value.position.x, value.position.y, value.position.z);
     camera.rotation.order = value.rotation.order;
     camera.rotation.set(value.rotation.x, value.rotation.y, value.rotation.z);
@@ -1513,65 +1040,8 @@ function applyCameraState(camera: PerspectiveCamera, state: unknown) {
     camera.near = value.near;
     camera.far = value.far;
     camera.updateProjectionMatrix();
-}
-
-function disposeSceneObject(object: Object3D | SplatObject) {
-    const disposable = object as Object3D & {
-        destroy?: () => void;
-        freeGPU?: () => void;
-    };
-
-    disposable.freeGPU?.();
-    disposable.destroy?.();
-}
-
-function createFpsEstimator() {
-    let lastFrameTime = 0;
-    let lastDisplayTime = 0;
-    let smoothedFps = 0;
-    let displayedFps = 0;
-
-    return () => {
-        const now = performance.now();
-
-        if (lastFrameTime === 0) {
-            lastFrameTime = now;
-            lastDisplayTime = now;
-            return displayedFps;
-        }
-
-        const frameDelta = globalThis.Math.max(1, now - lastFrameTime);
-        const fps = 1000 / frameDelta;
-        lastFrameTime = now;
-        smoothedFps = smoothedFps === 0 ? fps : smoothedFps + (fps - smoothedFps) * FPS_SMOOTHING_FACTOR;
-
-        if (now - lastDisplayTime >= FPS_DISPLAY_INTERVAL_MS) {
-            displayedFps = globalThis.Math.round(smoothedFps);
-            lastDisplayTime = now;
-        }
-
-        return displayedFps;
-    };
-}
-
-function throwIfAborted(signal: AbortSignal) {
-    throwIfAbortedWithMessage(signal, VIEWER_ABORT_MESSAGE);
-}
-
-function abortable<T>(promise: Promise<T>, signal: AbortSignal) {
-    return abortableWithMessage(promise, signal, VIEWER_ABORT_MESSAGE);
-}
-
-function getErrorMessage(error: unknown) {
-    return error instanceof Error ? error.message : String(error);
-}
-
-function query<T extends Element>(root: HTMLElement, selector: string): T {
-    const element = root.querySelector<T>(selector);
-
-    if (!element) {
-        throw new Error(`Missing viewer element: ${selector}`);
+    if (value.orbitCenter) {
+        view.control.setOrbitCenter(value.orbitCenter);
     }
-
-    return element;
+    view.control.stop();
 }

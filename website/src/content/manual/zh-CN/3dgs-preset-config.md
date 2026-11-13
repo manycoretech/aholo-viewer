@@ -1,338 +1,175 @@
 ---
 title: 3DGS Preset Config
-description: 根据 3DGS 数据格式、精度和性能目标选择 preset 配置。
+description: 当前 Viewer 的五档预设、统一参数、导入选项与 SDK 对应关系。
 order: 4
 ---
 
-## 背景
+## 选择预设
 
-单一配置无法覆盖所有 3DGS 场景。不同场景在数据精度、体积、显存、机器性能和画质要求上差异较大，因此需要按业务目标选择合理的配置组合。
+[Viewer](./viewer.md) 默认使用**效果优先**。当前提供五档预设，极限性能只有一档。先确定设备与场景目标，再以一档作为调整起点；不同数据的画质和性能需要在目标设备上验证。
 
-这篇文档整理常见数据格式、`packType` 差异、preset 列表，以及可在 preset 基础上继续微调的参数。
+| 预设             | 配置特点                                                          |
+| ---------------- | ----------------------------------------------------------------- |
+| 极限效果         | Compressed、SH 3、高精度合并，并开启离屏合成和高精度合成缓冲      |
+| 效果优先（默认） | 保留 Compressed、SH 3 与高精度合并，关闭离屏合成                  |
+| 均衡模式         | SuperCompressed、SH 3，启用相机相对坐标，并保留源资源供后续合并   |
+| 性能优先         | SuperCompressed、SH 3，缩小高斯截断范围，细节剔除计入透明度       |
+| 极限性能         | SuperCompressed、SH 0，关闭 SH 预计算，提高剔除阈值并降低排序频率 |
 
-## 快速选择
+## 档位参数
 
-先按业务约束选择 preset，再只微调最关键的参数。不要一开始就同时调整多个精度、排序和模糊参数。
+切换预设只更新以下 **12 项**。`packType`、`maxShDegree` 是解析选项，`splat.autoFreeResourceOnGpuPacked` 是对象属性；`pack`、`raster`、`sort`、`composite` 均位于 `pipeline.Splatting`。表内名称补充分组前缀，以区分面板中重复的 `enabled`、`highPrecisionEnabled`。
 
-| 场景目标                                 | 建议起点   | 需要关注                                                                     |
-| ---------------------------------------- | ---------- | ---------------------------------------------------------------------------- |
-| 画质优先，用户设备性能强                 | 极限效果   | `compressed`、`pack.highPrecisionEnabled`、`composite.highPrecisionEnabled`  |
-| 大场景且低精度容易出问题                 | 效果优先   | `compressed`、`pack.highPrecisionEnabled`                                    |
-| 设备较弱但需要打开大规模方案             | 均衡       | `super-compressed`、`cameraRelativeEnabled`                                  |
-| 设备较弱但仍需要较完整画面               | 性能优先   | `super-compressed`、`raster.detailCullingThreshold`、`raster.maxPixelRadius` |
-| 极大场景或极低设备配置                   | 极限性能 0 | `maxShDegree: 0`、`sort.minIntervalMs`、更激进的精度压缩                     |
-| 原始数据为 sog，且目标是打开更大规模场景 | 极限性能 1 | `sog`、`pack.precalculateEnabled`、显存占用                                  |
+| 参数                                | 极限效果   | 效果优先   | 均衡模式        | 性能优先        | 极限性能        |
+| ----------------------------------- | ---------- | ---------- | --------------- | --------------- | --------------- |
+| `packType`                          | Compressed | Compressed | SuperCompressed | SuperCompressed | SuperCompressed |
+| `maxShDegree`                       | 3          | 3          | 3               | 3               | 0               |
+| `pack.highPrecisionEnabled`         | true       | true       | false           | false           | false           |
+| `pack.precalculateEnabled`          | true       | true       | true            | true            | false           |
+| `pack.cameraRelativeEnabled`        | false      | false      | true            | false           | false           |
+| `splat.autoFreeResourceOnGpuPacked` | true       | true       | false           | true            | true            |
+| `raster.detailCullingThreshold`     | 1          | 1          | 1               | 1               | 4               |
+| `raster.detailCullingAlphaEnabled`  | false      | false      | false           | true            | true            |
+| `raster.maxStdDev`                  | 8          | 8          | 8               | 5               | 5               |
+| `sort.minIntervalMs`                | 0          | 0          | 0               | 0               | 160             |
+| `composite.enabled`                 | true       | false      | false           | false           | false           |
+| `composite.highPrecisionEnabled`    | true       | false      | false           | false           | false           |
 
-## 3DGS 文件格式
+表中的 `raster.maxStdDev` 使用 **Viewer 面板值**：8 和 5 传入 SDK 时分别为 `Math.sqrt(8)` 和 `Math.sqrt(5)`。`sort.minIntervalMs` 的单位为毫秒。极限效果与效果优先的 `detailCullingThreshold` 都是 1；性能优先和极限性能都开启 `detailCullingAlphaEnabled`。
 
-| 数据格式         | 体积               | 渲染质量       | 实现细节                                                                                                                                                                          |
-| ---------------- | ------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ply`            | 100%               | 好             | 原始精度高，体积最大。                                                                                                                                                            |
-| `compressed ply` | 30%，gzip 后约 17% | 较好           | 以 256 个 splat 为 chunk，大概率与 ksplat 类似按空间划分。`center`、`quat`、`scale`、`rgb` 会计算 min/max，并通过 rescale 与量化压缩。SH 可压缩到 u8，实测中约为 5 bit。          |
-| `spz`            | 10%                | 一般           | 对 splat 核心数据，尤其是 `center`，精度保留较高，因此锐利度损失较低；SH 精度很低，细微场景容易出现明显变色。                                                                     |
-| `splat`          | 14%                | 一般，不通用   | 压缩时删除 `shN` 数据。数据排布为 `center.xyz (f32)`、`scale.xyz (f32)`、`color.rgba (u8)`、`quat (u8)`，共 32 字节。                                                             |
-| `ksplat`         | 20%-30%            | 依赖压缩 level | level 0 不压缩，level 1 为 16 bit，level 2 为 8 bit。会按空间聚类进行局部坐标压缩，整体思路与 compressed 类似。                                                                   |
-| `sog`            | 5%                 | 一般           | 对 `center`、`scales`、`quats`、`sh0(rgba)` 做 PLAS 排序，再计算 min/max 并量化。`shN` 会做 k-means 聚类，用 centroids 和 labels 恢复数据，以提高精度并减少体积。画面会相对模糊。 |
+## 统一参数
 
-### compressed ply 量化示意
+以下 **25 项**不随预设切换变化。修改它们仍保留当前档位；修改上表中的档位参数才会显示“自定义”。选择“自定义”本身不改动数值。重置图标恢复效果优先和全部统一默认值。
 
-![compressed ply 量化示意](../assets/3dgs-preset-config/compressed-ply-quantization.png)
+| 参数                             | Viewer 默认值 |
+| -------------------------------- | ------------- |
+| `pixelRatio`                     | 1             |
+| `pack.repackEnabled`             | true          |
+| `raster.preBlurAmount`           | 0.3           |
+| `raster.blurAmount`              | 0             |
+| `raster.focalAdjustment`         | 2             |
+| `raster.maxPixelRadius`          | 1024          |
+| `sort.radial`                    | false         |
+| `sort.sortSplatDistance`         | 0.1           |
+| `sort.sortSplatCoorient`         | 0.99999       |
+| `sort.sortCameraDistance`        | 1             |
+| `sort.sortCameraCoorient`        | 0.99          |
+| `composite.toneMapping`          | Linear        |
+| `composite.exposure`             | 1             |
+| `highlightKernel.enabled`        | false         |
+| `highlightKernel.size`           | 2             |
+| `highlightKernel.color`          | #0000ff       |
+| `LOD.minLevel`                   | 0             |
+| `LOD.movingMinLevel`             | 2             |
+| `LOD.maxBudget`                  | 6000000       |
+| `LOD.pixelLimitEnabled`          | true          |
+| `LOD.frustumCullingEnabled`      | true          |
+| `LOD.hysteresisTicks`            | 4             |
+| `LOD.schedulerParallelCounts`    | 8             |
+| `LOD.schedulerExistingTaskLimit` | 64            |
+| `LOD.schedulerMinDuration`       | 160           |
 
-## packType
+这些是 **Viewer 的默认值**，不代表 SDK 的全局默认值。特别是 Viewer 默认开启 `pack.repackEnabled`，关闭 `sort.radial`。面板 `pixelRatio` 表示实际渲染倍率；Viewer 传入 SDK 的值为 `pixelRatio / window.devicePixelRatio`。`highlightKernel.color` 在面板中用十六进制颜色表示，传入 SDK 时转换为数字。`LOD.*` 对应 `LodSplat.setConfig()` 的字段，不属于 `pipeline.Splatting`。
 
-`packType` 控制解析 splats 时生成的数据精度。不同配置会在体积、质量和性能之间做取舍。
+## 生效时机与缓存
 
-### Compressed
+- **导入时**：`packType` 和 `maxShDegree` 只影响后续解析，已加载资源不会自动重新打包。对比档位时，先给各视图选择预设，再统一导入相同资源。
+- **渲染时**：其余渲染设置应用到当前视图；`autoFreeResourceOnGpuPacked` 应用于普通 Splat 对象，LOD 配置交给 LOD 调度器。已有资源包含 SH 0 时，应用预设或恢复默认会保持 `precalculateEnabled = false`。
+- **恢复时**：各视图的参数按 `v1` 缓存到当前浏览器；版本缺失或不匹配时直接采用默认值。切预设保留统一参数，恢复默认则重置两者。文件本身不进入配置缓存。
 
-| 字段            | 精度         |
-| --------------- | ------------ |
-| `position`      | `f32 (3)`    |
-| `scale`         | `f16 (3)`    |
-| `quat`          | `f16 (4)`    |
-| `color & alpha` | `f16 (4)`    |
-| `shN`           | `s_11_10_11` |
+上述解析选项用于普通 GS 文件。当前 Viewer 的分块 LOD 路径固定使用 Compressed 解析分块，SH 内容由生成的 LOD 数据决定；面板中的 `packType`、`maxShDegree` 不会重新编码 LOD 数据。
 
-`Compressed` 更偏向画质与数据精度，适合质量要求高、场景尺寸较大或低精度下容易出现异常的场景。
+## 文件格式与 packType
 
-### SuperCompressed
+源文件格式决定存储与传输编码；`packType` 决定解析后的运行时数据布局。二者不是同一层配置：例如 SOG 文件也可以解析成 Compressed 或 SuperCompressed。改变 `packType` 不会恢复源文件已丢失的精度或 SH。
 
-| 字段            | 精度                                  |
-| --------------- | ------------------------------------- |
-| `position`      | `f16 (3)`                             |
-| `scale`         | `u8 (3)`                              |
-| `quat`          | `u8 (4)`                              |
-| `color & alpha` | `u8 (4)`                              |
-| `shN`           | `sh1 (sint5)`，`sh2` 和 `sh3 (sint4)` |
+| 源文件               | 使用说明                                              |
+| -------------------- | ----------------------------------------------------- |
+| PLY / compressed PLY | 支持常见高斯 PLY 和压缩 PLY；精度与体积取决于导出编码 |
+| SPZ / KSPLAT         | 压缩高斯格式；SH 和量化信息以文件实际内容为准         |
+| SPLAT                | 32 字节基础高斯记录，不包含高阶 SH                    |
+| SOG                  | 图像编码格式，可使用 Sog 运行时布局，也可转为其他布局 |
+| ESZ / LCC / LCC2     | 使用加载器支持的对应格式；LCC / LCC2 以 ZIP 导入      |
 
-`SuperCompressed` 更偏向体积、内存和显存控制。它适合资源紧张、设备配置较低或性能优先的场景。
+下图仅展示 **compressed PLY 文件编码**，不代表 Compressed GPU 布局。
 
-### Sog
+![compressed PLY 文件中位置、旋转、缩放与颜色的量化位分配](../assets/3dgs-preset-config/compressed-ply-quantization.png)
 
-`Sog` 面向 sog 数据格式。它的体积最小，但画面可能更模糊。原始格式为 sog，且没有 `shN` 或对极限场景规模有要求时，可以优先考虑。
+| packType                                    | 说明                                                                   |
+| ------------------------------------------- | ---------------------------------------------------------------------- |
+| `SplatLoader.SplatPackType.Compressed`      | 位置保留 f32；适合需要较高坐标精度的场景。效果优先和极限效果使用此布局 |
+| `SplatLoader.SplatPackType.SuperCompressed` | 使用更紧凑的量化布局；均衡模式、性能优先和极限性能使用此布局           |
+| `SplatLoader.SplatPackType.Sog`             | 直接使用 SOG 编码，仅支持 SOG 源文件；可手动选择，但不属于当前五档预设 |
 
-1.13 起，`CompressedSplat` 和 `SuperCompressedSplat` 要求源纹理宽度为 2 的幂。使用自定义纹理、反序列化 sampler 数据或自定义 `maxTextureSize` 时需遵守此约束；默认解析配置生成符合要求的宽度。
+自定义 Compressed / SuperCompressed sampler 数据或 `maxTextureSize` 时，源纹理宽度必须是 2 的幂。默认解析配置满足此约束。
 
-## Preset List
+## 在 SDK 中使用效果优先
 
-| 预设名     | 适用场景                                                                                                    |
-| ---------- | ----------------------------------------------------------------------------------------------------------- |
-| 极限效果   | 对效果有最高要求，设备性能很强。                                                                            |
-| 效果优先   | 对效果有一定要求，设备性能尚可。                                                                            |
-| 均衡       | 对效果要求低，设备性能较低，但需要支持大场景。                                                              |
-| 性能优先   | 对效果要求低，设备性能较低。                                                                                |
-| 极限性能 0 | 机器配置极低，或场景规模极大时。                                                                            |
-| 极限性能 1 | 机器配置极低或场景规模极大，并且原始数据格式为 sog 时。满足条件时更建议使用这个配置，可打开更大的场景规模。 |
-
-高斯衰减统一使用归一化的 `fastExp` 公式，预设不再配置 `normalizedFalloff`。`detailCullingAlphaEnabled` 默认关闭；需要计入透明度时单独启用。
-
-1.14 起，所有预设在 WebGL 上均按 float32 深度键的高 24 位稳定排序，与 WebGPU 一致；应从预设中删除 `sort.highPrecisionEnabled`。`pack.highPrecisionEnabled` 和 `composite.highPrecisionEnabled` 仍分别控制数据合并与合成缓冲精度。
-
-`sort.radial` 和 `pack.repackEnabled` 默认关闭。径向排序会改变透明混合顺序；WebGL 纹理重排会增加显存和处理开销，需按场景与设备评估后启用，详见[排序与纹理重排](./config.md)。
-
-### 极限效果
+以下示例对应效果优先的 12 项专属参数。`viewer` 是已创建并设置场景、相机的 Viewer，`modelUrl` 是 PLY URL。统一参数由应用单独管理；这里只更新档位相关字段，不覆盖已有统一设置。示例使用公开的常规解析接口，Viewer 页面中的 GPU 分块上传由页面宿主负责。
 
 ```typescript
-// set parser config
-const splatData = await SplatLoader.parseSplatData(
-    // file type and data
-    splatFileType,
-    content,
-    // compress config
+import { SplatLoader, SplatUtils, setViewerConfig } from '@manycore/aholo-viewer';
+
+const data = await SplatLoader.parseSplatData(
+    SplatLoader.SplatFileType.PLY,
+    modelUrl,
     SplatLoader.SplatPackType.Compressed,
+    { maxShDegree: 3 },
 );
-const splat = await SplatUtils.createSplat(splatData);
+const splat = await SplatUtils.createSplat(data);
 splat.autoFreeResourceOnGpuPacked = true;
 viewer.getScene().add(splat);
 
-// update viewer config
 setViewerConfig(viewer, {
     pipeline: {
         Splatting: {
             pack: {
                 highPrecisionEnabled: true,
+                precalculateEnabled: true,
                 cameraRelativeEnabled: false,
             },
             raster: {
-                detailCullingThreshold: 0,
+                detailCullingThreshold: 1,
+                detailCullingAlphaEnabled: false,
+                maxStdDev: Math.sqrt(8),
             },
+            sort: { minIntervalMs: 0 },
             composite: {
-                enabled: true,
-                highPrecisionEnabled: true,
+                enabled: false,
+                highPrecisionEnabled: false,
             },
         },
     },
 });
+viewer.render();
 ```
 
-![极限效果渲染结果](../assets/3dgs-preset-config/preset-max-quality-result.png)
+`maxShDegree: 3` 是上限，不会为原本没有 SH 的资源生成 SH。其他档位按上表替换解析选项、对象属性和对应管线字段即可。`setViewerConfig` 的完整结构见[配置](./config.md)。
 
-### 效果优先
+## 调整时关注的关系
 
-```typescript
-// set parser config
-const splatData = await SplatLoader.parseSplatData(
-    // file type and data
-    splatFileType,
-    content,
-    // compress config
-    SplatLoader.SplatPackType.Compressed,
-);
-const splat = await SplatUtils.createSplat(splatData);
-splat.autoFreeResourceOnGpuPacked = true;
-viewer.getScene().add(splat);
+| 参数                                                          | 关注点                                                                 |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `pack.cameraRelativeEnabled` / `autoFreeResourceOnGpuPacked`  | 相机相对坐标需要随相机变化重新合并数据；均衡模式因此关闭自动释放源资源 |
+| `pack.repackEnabled`                                          | 按排序结果重排 WebGL 纹理，需要额外显存和处理；应在目标场景上测量收益  |
+| `raster.detailCullingThreshold` / `detailCullingAlphaEnabled` | 共同控制细节剔除，开启透明度参与后低透明度高斯更容易被剔除             |
+| `raster.preBlurAmount` / `blurAmount`                         | 根据训练是否采用抗锯齿配置评估；常见组合为 0.3 / 0 或 0 / 0.3          |
+| `sort.minIntervalMs`                                          | 增大可减少排序频率，但相机快速移动时更新更滞后                         |
+| `sort.radial`                                                 | 改为相机距离排序，会改变透明混合顺序                                   |
+| `composite.enabled` / `toneMapping` / `exposure`              | 色调映射和曝光需要先开启离屏合成；切换档位保留曲线与曝光值             |
 
-// update viewer config
-setViewerConfig(viewer, {
-    pipeline: {
-        Splatting: {
-            pack: {
-                highPrecisionEnabled: true,
-                cameraRelativeEnabled: false,
-            },
-        },
-    },
-});
-```
-
-![效果优先渲染结果](../assets/3dgs-preset-config/preset-quality-first-result.png)
-
-### 均衡
-
-```typescript
-// set parser config
-const splatData = await SplatLoader.parseSplatData(
-    // file type and data
-    splatFileType,
-    content,
-    // compress config
-    SplatLoader.SplatPackType.SuperCompressed,
-);
-const splat = await SplatUtils.createSplat(splatData);
-viewer.getScene().add(splat);
-
-// update viewer config
-setViewerConfig(viewer, {
-    pipeline: {
-        Splatting: {},
-    },
-});
-```
-
-### 性能优先
-
-```typescript
-// set parser config
-const splatData = await SplatLoader.parseSplatData(
-    // file type and data
-    splatFileType,
-    content,
-    // compress config
-    SplatLoader.SplatPackType.SuperCompressed,
-);
-const splat = await SplatUtils.createSplat(splatData);
-splat.autoFreeResourceOnGpuPacked = true;
-viewer.getScene().add(splat);
-
-// update viewer config
-setViewerConfig(viewer, {
-    pipeline: {
-        Splatting: {
-            pack: {
-                cameraRelativeEnabled: false,
-            },
-            raster: {
-                maxStdDev: Math.sqrt(5),
-            },
-        },
-    },
-});
-```
-
-![性能优先渲染结果](../assets/3dgs-preset-config/preset-performance-first-result.png)
-
-### 极限性能 0
-
-```typescript
-// set parser config
-const splatData = await SplatLoader.parseSplatData(
-    // file type and data
-    splatFileType,
-    content,
-    // compress config & sh
-    SplatLoader.SplatPackType.SuperCompressed,
-    {
-        maxShDegree: 0,
-    },
-);
-const splat = await SplatUtils.createSplat(splatData);
-splat.autoFreeResourceOnGpuPacked = true;
-viewer.getScene().add(splat);
-
-// update viewer config
-setViewerConfig(viewer, {
-    pipeline: {
-        Splatting: {
-            pack: {
-                precalculateEnabled: false,
-                cameraRelativeEnabled: false,
-            },
-            raster: {
-                detailCullingThreshold: 4,
-                maxStdDev: Math.sqrt(5),
-            },
-            sort: {
-                minIntervalMs: 160,
-            },
-        },
-    },
-});
-```
-
-![极限性能 0 渲染结果](../assets/3dgs-preset-config/preset-extreme-performance-0-result.png)
-
-### 极限性能 1
-
-```typescript
-// set parser config
-const splatData = await SplatLoader.parseSplatData(
-    // file type and data
-    SplatLoader.SplatFileType.SOG,
-    content,
-    // compress config & sh
-    SplatLoader.SplatPackType.Sog,
-    {
-        maxShDegree: 0,
-    },
-);
-const splat = await SplatUtils.createSplat(splatData);
-splat.autoFreeResourceOnGpuPacked = true;
-viewer.getScene().add(splat);
-
-// update viewer config
-setViewerConfig(viewer, {
-    pipeline: {
-        Splatting: {
-            pack: {
-                precalculateEnabled: false,
-                cameraRelativeEnabled: false,
-            },
-            raster: {
-                detailCullingThreshold: 4,
-                maxStdDev: Math.sqrt(5),
-            },
-            sort: {
-                minIntervalMs: 160,
-            },
-        },
-    },
-});
-```
-
-![极限性能 1 渲染结果](../assets/3dgs-preset-config/preset-extreme-performance-1-result.png)
-
-## 定制化配置
-
-Preset 无法覆盖所有场景。实际接入时可以选择最接近目标的 preset 作为起点，再调整少量关键参数。
-参数可以通过[config](./config.md)接口进行调整，示例如下
-
-```typescript
-setViewerConfig(viewer, {
-    pipeline: {
-        Splatting: {
-            // ... options..
-        },
-    },
-});
-```
-
-| 参数名                                         | 作用                            | 建议                                                                                                                                                                                                                                                  |
-| ---------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pack.highPrecisionEnabled`                    | 是否开启高精度数据合并。        | 决定最终用于渲染的数据精度。`compressed` 下通常需要开启；`sog` 下需要看具体场景。                                                                                                                                                                     |
-| `pack.precalculateEnabled`                     | 是否预计算球谐颜色。            | 根据观察方向计算 SH 颜色贡献；没有高阶 SH 数据时不会产生视角相关颜色。                                                                                                                                                                                |
-| `pack.repackEnabled`                           | 按排序结果重排 WebGL 渲染纹理。 | 默认 `false`。减少光栅化时的间接纹理寻址，但会增加显存占用和重排过程；在目标场景和设备上测量后启用。                                                                                                                                                  |
-| `pack.cameraRelativeEnabled`                   | 是否开启相机相对位置计算。      | 如果center值较大，但设备性能不足以支持`highPrecisionEnabled`的启用，可以尝试开启，但需注意开启后会在gpu上按需pack数据，应该关掉autoFreeResourceOnGpuPacked防止贴图数据的重复上传，但如果是lod数据那由于实现本身就需要反复pack数据则可以免费做这件事。 |
-| `composite.enabled`                            | 开启离屏合成与色调映射。        | 默认关闭。使用曲线、曝光或高精度中间缓冲前需开启。                                                                                                                                                                                                    |
-| `composite.toneMapping` / `composite.exposure` | 控制色调映射曲线与曝光。        | 默认 `ToneMapping.Linear` 和 `1`。原 `Splatting.toneMapping` 配置迁移到此处，详见[配置迁移](./config.md)。                                                                                                                                            |
-| `composite.highPrecisionEnabled`               | 是否开启高精度渲染缓冲。        | 场景中出现水波扩散状条纹时可以考虑开启；对效果要求较高时也可开启；会增加显存开销。                                                                                                                                                                    |
-| `raster.detailCullingAlphaEnabled`             | 细节剔除计入高斯透明度。        | 默认 `false`。开启后，低透明度高斯更容易被剔除；与 `detailCullingThreshold` 配合评估画面和性能。                                                                                                                                                      |
-| `raster.preBlurAmount` / `raster.blurAmount`   | 控制模糊参数。                  | 非 AA 训练结果通常使用 `0.3 / 0`；AA 训练结果通常使用 `0 / 0.3`。不建议设置其他值。                                                                                                                                                                   |
-| `raster.focalAdjustment`                       | 调整 splat 扩散缩放。           | 设置为 `2` 更接近参考结果。                                                                                                                                                                                                                           |
-| `raster.detailCullingThreshold`                | 近似细节剔除。                  | 通常值在 `[0, 4]`。一般设置 `1` 对画面损失极小，具体性能收益取决于方案精细程度。                                                                                                                                                                      |
-| `raster.maxPixelRadius`                        | 高斯覆盖屏幕的最大像素范围。    | 默认 `1024`，建议在 `[128, 1024]` 之间。过小可能导致方案破碎。                                                                                                                                                                                        |
-| `raster.maxStdDev`                             | 高斯扩散的最大标准差。          | 范围应在 `sqrt(5)` 到 `sqrt(9)`。值越大性能越差，但效果越好；`sqrt(8)` 通常是效果和性能之间的折中点。                                                                                                                                                 |
-| `sort.radial`                                  | 使用径向距离排序。              | 默认 `false`，按视线方向深度排序；开启后改为按高斯中心到相机的距离排序，需评估透明混合效果。                                                                                                                                                          |
-| `sort.minIntervalMs`                           | 设置排序最小发生间隔。          | 增大可降低排序频率，但快速移动时排序更新会滞后。可从 `16 * n` ms 开始评估，`n` 通常不大于 `10`；默认 `0`。                                                                                                                                            |
+旧的 `sortedLayoutEnabled`、`normalizedFalloff`、`sort.highPrecisionEnabled` 不应再放入预设，迁移说明见[配置](./config.md)。
 
 ### 逐高斯禁用 SH
 
-[`SplatState.DisableSH`](api:SplatState) 可关闭指定高斯的视角相关 SH 颜色贡献，并保留基础色。使用与 `splat` 对应的解析数据创建 [`SplatUtils.SplatOperator`](api:SplatUtils.SplatOperator)，再设置状态位：
+[`SplatState.DisableSH`](api:SplatState) 可关闭指定高斯的视角相关 SH 贡献并保留基础色。使用与 `splat` 对应、保留 CPU 数据的解析结果创建 [`SplatUtils.SplatOperator`](api:SplatUtils.SplatOperator)：
 
 ```typescript
 import { SplatState, SplatUtils } from '@manycore/aholo-viewer';
 
-const operator = new SplatUtils.SplatOperator(splat, splatData);
+const operator = new SplatUtils.SplatOperator(splat, data);
 operator.setState([0], SplatState.DisableSH);
 viewer.render();
 ```
 
-`[0]` 表示第一个高斯的索引。调用 `operator.setState([0], SplatState.DisableSH, true)` 可移除此状态位并恢复 SH 颜色，之后重新渲染。该操作不会删除已加载的 SH 数据，也不会改变其他高斯的状态；`pack.precalculateEnabled` 仍控制整体 SH 预计算。
+`[0]` 是第一个高斯的索引。调用 `operator.setState([0], SplatState.DisableSH, true)` 可移除此状态位，随后重新渲染。操作不删除已加载的 SH 数据，不改变其他高斯的状态；`pack.precalculateEnabled` 仍控制整体 SH 预计算。

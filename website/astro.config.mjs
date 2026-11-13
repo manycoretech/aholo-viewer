@@ -53,6 +53,7 @@ const isProd = process.env.NODE_ENV === 'production';
 export default defineConfig({
     output: 'static',
     trailingSlash: 'always',
+    devToolbar: { enabled: false },
     build: {
         assets: astroAssetsDir,
         assetsPrefix,

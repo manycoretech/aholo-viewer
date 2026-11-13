@@ -1,338 +1,175 @@
 ---
 title: 3DGS Preset Config
-description: Choose a preset configuration based on the 3DGS data format, precision needs, and performance target.
+description: Current Viewer presets, shared parameters, import options, and SDK mappings.
 order: 4
 ---
 
-## Background
+## Choose a Preset
 
-No single configuration covers every 3DGS scene. Scenes can differ significantly in data precision, file size, GPU memory usage, device performance, and image quality requirements, so choose a configuration set that matches the business target.
+[Viewer](./viewer.md) defaults to **Quality First**. There are five presets, with a single Extreme Performance tier. Choose a starting point for your scene and device, then validate image quality and performance on the target hardware.
 
-This page summarizes common data formats, `packType` differences, preset options, and the parameters you can tune after choosing a preset.
+| Preset                  | Configuration                                                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Max Quality             | Compressed, SH 3, high-precision packing, offscreen composition, and a high-precision composition buffer         |
+| Quality First (default) | Compressed, SH 3, and high-precision packing, with offscreen composition disabled                                |
+| Balanced                | SuperCompressed and SH 3, with camera-relative coordinates and source resources retained for subsequent packing  |
+| Performance First       | SuperCompressed and SH 3, with a smaller Gaussian cutoff and alpha-aware detail culling                          |
+| Extreme Performance     | SuperCompressed and SH 0, with SH precalculation disabled, a higher culling threshold, and less frequent sorting |
 
-## Quick Choice
+## Preset Parameters
 
-Choose the preset according to product constraints first, then tune only the most important parameters. Avoid changing precision, sorting, and blur parameters at the same time at the start.
+Switching presets changes only these **12 parameters**. `packType` and `maxShDegree` are parsing options; `splat.autoFreeResourceOnGpuPacked` is an object property. `pack`, `raster`, `sort`, and `composite` belong to `pipeline.Splatting`. Group prefixes distinguish repeated panel labels such as `enabled` and `highPrecisionEnabled`.
 
-| Target Scenario                                           | Recommended Preset    | Key Settings                                                                  |
-| --------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------- |
-| Image quality first, with strong user hardware            | Max Quality           | `compressed`, `pack.highPrecisionEnabled`, `composite.highPrecisionEnabled`   |
-| Large scenes that can fail under low precision            | Quality First         | `compressed`, `pack.highPrecisionEnabled`                                     |
-| Weaker devices that still need to open large-scale scenes | Balanced              | `super-compressed`, `pack.cameraRelativeEnabled`                              |
-| Weaker devices that still need a mostly complete image    | Performance First     | `super-compressed`, `raster.detailCullingThreshold`, `raster.maxPixelRadius`  |
-| Very large scenes or very low-end devices                 | Extreme Performance 0 | `maxShDegree: 0`, `sort.minIntervalMs`, more aggressive precision compression |
-| Source data is sog and the goal is to open larger scenes  | Extreme Performance 1 | `sog`, `pack.precalculateEnabled`, GPU memory usage                           |
+| Parameter                           | Max Quality | Quality First | Balanced        | Performance First | Extreme Performance |
+| ----------------------------------- | ----------- | ------------- | --------------- | ----------------- | ------------------- |
+| `packType`                          | Compressed  | Compressed    | SuperCompressed | SuperCompressed   | SuperCompressed     |
+| `maxShDegree`                       | 3           | 3             | 3               | 3                 | 0                   |
+| `pack.highPrecisionEnabled`         | true        | true          | false           | false             | false               |
+| `pack.precalculateEnabled`          | true        | true          | true            | true              | false               |
+| `pack.cameraRelativeEnabled`        | false       | false         | true            | false             | false               |
+| `splat.autoFreeResourceOnGpuPacked` | true        | true          | false           | true              | true                |
+| `raster.detailCullingThreshold`     | 1           | 1             | 1               | 1                 | 4                   |
+| `raster.detailCullingAlphaEnabled`  | false       | false         | false           | true              | true                |
+| `raster.maxStdDev`                  | 8           | 8             | 8               | 5                 | 5                   |
+| `sort.minIntervalMs`                | 0           | 0             | 0               | 0                 | 160                 |
+| `composite.enabled`                 | true        | false         | false           | false             | false               |
+| `composite.highPrecisionEnabled`    | true        | false         | false           | false             | false               |
 
-## 3DGS File Formats
+The `raster.maxStdDev` row uses **Viewer panel values**: 8 and 5 are passed to the SDK as `Math.sqrt(8)` and `Math.sqrt(5)`. `sort.minIntervalMs` is in milliseconds. Max Quality and Quality First both use `detailCullingThreshold = 1`. Performance First and Extreme Performance both enable `detailCullingAlphaEnabled`.
 
-| Format           | Size                      | Render Quality               | Implementation Notes                                                                                                                                                                                                                                |
-| ---------------- | ------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ply`            | 100%                      | Good                         | High original precision and the largest file size.                                                                                                                                                                                                  |
-| `compressed ply` | 30%, about 17% after gzip | Good                         | Uses 256 splats per chunk and is likely spatially partitioned similarly to ksplat. `center`, `quat`, `scale`, and `rgb` are compressed by min/max, rescale, and quantization. SH can be compressed to u8; observed data is about 5 bit.             |
-| `spz`            | 10%                       | Average                      | Retains relatively high precision for core splat data, especially `center`, so sharpness loss is lower. SH precision is very low and can cause visible color shifts in fine-detail scenes.                                                          |
-| `splat`          | 14%                       | Average, not universal       | Drops `shN` during compression. Layout: `center.xyz (f32)`, `scale.xyz (f32)`, `color.rgba (u8)`, `quat (u8)`, 32 bytes in total.                                                                                                                   |
-| `ksplat`         | 20%-30%                   | Depends on compression level | Level 0 is uncompressed, level 1 is 16 bit, and level 2 is 8 bit. It spatially clusters splats for local coordinate compression, following a similar approach to compressed ply.                                                                    |
-| `sog`            | 5%                        | Average                      | Applies PLAS sorting to `center`, `scales`, `quats`, and `sh0(rgba)`, then computes min/max values and quantizes the data. `shN` uses k-means clustering with centroids and labels to restore data while reducing size. Images tend to be blurrier. |
+## Shared Parameters
 
-### compressed ply Quantization Example
+These **25 parameters** remain unchanged when switching presets. Editing them retains the selected preset; editing a parameter in the previous table selects Custom. Selecting Custom itself changes no values. The reset icon restores Quality First and every shared default.
 
-![compressed ply quantization](../assets/3dgs-preset-config/compressed-ply-quantization.png)
+| Parameter                        | Viewer default |
+| -------------------------------- | -------------- |
+| `pixelRatio`                     | 1              |
+| `pack.repackEnabled`             | true           |
+| `raster.preBlurAmount`           | 0.3            |
+| `raster.blurAmount`              | 0              |
+| `raster.focalAdjustment`         | 2              |
+| `raster.maxPixelRadius`          | 1024           |
+| `sort.radial`                    | false          |
+| `sort.sortSplatDistance`         | 0.1            |
+| `sort.sortSplatCoorient`         | 0.99999        |
+| `sort.sortCameraDistance`        | 1              |
+| `sort.sortCameraCoorient`        | 0.99           |
+| `composite.toneMapping`          | Linear         |
+| `composite.exposure`             | 1              |
+| `highlightKernel.enabled`        | false          |
+| `highlightKernel.size`           | 2              |
+| `highlightKernel.color`          | #0000ff        |
+| `LOD.minLevel`                   | 0              |
+| `LOD.movingMinLevel`             | 2              |
+| `LOD.maxBudget`                  | 6000000        |
+| `LOD.pixelLimitEnabled`          | true           |
+| `LOD.frustumCullingEnabled`      | true           |
+| `LOD.hysteresisTicks`            | 4              |
+| `LOD.schedulerParallelCounts`    | 8              |
+| `LOD.schedulerExistingTaskLimit` | 64             |
+| `LOD.schedulerMinDuration`       | 160            |
 
-## packType
+These are **Viewer defaults**, not SDK-wide defaults. Viewer enables `pack.repackEnabled` and disables `sort.radial`. The panel's `pixelRatio` represents the actual rendering scale; Viewer passes `pixelRatio / window.devicePixelRatio` to the SDK. `highlightKernel.color` is a hex color in the panel and a number in the SDK. `LOD.*` maps to `LodSplat.setConfig()` fields, outside `pipeline.Splatting`.
 
-`packType` controls the data precision generated when parsing splats. Different settings trade off size, quality, and performance.
+## Application Timing and Cache
 
-### Compressed
+- **At import**: `packType` and `maxShDegree` affect subsequent parsing. Loaded assets are not repacked automatically. For comparisons, choose each view's preset before importing the same resources into all views.
+- **At render time**: Other render settings apply to the active view. `autoFreeResourceOnGpuPacked` applies to regular Splat objects; LOD options configure the LOD scheduler. If a loaded asset has SH 0, applying a preset or restoring defaults keeps `precalculateEnabled = false`.
+- **On restore**: Each view caches its parameters in the current browser with version `v1`. Missing or mismatched versions use defaults. Switching presets preserves shared parameters; restoring defaults resets both. Model files are not included in the configuration cache.
 
-| Field           | Precision    |
-| --------------- | ------------ |
-| `position`      | `f32 (3)`    |
-| `scale`         | `f16 (3)`    |
-| `quat`          | `f16 (4)`    |
-| `color & alpha` | `f16 (4)`    |
-| `shN`           | `s_11_10_11` |
+These parsing options apply to regular GS files. The current Viewer LOD path parses chunks as Compressed, with SH determined by the generated LOD data. The panel's `packType` and `maxShDegree` do not re-encode LOD data.
 
-`Compressed` favors image quality and data precision. Use it for quality-sensitive output, large scenes, or scenes that show artifacts at lower precision.
+## File Format and packType
 
-### SuperCompressed
+The source format defines storage and transfer encoding; `packType` defines the parsed runtime layout. They are separate choices: a SOG file can also be parsed into Compressed or SuperCompressed. Changing `packType` cannot recover precision or SH already lost in the source file.
 
-| Field           | Precision                              |
-| --------------- | -------------------------------------- |
-| `position`      | `f16 (3)`                              |
-| `scale`         | `u8 (3)`                               |
-| `quat`          | `u8 (4)`                               |
-| `color & alpha` | `u8 (4)`                               |
-| `shN`           | `sh1 (sint5)`, `sh2` and `sh3 (sint4)` |
+| Source file          | Notes                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------ |
+| PLY / compressed PLY | Common Gaussian PLY and compressed PLY are supported; precision and size depend on the export encoding |
+| SPZ / KSPLAT         | Compressed Gaussian formats; SH and quantization depend on the file contents                           |
+| SPLAT                | 32-byte base Gaussian records, without higher-order SH                                                 |
+| SOG                  | Image-based encoding; can use the Sog runtime layout or be converted to another layout                 |
+| ESZ / LCC / LCC2     | Supported by their corresponding loaders; import LCC / LCC2 as ZIP archives                            |
 
-`SuperCompressed` favors file size, memory, and GPU memory control. Use it when resources are constrained, devices are lower-end, or performance is the priority.
+This diagram shows **compressed PLY file encoding**, not the Compressed GPU layout.
 
-### Sog
+![Bit allocation for position, rotation, scale, and color in compressed PLY files](../assets/3dgs-preset-config/compressed-ply-quantization.png)
 
-`Sog` is for sog data. It has the smallest size, but the image can look blurrier. Prefer it when the source format is sog and the data has no `shN`, or when extreme scene scale is required.
+| packType                                    | Notes                                                                                                           |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `SplatLoader.SplatPackType.Compressed`      | Retains f32 positions for scenes requiring higher coordinate precision. Used by Quality First and Max Quality   |
+| `SplatLoader.SplatPackType.SuperCompressed` | Uses a more compact quantized layout. Used by Balanced, Performance First, and Extreme Performance              |
+| `SplatLoader.SplatPackType.Sog`             | Uses SOG encoding directly and requires a SOG source file. Available manually, but not used by the five presets |
 
-From 1.13, `CompressedSplat` and `SuperCompressedSplat` require power-of-two source texture widths. Custom textures, deserialized sampler data, and custom `maxTextureSize` values must satisfy this constraint. The default parser configuration produces compatible widths.
+Custom Compressed / SuperCompressed sampler data and `maxTextureSize` must use a power-of-two source texture width. The default parsing configuration satisfies this requirement.
 
-## Preset List
+## Use Quality First in the SDK
 
-| Preset                | Recommended Scenario                                                                                                                                                         |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Max Quality           | Use when image quality has the highest priority and the device is very powerful.                                                                                             |
-| Quality First         | Use when image quality matters and device performance is still acceptable.                                                                                                   |
-| Balanced              | Use when image quality requirements are low and device performance is limited, but large scenes still need to be supported.                                                  |
-| Performance First     | Use when image quality requirements are low and device performance is limited.                                                                                               |
-| Extreme Performance 0 | Use on extremely low-end devices or for extremely large scenes.                                                                                                              |
-| Extreme Performance 1 | Use on extremely low-end devices or for extremely large scenes when the source data is sog. Prefer this preset when the condition is met, because it can open larger scenes. |
-
-Gaussian falloff always uses the normalized `fastExp` formula, so presets no longer configure `normalizedFalloff`. `detailCullingAlphaEnabled` defaults to `false`; enable it separately to account for opacity.
-
-From 1.14, all presets on WebGL use stable sorting on the upper 24 bits of float32 depth keys, matching WebGPU. Remove `sort.highPrecisionEnabled` from presets. `pack.highPrecisionEnabled` and `composite.highPrecisionEnabled` still control data packing and composition buffer precision, respectively.
-
-`sort.radial` and `pack.repackEnabled` default to `false`. Radial sorting changes transparency blending order. WebGL texture repacking adds GPU memory and processing overhead; evaluate it with the target scene and device before enabling it. See [sorting and texture repacking](./config.md).
-
-### Max Quality
+This example applies the 12 Quality First parameters. `viewer` is an existing Viewer with a scene and camera; `modelUrl` is a PLY URL. The application manages shared parameters separately. Only preset fields are updated here, preserving existing shared settings. The example uses the public regular parsing API; the Viewer page handles GPU chunk uploads through its host integration.
 
 ```typescript
-// set parser config
-const splatData = await SplatLoader.parseSplatData(
-    // file type and data
-    splatFileType,
-    content,
-    // compress config
+import { SplatLoader, SplatUtils, setViewerConfig } from '@manycore/aholo-viewer';
+
+const data = await SplatLoader.parseSplatData(
+    SplatLoader.SplatFileType.PLY,
+    modelUrl,
     SplatLoader.SplatPackType.Compressed,
+    { maxShDegree: 3 },
 );
-const splat = await SplatUtils.createSplat(splatData);
+const splat = await SplatUtils.createSplat(data);
 splat.autoFreeResourceOnGpuPacked = true;
 viewer.getScene().add(splat);
 
-// update viewer config
 setViewerConfig(viewer, {
     pipeline: {
         Splatting: {
             pack: {
                 highPrecisionEnabled: true,
+                precalculateEnabled: true,
                 cameraRelativeEnabled: false,
             },
             raster: {
-                detailCullingThreshold: 0,
+                detailCullingThreshold: 1,
+                detailCullingAlphaEnabled: false,
+                maxStdDev: Math.sqrt(8),
             },
+            sort: { minIntervalMs: 0 },
             composite: {
-                enabled: true,
-                highPrecisionEnabled: true,
+                enabled: false,
+                highPrecisionEnabled: false,
             },
         },
     },
 });
+viewer.render();
 ```
 
-![max quality render result](../assets/3dgs-preset-config/preset-max-quality-result.png)
+`maxShDegree: 3` is an upper limit; it does not create SH for sources without it. For another preset, replace the parsing options, object property, and pipeline fields using the table above. See [Configuration](./config.md) for the complete `setViewerConfig` structure.
 
-### Quality First
+## Parameter Relationships
 
-```typescript
-// set parser config
-const splatData = await SplatLoader.parseSplatData(
-    // file type and data
-    splatFileType,
-    content,
-    // compress config
-    SplatLoader.SplatPackType.Compressed,
-);
-const splat = await SplatUtils.createSplat(splatData);
-splat.autoFreeResourceOnGpuPacked = true;
-viewer.getScene().add(splat);
+| Parameters                                                    | Considerations                                                                                                         |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `pack.cameraRelativeEnabled` / `autoFreeResourceOnGpuPacked`  | Camera-relative coordinates require repacking as the camera moves; Balanced therefore retains source resources         |
+| `pack.repackEnabled`                                          | Reorders WebGL textures by sort order, adding GPU memory and processing costs; measure the benefit on the target scene |
+| `raster.detailCullingThreshold` / `detailCullingAlphaEnabled` | Together control detail culling; alpha-aware culling more readily removes low-opacity Gaussians                        |
+| `raster.preBlurAmount` / `blurAmount`                         | Evaluate against the training antialiasing configuration; common pairs are 0.3 / 0 and 0 / 0.3                         |
+| `sort.minIntervalMs`                                          | A larger interval reduces sorting frequency but delays updates during rapid camera movement                            |
+| `sort.radial`                                                 | Switches to camera-distance sorting and changes transparent blending order                                             |
+| `composite.enabled` / `toneMapping` / `exposure`              | Tone mapping and exposure require offscreen composition; preset changes retain the curve and exposure values           |
 
-// update viewer config
-setViewerConfig(viewer, {
-    pipeline: {
-        Splatting: {
-            pack: {
-                highPrecisionEnabled: true,
-                cameraRelativeEnabled: false,
-            },
-        },
-    },
-});
-```
-
-![quality first render result](../assets/3dgs-preset-config/preset-quality-first-result.png)
-
-### Balanced
-
-```typescript
-// set parser config
-const splatData = await SplatLoader.parseSplatData(
-    // file type and data
-    splatFileType,
-    content,
-    // compress config
-    SplatLoader.SplatPackType.SuperCompressed,
-);
-const splat = await SplatUtils.createSplat(splatData);
-viewer.getScene().add(splat);
-
-// update viewer config
-setViewerConfig(viewer, {
-    pipeline: {
-        Splatting: {},
-    },
-});
-```
-
-### Performance First
-
-```typescript
-// set parser config
-const splatData = await SplatLoader.parseSplatData(
-    // file type and data
-    splatFileType,
-    content,
-    // compress config
-    SplatLoader.SplatPackType.SuperCompressed,
-);
-const splat = await SplatUtils.createSplat(splatData);
-splat.autoFreeResourceOnGpuPacked = true;
-viewer.getScene().add(splat);
-
-// update viewer config
-setViewerConfig(viewer, {
-    pipeline: {
-        Splatting: {
-            pack: {
-                cameraRelativeEnabled: false,
-            },
-            raster: {
-                maxStdDev: Math.sqrt(5),
-            },
-        },
-    },
-});
-```
-
-![performance first render result](../assets/3dgs-preset-config/preset-performance-first-result.png)
-
-### Extreme Performance 0
-
-```typescript
-// set parser config
-const splatData = await SplatLoader.parseSplatData(
-    // file type and data
-    splatFileType,
-    content,
-    // compress config & sh
-    SplatLoader.SplatPackType.SuperCompressed,
-    {
-        maxShDegree: 0,
-    },
-);
-const splat = await SplatUtils.createSplat(splatData);
-splat.autoFreeResourceOnGpuPacked = true;
-viewer.getScene().add(splat);
-
-// update viewer config
-setViewerConfig(viewer, {
-    pipeline: {
-        Splatting: {
-            pack: {
-                precalculateEnabled: false,
-                cameraRelativeEnabled: false,
-            },
-            raster: {
-                detailCullingThreshold: 4,
-                maxStdDev: Math.sqrt(5),
-            },
-            sort: {
-                minIntervalMs: 160,
-            },
-        },
-    },
-});
-```
-
-![extreme performance 0 render result](../assets/3dgs-preset-config/preset-extreme-performance-0-result.png)
-
-### Extreme Performance 1
-
-```typescript
-// set parser config
-const splatData = await SplatLoader.parseSplatData(
-    // file type and data
-    SplatLoader.SplatFileType.SOG,
-    content,
-    // compress config & sh
-    SplatLoader.SplatPackType.Sog,
-    {
-        maxShDegree: 0,
-    },
-);
-const splat = await SplatUtils.createSplat(splatData);
-splat.autoFreeResourceOnGpuPacked = true;
-viewer.getScene().add(splat);
-
-// update viewer config
-setViewerConfig(viewer, {
-    pipeline: {
-        Splatting: {
-            pack: {
-                precalculateEnabled: false,
-                cameraRelativeEnabled: false,
-            },
-            raster: {
-                detailCullingThreshold: 4,
-                maxStdDev: Math.sqrt(5),
-            },
-            sort: {
-                minIntervalMs: 160,
-            },
-        },
-    },
-});
-```
-
-![extreme performance 1 render result](../assets/3dgs-preset-config/preset-extreme-performance-1-result.png)
-
-## Custom Configuration
-
-Presets cannot cover every scene. In real integrations, choose the closest preset as the starting point, then tune a small number of key parameters.
-Parameters can be adjusted through the [config](../config/) API:
-
-```typescript
-setViewerConfig(viewer, {
-    pipeline: {
-        Splatting: {
-            // ... options..
-        },
-    },
-});
-```
-
-| Parameter                                      | Purpose                                           | Recommendation                                                                                                                                                                                                                                                                                                                 |
-| ---------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pack.highPrecisionEnabled`                    | Enables high-precision data merging.              | Determines the final data precision used for rendering. Usually enable it for `compressed`; evaluate it per scene for `sog`.                                                                                                                                                                                                   |
-| `pack.precalculateEnabled`                     | Enables spherical-harmonic color precalculation.  | Computes SH color contributions for the current view direction. Data without higher-order SH has no view-dependent color contribution.                                                                                                                                                                                         |
-| `pack.repackEnabled`                           | Repacks WebGL rendering textures in sorted order. | Defaults to `false`. Reduces indirect texture lookups during rasterization but adds GPU memory usage and a repack pass. Measure it with the target scene and device before enabling it.                                                                                                                                        |
-| `pack.cameraRelativeEnabled`                   | Enables camera-relative position packing.         | If center values are large but the device cannot afford `highPrecisionEnabled`, try enabling it. When enabled, packing can run on demand on the GPU, so disable `autoFreeResourceOnGpuPacked` to avoid repeated texture uploads. LOD data already needs repeated packing, so it can use this path without the same extra cost. |
-| `composite.enabled`                            | Enables offscreen composition and tone mapping.   | Disabled by default. Enable it to use a tone curve, exposure, or a high-precision intermediate buffer.                                                                                                                                                                                                                         |
-| `composite.toneMapping` / `composite.exposure` | Controls the tone curve and exposure.             | Defaults to `ToneMapping.Linear` and `1`. Move the former `Splatting.toneMapping` settings here; see [configuration migration](./config.md).                                                                                                                                                                                   |
-| `composite.highPrecisionEnabled`               | Enables a high-precision render attachment.       | Consider enabling it when the scene shows ripple-like banding artifacts, or when quality is important. It increases GPU memory usage.                                                                                                                                                                                          |
-| `raster.detailCullingAlphaEnabled`             | Includes Gaussian opacity in detail culling.      | Defaults to `false`. Enabling it makes low-opacity Gaussians more likely to be culled; evaluate it together with `detailCullingThreshold`.                                                                                                                                                                                     |
-| `raster.preBlurAmount` / `raster.blurAmount`   | Controls blur parameters.                         | Non-AA training results usually use `0.3 / 0`; AA training results usually use `0 / 0.3`. Other values are not recommended.                                                                                                                                                                                                    |
-| `raster.focalAdjustment`                       | Adjusts splat spread scale.                       | `2` is closer to the reference result.                                                                                                                                                                                                                                                                                         |
-| `raster.detailCullingThreshold`                | Approximate detail culling.                       | Usually in `[0, 4]`. Setting it to `1` usually causes minimal visual loss; the performance gain depends on scene detail.                                                                                                                                                                                                       |
-| `raster.maxPixelRadius`                        | Maximum screen-space range covered by a Gaussian. | Default is `1024`; the recommended range is `[128, 1024]`. Too small a value can make the scene look broken.                                                                                                                                                                                                                   |
-| `raster.maxStdDev`                             | Maximum standard deviation of Gaussian spread.    | Should be between `sqrt(5)` and `sqrt(9)`. Larger values cost more performance but improve quality; `sqrt(8)` is usually a practical quality/performance midpoint.                                                                                                                                                             |
-| `sort.radial`                                  | Uses radial distance for sorting.                 | Defaults to `false`, sorting by view-direction depth. Enable it to sort by distance from the camera and evaluate the resulting transparency blending.                                                                                                                                                                          |
-| `sort.minIntervalMs`                           | Minimum interval between sorting operations.      | Increasing it reduces sort frequency but can delay ordering updates during fast motion. Start with `16 * n` ms, typically with `n` no greater than `10`; the default is `0`.                                                                                                                                                   |
+Do not include the obsolete `sortedLayoutEnabled`, `normalizedFalloff`, or `sort.highPrecisionEnabled` fields in presets. See [Configuration](./config.md) for migration guidance.
 
 ### Disable SH per Gaussian
 
-[`SplatState.DisableSH`](api:SplatState) disables view-dependent SH color contributions for selected Gaussians while retaining their base color. Create a [`SplatUtils.SplatOperator`](api:SplatUtils.SplatOperator) with the parsed data corresponding to `splat`, then set the state bit:
+[`SplatState.DisableSH`](api:SplatState) disables view-dependent SH contributions for selected Gaussians while retaining their base color. Create [`SplatUtils.SplatOperator`](api:SplatUtils.SplatOperator) with the corresponding parsed data, retaining its CPU data:
 
 ```typescript
 import { SplatState, SplatUtils } from '@manycore/aholo-viewer';
 
-const operator = new SplatUtils.SplatOperator(splat, splatData);
+const operator = new SplatUtils.SplatOperator(splat, data);
 operator.setState([0], SplatState.DisableSH);
 viewer.render();
 ```
 
-`[0]` is the index of the first Gaussian. Call `operator.setState([0], SplatState.DisableSH, true)` to clear the bit and restore SH color, then render again. This does not remove loaded SH data or change other Gaussians' states. `pack.precalculateEnabled` still controls SH precalculation for the entire pipeline.
+`[0]` identifies the first Gaussian. Call `operator.setState([0], SplatState.DisableSH, true)` to remove the state bit, then render again. This does not delete loaded SH data or affect other Gaussians. `pack.precalculateEnabled` still controls global SH precalculation.

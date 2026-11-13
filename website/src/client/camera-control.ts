@@ -610,17 +610,15 @@ function orbitCamera(
 ) {
     const basis = getCameraBasis(camera);
     const orientation = getCameraOrientationBasis(camera);
-    const rollAngle = getForwardAxisRoll(orientation.forward, orientation.up, orientation.viewUp);
     const safeMinDistance = Math.max(EPSILON, minDistance);
-    let distanceValue = lengthVector(subtractVectors(camera.position, center));
-    let forward = normalizeVector(subtractVectors(center, camera.position)) ??
-        normalizeVector(orientation.forward) ?? { x: 0, y: 0, z: -1 };
+    const distanceValue = lengthVector(subtractVectors(camera.position, center));
 
     if (distanceValue < safeMinDistance) {
-        distanceValue = safeMinDistance;
-        forward = normalizeVector(orientation.forward) ?? forward;
+        rotateCamera(camera, yawDelta, pitchDelta);
+        return true;
     }
 
+    const forward = normalizeVector(subtractVectors(center, camera.position))!;
     const currentPitch = Math.asin(clamp(dotVector(forward, basis.up), -1, 1));
     const nextPitch = clamp(currentPitch + pitchDelta, -MAX_PITCH, MAX_PITCH);
     const horizontalForward = normalizeVector(projectOnPlane(forward, basis.up)) ?? getPerpendicularUnit(basis.up);
@@ -636,7 +634,11 @@ function orbitCamera(
     camera.position.x = center.x - nextForward.x * distanceValue;
     camera.position.y = center.y - nextForward.y * distanceValue;
     camera.position.z = center.z - nextForward.z * distanceValue;
-    setCameraLookBasis(camera, nextForward, getViewUpWithRoll(nextForward, basis.up, rollAngle));
+    // Apply the same orbit rotation to the existing view instead of snapping its aim to the pivot.
+    const pitchAxis = normalizeVector(crossVectors(yawedForward, basis.up))!;
+    const rotateOrientation = (vector: CameraControlVector3) =>
+        rotateVectorAroundAxis(rotateVectorAroundAxis(vector, basis.up, yawDelta), pitchAxis, nextPitch - currentPitch);
+    setCameraLookBasis(camera, rotateOrientation(orientation.forward), rotateOrientation(orientation.viewUp));
     return true;
 }
 
