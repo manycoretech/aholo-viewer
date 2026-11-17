@@ -18,7 +18,7 @@ cmake --workflow --preset arm64-linux
 cmake --workflow --preset arm64-osx
 ```
 
-Choose the preset for the current platform. Each workflow configures, builds, installs, and runs CPU tests. Installation writes the executable and third-party notices into the corresponding sibling platform package. npm build scripts invoke CMake directly.
+Choose the preset for the current platform. Each workflow configures, builds, installs, and runs CPU tests. Installation writes the executable into the corresponding sibling platform package. License files are added during package publishing. npm build scripts invoke CMake directly.
 
 CI clones the vcpkg default branch with full history and runs its bootstrap script. Windows and macOS use a separate checkout at `${RUNNER_TEMP}/aholo-vcpkg`; the Linux build image uses `/opt/vcpkg`. Local builds should also use a full clone and set `VCPKG_ROOT` to that bootstrapped checkout.
 
@@ -79,7 +79,7 @@ CI runs `cmake -P packages/splat-transform-native/source/cmake/compile-shaders.c
 
 Shaders target Vulkan 1.2 / SPIR-V 1.5 with explicit descriptor bindings, push constants, and std430-compatible storage layouts. The build uses -fvk-use-gl-layout and does not require scalar-block-layout or subgroup extensions. HLSL clustering variants cover SH1/SH2/SH3 and all supported shared-memory tile sizes; runtime selection continues to respect each device's shared-memory limit. Linear kernels receive the dispatch width through push constants to preserve indexing across two-dimensional dispatches.
 
-splat_transform_core is an OBJECT library shared by the executable and native tests. target_sources and header FILE_SETs declare its sources, public headers, private headers, and generated shader headers; source_group mirrors their directories in Visual Studio. Its object files, usage requirements, and link dependencies are consumed directly by those targets. Only the executable and dependency notices are installed into platform packages.
+splat_transform_core is an OBJECT library shared by the executable and native tests. target_sources and header FILE_SETs declare its sources, public headers, private headers, and generated shader headers; source_group mirrors their directories in Visual Studio. Its object files, usage requirements, and link dependencies are consumed directly by those targets. Only the executable is installed into platform packages.
 
 Vulkan-Hpp loads the user-provided Vulkan loader when a GPU task starts. GPU generation requires a Vulkan 1.2+ loader and compute-capable device with the `timelineSemaphore` feature available. The adapter queries and enables this feature and reports unsupported devices during initialization. macOS also requires a MoltenVK installation supporting Vulkan 1.2 or newer. No Vulkan loader, driver, Dawn module, or D3D compiler is shipped. CPU tasks run without Vulkan. Windows uses the static MSVC runtime. Linux Clang builds use LLVM compiler-rt builtins with GCC's unwinder; the build image includes `libclang-rt-21-dev` so libyuv's ARM64 SME kernels resolve their runtime helpers. When built with Clang, the Linux executable links compiler-rt, libstdc++, and the unwinder statically while retaining the Ubuntu 22.04 glibc baseline.
 

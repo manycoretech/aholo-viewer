@@ -6,9 +6,11 @@
     "url": "https://github.com/manycoretech/aholo-viewer.git",
     "directory": "packages/splat-transform-native/splat-transform-darwin-arm64"
   },
+  "license": "MIT",
   "type": "commonjs",
   "files": [
     "splat-transform",
+    "LICENSE",
     "THIRD_PARTY_LICENSES.txt"
   ],
   "os": [

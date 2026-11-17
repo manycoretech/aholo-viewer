@@ -6,9 +6,11 @@
     "url": "https://github.com/manycoretech/aholo-viewer.git",
     "directory": "packages/splat-transform-native/splat-transform-win32-x64-msvc"
   },
+  "license": "MIT",
   "type": "commonjs",
   "files": [
     "splat-transform.exe",
+    "LICENSE",
     "THIRD_PARTY_LICENSES.txt"
   ],
   "os": [

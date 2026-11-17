@@ -221,7 +221,6 @@ set(SPLAT_TRANSFORM_TARGETS splat_transform_core splat-transform)
 
 include(cmake/shaders.cmake)
 install(TARGETS splat-transform RUNTIME DESTINATION .)
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../splat-transform/THIRD_PARTY_LICENSES.txt" DESTINATION .)
 
 find_program(CLANG_FORMAT NAMES clang-format-21 clang-format)
 if(CLANG_FORMAT)

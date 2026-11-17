@@ -347,7 +347,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: splat-transform-${{ matrix.target }}
-          path: |
-            packages/splat-transform-native/splat-transform-${{ matrix.target }}/${{ matrix.executable }}
-            packages/splat-transform-native/splat-transform-${{ matrix.target }}/THIRD_PARTY_LICENSES.txt
+          path: packages/splat-transform-native/splat-transform-${{ matrix.target }}/${{ matrix.executable }}
           if-no-files-found: error

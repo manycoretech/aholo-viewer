@@ -7,6 +7,9 @@ import { getReleaseConfig } from './release-config.mjs';
 
 const splatTransformName = '@manycore/aholo-splat-transform';
 
+const LICENSE = path.resolve(import.meta.dirname, '../LICENSE');
+const THIRD_PARTY_LICENSES = path.resolve(import.meta.dirname, '../packages/splat-transform/THIRD_PARTY_LICENSES.txt');
+
 function isNativePackage(name) {
     return name.startsWith(`${splatTransformName}-`);
 }
@@ -74,7 +77,7 @@ export function publishPackages({ planOnly = false, githubOutput = process.env.G
     // Already-published native packages do not need local artifacts.
     for (const p of nativePackages) {
         const executable = path.join(p.path, p.name.includes('-win32-') ? 'splat-transform.exe' : 'splat-transform');
-        for (const artifact of [executable, path.join(p.path, 'THIRD_PARTY_LICENSES.txt')]) {
+        for (const artifact of [executable]) {
             const stat = fs.statSync(artifact, { throwIfNoEntry: false });
             if (!stat?.isFile() || stat.size === 0) {
                 throw new Error(`Missing or empty native artifact: ${artifact}`);
@@ -84,6 +87,7 @@ export function publishPackages({ planOnly = false, githubOutput = process.env.G
         if (!p.name.includes('-win32-')) {
             fs.chmodSync(executable, 0o755);
         }
+        fs.copyFileSync(THIRD_PARTY_LICENSES, path.join(p.path, 'THIRD_PARTY_LICENSES.txt'));
     }
 
     if (pendingPackages.length === 0) {
@@ -112,6 +116,7 @@ export function publishPackages({ planOnly = false, githubOutput = process.env.G
         }
 
         try {
+            fs.copyFileSync(LICENSE, path.join(cwd, 'LICENSE'));
             fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, undefined, 2), 'utf-8');
             child_process.execSync('pnpm run --if-present build', { stdio: 'inherit', cwd });
 
