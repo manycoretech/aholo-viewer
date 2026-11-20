@@ -21,7 +21,7 @@ struct SplatWrite {
     void operator()() const { io::write_splat(path, *data, options); }
 };
 void write_resource(const Resource& resource, const std::filesystem::path& path, const io::FileOptions& options, const PathResolver& paths) {
-    const auto output = io::path_utf8(path);
+    const auto output = path.string();
     auto& logger = utility::logger();
     if (const auto* data = std::get_if<SplatPtr>(&resource)) {
         logger.info("writing splat -> file=\"", output, "\" count=", (*data)->size(), " SH=", (*data)->sh_degree);
@@ -48,7 +48,7 @@ void write_resource(const Resource& resource, const std::filesystem::path& path,
         std::vector<SplatWrite> gpu_files;
         size_t index = 0;
         auto progress = [&](const std::filesystem::path& file) {
-            logger.progress("- ", io::path_utf8(file.lexically_normal()), " (", ++index, '/', files.size(), ')');
+            logger.progress("- ", file.lexically_normal().string(), " (", ++index, '/', files.size(), ')');
         };
         for (const auto& file : files) {
             const auto destination = path / io::utf8_path(file.name);

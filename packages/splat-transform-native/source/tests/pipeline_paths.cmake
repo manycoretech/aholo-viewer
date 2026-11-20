@@ -73,7 +73,7 @@ file(WRITE "${file}" [=[
         {"type":"AutoChunkLod","config":{"input":"source","output":"lod","type":"esz","levels":[{"precision":1,"scaleBoost":1}]}},
         {"type":"Write","config":{"input":"lod","output":"lod"}},
         {"type":"Read","config":{"inputs":["${pipelineDir}/inputs/first.ply"],"output":"again"}},
-        {"type":"Voxel","config":{"input":"again","output":"${workDir}/voxels","backend":"cpu","filterCluster":false,"voxelResolution":0.5}},
+        {"type":"Voxel","config":{"input":"again","output":"${workDir}/voxels/体素","backend":"cpu","filterCluster":false,"voxelResolution":0.5}},
         {"type":"Modify","config":{"input":"again","output":"modified","modifyPaths":["${pipelineDir}/inputs/first.json"]}},
         {"type":"Select","config":{"input":"modified","output":"selected","indicesPath":"${workDir}/selection.json"}},
         {"type":"FlexLod","config":{"input":"selected","output":"best","ratio":0.5,"scorePath":"inputs/scores.bin","originalIndices":"${workDir}/indices.bin"}},
@@ -86,7 +86,7 @@ file(READ "${configs}/lod/lod-meta.json" meta)
 string(JSON link GET "${meta}" voxels 0)
 file(SIZE "${work}/result.splat" result_bytes)
 file(READ "${work}/indices.bin" indices HEX)
-if(NOT link STREQUAL "../../work/voxels/voxel-meta.json" OR NOT EXISTS "${configs}/lod/${link}"
+if(NOT link STREQUAL "../../work/voxels/体素/voxel-meta.json" OR NOT EXISTS "${configs}/lod/${link}"
         OR NOT result_bytes EQUAL 64 OR NOT indices STREQUAL "0200000003000000")
     message(FATAL_ERROR "Unexpected V2 task outputs or metadata link: ${link}, ${result_bytes} bytes, indices ${indices}")
 endif()

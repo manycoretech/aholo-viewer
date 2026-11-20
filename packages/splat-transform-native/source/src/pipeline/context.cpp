@@ -20,7 +20,7 @@ uint64_t ordered_input_key(const io::Json& inputs, const PathResolver& paths) {
     }
     XXH3_64bits_reset(hash.get());
     for (const auto& input : inputs) {
-        const auto path = io::path_utf8(paths.resolve(input.get<std::string>()).lexically_normal());
+        const auto path = io::path_utf8(paths.resolve(input.get<std::string>()));
         XXH64_canonical_t length;
         XXH64_canonicalFromHash(&length, path.size());
         XXH3_64bits_update(hash.get(), &length, sizeof(length));
@@ -199,7 +199,7 @@ void TaskContext::finish_task() {
     releases_.clear();
 }
 void TaskContext::record_voxel(const io::Json& config) {
-    const auto path = (paths.resolve(config.at("output").get<std::string>()) / "voxel-meta.json").lexically_normal();
+    const auto path = paths.resolve(config.at("output").get<std::string>()) / "voxel-meta.json";
     voxel_outputs_.insert_or_assign(path, resources_.at(config.at("input").get<std::string>()).source);
     update_lod_metadata();
 }
@@ -223,7 +223,7 @@ void TaskContext::update_lod_metadata() {
             if (relative.empty()) {
                 throw std::runtime_error("Voxel and LOD output must share a filesystem root for relative paths");
             }
-            voxels.push_back(io::path_utf8(relative));
+            voxels.push_back(relative.generic_u8string());
         }
         auto meta = io::read_json(path);
         if (voxels.empty()) {

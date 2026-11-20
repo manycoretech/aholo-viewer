@@ -7,7 +7,7 @@
 
 namespace splat_transform::io {
 std::filesystem::path utf8_path(const std::string& path) {
-    return std::filesystem::u8path(path);
+    return std::filesystem::path(std::u8string(path.begin(), path.end()));
 }
 std::string path_utf8(const std::filesystem::path& path) {
     const auto value = path.generic_u8string();
@@ -18,7 +18,7 @@ std::string filesystem_error_message(const std::filesystem::filesystem_error& er
     std::string message = error.std::system_error::what();
     for (const auto& path : { error.path1(), error.path2() }) {
         if (!path.empty()) {
-            message += " [" + path_utf8(path) + ']';
+            message += " [" + path.string() + ']';
         }
     }
     return message;
@@ -27,7 +27,7 @@ Bytes read_bytes(const std::filesystem::path& path) {
     FileStream stream(path, FileStream::Access::Read);
     Bytes bytes(stream.size());
     if (stream.read(bytes) != bytes.size()) {
-        throw std::runtime_error("Cannot read complete input: " + path_utf8(path));
+        throw std::runtime_error("Cannot read complete input: " + path.string());
     }
     return bytes;
 }

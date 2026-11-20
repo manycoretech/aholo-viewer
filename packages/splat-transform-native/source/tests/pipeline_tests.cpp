@@ -203,7 +203,10 @@ int main() {
         }
     } cleanup { directory };
     try {
-        require(pipeline::PathResolver().resolve("").empty(), "Resolving an empty path must preserve it");
+        const pipeline::PathResolver paths;
+        require(paths.resolve("").empty(), "Resolving an empty path must preserve it");
+        const auto expected = paths.work_dir() / R"(a\b)" / "c" / "e";
+        require(paths.resolve(R"(a\b//./c/d/../e)").native() == expected.native(), "Resolved paths must use normalized native spelling");
         brick_storage();
         filter_neighborhoods();
         splat::Splat points(16, 3);

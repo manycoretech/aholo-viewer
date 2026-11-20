@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.1
+
+- Normalize `.` and `..` in resolved pipeline paths and use native path separators in CLI logs and file errors.
+- Write `lod-meta.json` voxel references as UTF-8 paths relative to the directory containing `lod-meta.json`, using `/` separators on every platform.
+
 ## 2.4.0
 
 - Add V2 pipeline paths with `pipelineDir` and `workDir` bases and V2-only `${pipelineDir}` / `${workDir}` placeholders. To migrate a V1 file while preserving its working-directory paths, set `"version": 2` and `"base": "workDir"`. An unrecognized integer version logs one warning and uses V2.

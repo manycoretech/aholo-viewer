@@ -31,7 +31,7 @@ void FlexLodTask::exec(const Json& config, TaskContext& context) const {
         }
         const auto path = context.paths.resolve(config.at("originalIndices").get<std::string>());
         io::write_bytes(path, output);
-        logger.info("original indices saved -> \"", io::path_utf8(path), '"');
+        logger.info("original indices saved -> \"", path.string(), '"');
     }
     context.set(config, std::make_shared<splat::Splat>(std::move(data).select(indices)));
     logger.info("stored -> key=\"", config.at("output").get<std::string>(), '"');

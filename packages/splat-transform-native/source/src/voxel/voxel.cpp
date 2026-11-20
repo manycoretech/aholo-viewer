@@ -311,9 +311,9 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
     };
     std::filesystem::create_directories(directory);
     const auto json = metadata.dump(2);
-    logger.info("writing '", io::path_utf8(directory / "voxel-meta.json"), "'...");
+    logger.info("writing '", (directory / "voxel-meta.json").string(), "'...");
     io::write_bytes(directory / "voxel-meta.json", std::as_bytes(std::span(json)));
-    logger.info("writing '", io::path_utf8(directory / filename), "'...");
+    logger.info("writing '", (directory / filename).string(), "'...");
     io::write_bytes(directory / filename, binary);
     const auto shape = options.collision_mesh;
     size_t mesh_bytes = 0;
@@ -335,7 +335,7 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
         } else {
             const auto glb = encode_glb(mesh);
             mesh_bytes = glb.size();
-            logger.info("writing '", io::path_utf8(directory / "collision.glb"), "'...");
+            logger.info("writing '", (directory / "collision.glb").string(), "'...");
             io::write_bytes(directory / "collision.glb", glb);
         }
     }

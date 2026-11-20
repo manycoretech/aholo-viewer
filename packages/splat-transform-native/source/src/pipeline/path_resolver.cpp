@@ -44,6 +44,6 @@ std::filesystem::path PathResolver::resolve(const std::string& path) const {
     }
     expanded.append(rest);
     const auto& base = use_pipeline_dir_ ? pipeline_dir_ : work_dir_;
-    return std::filesystem::absolute(base / io::utf8_path(expanded));
+    return std::filesystem::absolute(base / io::utf8_path(expanded)).lexically_normal();
 }
 } // namespace splat_transform::pipeline
