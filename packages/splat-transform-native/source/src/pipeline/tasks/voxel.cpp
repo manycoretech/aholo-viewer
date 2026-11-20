@@ -1,6 +1,7 @@
+#include "../data_support.h"
 #include <pipeline/tasks/voxel.h>
 #include <utility/logger.h>
-#include <voxel/voxel.h>
+#include <voxel/grid.h>
 namespace splat_transform::pipeline {
 using io::Json;
 namespace {
@@ -13,9 +14,6 @@ voxel::BackendType backend_type(const Json& config) {
         return voxel::BackendType::Gpu;
     }
     throw std::runtime_error("Voxel backend must be cpu or gpu");
-}
-Eigen::Vector3f vector3(const Json& value) {
-    return { value.at("x").get<float>(), value.at("y").get<float>(), value.at("z").get<float>() };
 }
 voxel::Options voxel_options(const Json& config) {
     voxel::Options options;
@@ -45,9 +43,8 @@ voxel::Options voxel_options(const Json& config) {
     options.voxel_resolution = config.value("voxelResolution", options.voxel_resolution);
     options.opacity_cutoff = config.value("opacityCutoff", options.opacity_cutoff);
     if (config.contains("box")) {
-        const auto minimum = config.at("box").at("minCorner").get<std::array<float, 3>>();
-        const auto maximum = config.at("box").at("maxCorner").get<std::array<float, 3>>();
-        options.box = { Eigen::Map<const Eigen::Vector3f>(minimum.data()), Eigen::Map<const Eigen::Vector3f>(maximum.data()) };
+        const auto& box = config.at("box");
+        options.box = { read_vector3(box.at("minCorner")), read_vector3(box.at("maxCorner")) };
     }
     const auto automatic = config.value("autoDenseBox", Json(true));
     if (automatic == false) {
@@ -68,7 +65,7 @@ voxel::Options voxel_options(const Json& config) {
         cluster.opacity_cutoff = filter.value("opacityCutoff", cluster.opacity_cutoff);
         cluster.min_contribution = filter.value("minContribution", cluster.min_contribution);
         if (filter.contains("seed")) {
-            cluster.seed = vector3(filter.at("seed"));
+            cluster.seed = read_vector3(filter.at("seed"));
         }
     }
     auto& navigation = options.navigation;
@@ -76,7 +73,7 @@ voxel::Options voxel_options(const Json& config) {
     navigation.floor_dilation = config.value("floorFillDilation", navigation.floor_dilation);
     navigation.exterior_radius = config.value("navExteriorRadius", navigation.exterior_radius);
     if (config.contains("navSeed")) {
-        navigation.seed = vector3(config.at("navSeed"));
+        navigation.seed = read_vector3(config.at("navSeed"));
     }
     if (config.contains("navCapsule")) {
         navigation.capsule_height = config.at("navCapsule").at("height").get<float>();
@@ -93,7 +90,9 @@ void VoxelTask::exec(const Json& config, TaskContext& context) const {
     const auto output = io::utf8_path(config.at("output").get<std::string>());
     auto& logger = utility::logger();
     logger.info("writing voxel -> dir=\"", io::path_utf8(output), "\" count=", data.size(), " SH=", data.sh_degree);
-    voxel::write(data, output, voxel_options(config));
+    voxel::write(data, output, voxel_options(config), [&](voxel::Occupancy&& grid) {
+        context.store_grid(config, std::move(grid));
+    });
     context.record_voxel(config);
     logger.info("voxelizing done");
 }

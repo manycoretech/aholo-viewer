@@ -7,12 +7,13 @@ export type {
     TaskType,
     DeviceInfo,
     ModifyConfig,
+    FilterConfig,
     SelectConfig,
     ReplaceAppendConfig,
     ExtractLodLevelConfig,
     VoxelConfig,
 } from './pipeline.js';
-export { ApiType } from './pipeline.js';
+export { ApiType, FilterMode } from './pipeline.js';
 export { PipelineError, resolveExecutable, type RunOptions } from './process.js';
 
 /** Execute a JSON pipeline in the standalone C++ process. */

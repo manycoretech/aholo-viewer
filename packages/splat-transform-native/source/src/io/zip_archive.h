@@ -29,7 +29,7 @@ public:
         if (count < 0) {
             throw std::runtime_error(zip_strerror(archive_.get()));
         }
-        for (zip_uint64_t i = 0; i < uint64_t(count); ++i) {
+        for (zip_uint64_t i = 0; i < static_cast<uint64_t>(count); ++i) {
             const char* name = zip_get_name(archive_.get(), i, 0);
             if (!name) {
                 throw std::runtime_error(zip_strerror(archive_.get()));
@@ -50,14 +50,14 @@ public:
         if (!file) {
             throw std::runtime_error(zip_strerror(archive_.get()));
         }
-        Bytes output(size_t(stat.size));
+        Bytes output(static_cast<size_t>(stat.size));
         size_t offset = 0;
         while (offset < output.size()) {
             const auto count = zip_fread(file.get(), output.data() + offset, output.size() - offset);
             if (count <= 0) {
                 throw std::runtime_error("Truncated ZIP entry: " + normalized(name));
             }
-            offset += size_t(count);
+            offset += static_cast<size_t>(count);
         }
         return output;
     }

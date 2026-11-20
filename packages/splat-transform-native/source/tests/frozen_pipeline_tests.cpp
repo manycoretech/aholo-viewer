@@ -21,12 +21,12 @@ void prepare(const std::filesystem::path& directory) {
         splat::Splat data(second ? 7 : 12, 3);
         for (size_t i = 0; i < data.size(); ++i) {
             auto& point = data.gaussians[i];
-            point.mean = { float(i) * 0.125f + (second ? 100 : 0), float(i % 3) * 0.125f, float(i % 5) * 0.0625f };
+            point.mean = { static_cast<float>(i) * 0.125f + (second ? 100 : 0), static_cast<float>(i % 3) * 0.125f, static_cast<float>(i % 5) * 0.0625f };
             point.scale = { 0.125f, 0.25f, 0.0625f };
             point.rotation.w() = 1;
             point.opacity = 0.75f;
             for (size_t c = 0; c < point.sh.size(); ++c) {
-                point.sh[c] = c < 3 ? float((i + c) % 4 + 1) * 0.125f : float(std::sin(i + c) * 0.05);
+                point.sh[c] = c < 3 ? static_cast<float>((i + c) % 4 + 1) * 0.125f : static_cast<float>(std::sin(i + c) * 0.05);
             }
         }
         io::write_splat(directory / "inputs" / (second ? "second.ply" : "first.ply"), data, { .enable_morton_sort = false });
@@ -35,7 +35,7 @@ void prepare(const std::filesystem::path& directory) {
     }
     io::Bytes scores;
     for (size_t i = 0; i < 19; ++i) {
-        io::append(scores, float(i));
+        io::append(scores, static_cast<float>(i));
     }
     io::write_bytes(directory / "inputs/scores.bin", scores);
 }
@@ -60,7 +60,7 @@ void verify(const std::filesystem::path& fixtures) {
         if (i == 1 || i == 14) {
             continue;
         }
-        const float expected_x = i < 12 ? float(i) * 0.125f + 10 : float(i - 12) * 0.125f + 90;
+        const float expected_x = i < 12 ? static_cast<float>(i) * 0.125f + 10 : static_cast<float>(i - 12) * 0.125f + 90;
         require(source.gaussians[row++].mean.x() == expected_x, "Read order or block-relative patch behavior changed");
     }
     equal_data(io::read_splat("outputs/high.esz"), io::read_splat("outputs/repeated-high.esz"));

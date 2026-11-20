@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <io/file.h>
 #include <io/json.h>
+#include <limits>
 #include <set>
 #include <unordered_map>
 #include <utility/vector_hash.h>
@@ -115,10 +116,10 @@ Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float reso
         if (found != vertices.end()) {
             return found->second;
         }
-        const auto index = uint32_t(output.positions.size() / 3);
+        const auto index = static_cast<uint32_t>(output.positions.size() / 3);
         vertices[p] = index;
         for (int32_t axis = 0; axis < 3; ++axis) {
-            output.positions.push_back(float(bounds.min()[axis] + p[axis] * resolution));
+            output.positions.push_back(static_cast<float>(bounds.min()[axis] + p[axis] * resolution));
         }
         return index;
     };
@@ -156,12 +157,12 @@ Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float reso
         if (perimeter.size() < 3) {
             continue;
         }
-        const bool ccw = bool(rectangle.bucket % 2) == (plane_axis != 1);
+        const bool ccw = static_cast<bool>(rectangle.bucket % 2) == (plane_axis != 1);
         auto append = [&](size_t a, size_t b, size_t c) {
             output.indices.insert(output.indices.end(), { perimeter[a], perimeter[ccw ? b : c], perimeter[ccw ? c : b] });
         };
         auto convex = [&](size_t a, size_t b, size_t c) {
-            return int64_t(uv[b][0] - uv[a][0]) * (uv[c][1] - uv[a][1]) - int64_t(uv[b][1] - uv[a][1]) * (uv[c][0] - uv[a][0]) > 0;
+            return static_cast<int64_t>(uv[b][0] - uv[a][0]) * (uv[c][1] - uv[a][1]) - static_cast<int64_t>(uv[b][1] - uv[a][1]) * (uv[c][0] - uv[a][0]) > 0;
         };
         std::vector<size_t> previous(perimeter.size()), next(perimeter.size());
         for (size_t i = 0; i < perimeter.size(); ++i) {
@@ -193,7 +194,9 @@ std::vector<std::byte> encode_glb(const Mesh& mesh) {
     if (mesh.positions.empty() || mesh.indices.empty()) {
         return {};
     }
-    std::array<float, 3> minimum { INFINITY, INFINITY, INFINITY }, maximum { -INFINITY, -INFINITY, -INFINITY };
+    std::array<float, 3> minimum, maximum;
+    minimum.fill(std::numeric_limits<float>::infinity());
+    maximum.fill(-std::numeric_limits<float>::infinity());
     for (size_t i = 0; i < mesh.positions.size(); ++i) {
         minimum[i % 3] = std::min(minimum[i % 3], mesh.positions[i]);
         maximum[i % 3] = std::max(maximum[i % 3], mesh.positions[i]);
@@ -212,12 +215,12 @@ std::vector<std::byte> encode_glb(const Mesh& mesh) {
     auto json = gltf.dump();
     json.resize((json.size() + 3) & ~size_t { 3 }, ' ');
     io::Bytes output;
-    for (auto value : { 0x46546c67u, 2u, uint32_t(28 + json.size() + position_bytes + index_bytes), uint32_t(json.size()), 0x4e4f534au }) {
+    for (auto value : { 0x46546c67u, 2u, static_cast<uint32_t>(28 + json.size() + position_bytes + index_bytes), static_cast<uint32_t>(json.size()), 0x4e4f534au }) {
         io::append(output, value);
     }
     const auto json_bytes = std::as_bytes(std::span(json));
     output.insert(output.end(), json_bytes.begin(), json_bytes.end());
-    io::append(output, uint32_t(position_bytes + index_bytes));
+    io::append(output, static_cast<uint32_t>(position_bytes + index_bytes));
     io::append(output, 0x004e4942u);
     for (auto value : mesh.positions) {
         io::append(output, value);

@@ -40,7 +40,7 @@ Mesh marching_cubes(const Grid& grid, const Eigen::AlignedBox3f& bounds, float r
         if (found != vertices.end()) {
             return found->second;
         }
-        const auto index = uint32_t(output.positions.size() / 3);
+        const auto index = static_cast<uint32_t>(output.positions.size() / 3);
         vertices[key] = index;
         for (int32_t a = 0; a < 3; ++a) {
             float coordinate = bounds.min()[a] + key[a] * resolution;

@@ -5,6 +5,7 @@
 #include <codec/codec.h>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <numeric>
 #include <optional>
 #include <pipeline/runner.h>
@@ -35,12 +36,12 @@ std::shared_ptr<splat::Splat> cloud(size_t count, uint32_t degree, float base = 
     auto result = std::make_shared<splat::Splat>(count, degree);
     for (size_t i = 0; i < count; ++i) {
         auto& point = result->gaussians[i];
-        point.mean = { base + float(i % 16) * 0.02f, float(i / 16) * 0.02f, float(i % 7) * 0.01f };
+        point.mean = { base + static_cast<float>(i % 16) * 0.02f, static_cast<float>(i / 16) * 0.02f, static_cast<float>(i % 7) * 0.01f };
         point.scale = { 0.125f, 0.25f, 0.0625f };
         point.rotation.w() = 1;
         point.opacity = 0.75f;
         for (size_t c = 0; c < point.sh.size(); ++c) {
-            point.sh[c] = c < 3 ? 0.25f + float(i % 4) * 0.125f : float(std::sin(i + c) * 0.05);
+            point.sh[c] = c < 3 ? 0.25f + static_cast<float>(i % 4) * 0.125f : static_cast<float>(std::sin(i + c) * 0.05);
         }
     }
     result->block_offsets = { 0 };
@@ -410,7 +411,7 @@ void extract_contracts() {
                 meta["tree"][0]["lods"][3]["offset"] = 7;
                 break;
             case 5:
-                meta["tree"][0]["lods"][3]["count"] = 4294967295u;
+                meta["tree"][0]["lods"][3]["count"] = std::numeric_limits<uint32_t>::max();
                 break;
             case 6:
                 meta["tree"][0]["lods"][3]["file"] = -1;
@@ -547,7 +548,7 @@ void shared_lod_contracts(const std::filesystem::path& directory) {
 void preserve_order_contract(const std::filesystem::path& directory) {
     auto source = cloud(3, 0);
     for (size_t i = 0; i < 3; ++i) {
-        source->gaussians[i].mean = { float((i + 2) % 3), 0, 0 };
+        source->gaussians[i].mean = { static_cast<float>((i + 2) % 3), 0, 0 };
     }
     const auto original = *source;
     pipeline::TaskContext context;
@@ -557,7 +558,7 @@ void preserve_order_contract(const std::filesystem::path& directory) {
         task("Write", { { "input", "bundle" }, { "output", io::path_utf8(output) }, { "highPrecision", true }, { "enableMortonSort", true } }, context);
         const auto decoded = io::read_splat(output / "order.esz");
         for (size_t i = 0; i < 3; ++i) {
-            require(decoded.gaussians[i].mean.x() == float(preserve ? (i + 2) % 3 : i), "Write ignored preserve_order or Morton sorting");
+            require(decoded.gaussians[i].mean.x() == static_cast<float>(preserve ? (i + 2) % 3 : i), "Write ignored preserve_order or Morton sorting");
         }
         equal_data(*source, original);
     }
@@ -663,6 +664,124 @@ void read_source_order_contracts(const std::filesystem::path& directory) {
     voxel("normalized", "source-order-same");
     require(same_paths(io::read_json(meta_path).at("voxels"), expected), "Normalized ordered Read inputs lost their source");
 }
+void filter_contracts(const std::filesystem::path& directory) {
+    pipeline::TaskContext context;
+    const auto filter_task = pipeline::create_task("Filter");
+    require(!filter_task->requires_gpu({ { "mode", "cluster" } }, context) && !filter_task->requires_gpu({ { "mode", "floaters" } }, context),
+        "Voxel filters must be runnable without a GPU");
+    auto data = cloud(5, 2);
+    const std::array<float, 5> x { 0.0625f, 0.064f, 0.5625f, 1.0625f, 1.1875f };
+    const std::array<float, 5> alpha { 0.8f, 0.001f, 0.05f, 0.6f, 0.08f };
+    for (size_t i = 0; i < x.size(); ++i) {
+        auto& p = data->gaussians[i];
+        p.mean = { x[i], 0.0625f, 0.0625f };
+        p.scale = { i == 4 ? 0.0625f : 0.003f, 0.003f, 0.003f };
+        p.opacity = alpha[i];
+    }
+    data->compute_bounding_box();
+    put_resource(context, "source", data);
+    auto filter = [&](Json mode, Json options, std::string input = "source", std::string output = "filtered") {
+        options["mode"] = mode;
+        options["input"] = input;
+        options["output"] = output;
+        task("Filter", options, context);
+    };
+    const auto check = [&](std::vector<uint32_t> rows, const char* name = "filtered") {
+        const auto& result = *get(context, name);
+        equal_data(result, data->select(rows));
+        single_block(result);
+    };
+    filter("BoX", { { "box", { { "min", { x[0], 0, 0 } }, { "max", { x[1], 1, 1 } } } } });
+    check({ 0, 1 });
+    filter(1, { { "sphere", { { "center", { x[0], 0.0625, 0.0625 } }, { "radius", 0.5 } } } });
+    check({ 0, 1 }); // The point at exactly radius is outside.
+    filter(1, { { "sphere", { { "center", { { "z", 0.0625f }, { "x", x[2] }, { "y", 0.0625f } } }, { "radius", 0.01f } } } });
+    check({ 2 }); // Object coordinates follow axis names regardless of key order.
+    filter("box", { { "box", { { "min", { 0, 0, 0 } } } } });
+    require(get(context, "filtered") == data, "Incomplete Box must pass through");
+    filter("Sphere", Json::object());
+    require(get(context, "filtered") == data, "Missing Sphere must pass through");
+    rejects([&] { filter(4, Json::object()); });
+    rejects([&] { filter("sphere", { { "sphere", { { "center", { 0, 0 } }, { "radius", 1 } } } }); });
+    rejects([&] { pipeline::create_task("filter"); });
+
+    const auto output = directory / "filter-voxel";
+    task("Voxel", { { "input", "source" }, { "output", io::path_utf8(output) }, { "backend", "cpu" }, { "voxelResolution", 0.125 }, { "opacityCutoff", 0.1 }, { "filterCluster", false }, { "autoDenseBox", false } }, context);
+    const auto meta = io::read_bytes(output / "voxel-meta.json"), binary = io::read_bytes(output / "voxel.bin");
+    const Json input { { "input", "source" } };
+    const voxel::GridSpec spec { 0.125f, 0.1f };
+    const auto grid = context.find_grid(input, spec);
+    require(grid != nullptr, "Voxel did not publish its occupancy in memory");
+    require(context.find_grid(input, { 0.25f, 0.1f }) == grid && !context.find_grid(input, { 0.0625f, 0.1f }),
+        "Filter must accept finer occupancy and reject coarser occupancy");
+    const auto second_output = directory / "coarser-voxel";
+    task("Voxel", { { "input", "source" }, { "output", io::path_utf8(second_output) }, { "backend", "cpu" }, { "voxelResolution", 0.25 }, { "opacityCutoff", 0.1 }, { "filterCluster", false }, { "autoDenseBox", false } }, context);
+    const auto coarser = context.find_grid(input, { 0.25f, 0.1f });
+    require(coarser && coarser != grid && context.find_grid(input, { 0.5f, 0.1f }) == coarser &&
+                context.find_grid(input, { 0.1875f, 0.1f }) == grid && !context.find_grid(input, { 0.5f, 0.2f }),
+        "Cache selection must prefer exact, then closest finer, and match the opacity cutoff");
+    const Json floaters { { "floaters", { { "voxelResolution", 0.125 } } } };
+    filter(3, floaters);
+    check({ 0, 1, 3, 4 }); // Isolated strong point, faint center, two-sigma tail.
+    filter("FLOATERS", { { "floaters", { { "voxelResolution", 0.125 }, { "minContribution", 0.02 } } } });
+    check({ 0, 1, 3 });
+    filter("cLuStEr", { { "cluster", { { "voxelResolution", 0.125 }, { "opacityCutoff", 0.1 } } } }, "source", "cluster");
+    check({ 0, 1 }, "cluster");
+    require(context.find_grid({ { "input", "cluster" } }, spec) == grid, "Filter lost its ancestor grid");
+    filter("floaters", floaters, "cluster");
+    check({ 0, 1 });
+    filter(3, { { "floaters", { { "voxelResolution", 0.125 }, { "opacityCutoff", 0.2 } } } }, "cluster");
+    const voxel::GridSpec other { 0.125f, 0.2f };
+    require(context.find_grid({ { "input", "filtered" } }, other) != nullptr, "Opacity mismatch did not build a grid");
+    require(!context.find_grid(input, other) && context.find_grid(input, spec) == grid, "Child grid leaked into its parent");
+    filter("floaters", Json::object(), "cluster");
+    require(context.find_grid({ { "input", "filtered" } }, { 0.05f, 0.1f }) != nullptr, "Resolution mismatch did not build a grid");
+    require(io::read_bytes(output / "voxel-meta.json") == meta && io::read_bytes(output / "voxel.bin") == binary, "Filter overwrote explicit voxel files");
+    // A collision export can cover only a fraction of an otherwise matching input.
+    const voxel::GridSpec cropped_spec { 0.0625f, 0.1f };
+    task("Voxel", { { "input", "source" }, { "output", io::path_utf8(directory / "cropped") }, { "backend", "cpu" }, { "voxelResolution", 0.0625 }, { "filterCluster", false }, { "autoDenseBox", false }, { "box", { { "minCorner", { -1, -1, -1 } }, { "maxCorner", { 0.5, 1, 1 } } } } }, context);
+    require(!context.find_grid(input, cropped_spec), "A cropped Voxel grid was published as complete occupancy");
+    filter("floaters", { { "floaters", { { "voxelResolution", 0.0625 } } } });
+    require(std::ranges::any_of(get(context, "filtered")->gaussians, [&](const auto& point) { return point.mean.x() == x[3]; }),
+        "Full-scene Filter lost the strong Gaussian outside the collision crop");
+
+    // The coarse stage covers the original input. After cluster selection the
+    // fine collision grid only describes the selected component.
+    const voxel::GridSpec coarse { 0.125f, 0.15f }, fine { 0.0625f, 0.3f };
+    task("Voxel", { { "input", "source" }, { "output", io::path_utf8(directory / "prefiltered") }, { "backend", "cpu" }, { "voxelResolution", 0.0625 }, { "opacityCutoff", 0.3 }, { "autoDenseBox", false }, { "filterCluster", { { "voxelResolution", 0.125 }, { "opacityCutoff", 0.15 }, { "seed", { { "x", 0 }, { "y", 0 }, { "z", 0 } } } } } }, context);
+    require(context.find_grid(input, coarse) && !context.find_grid(input, fine), "Voxel retained occupancy from the wrong side of cluster selection");
+    put_resource(context, "unrelated", cloud(1, 0));
+    require(!context.find_grid({ { "input", "unrelated" } }, spec), "Unrelated resource reused a grid");
+    task("Modify", { { "input", "source" }, { "output", "modified" }, { "rgba", { { "a", 0.0 } } } }, context);
+    require(!context.find_grid(input, spec) && context.find_grid({ { "input", "cluster" } }, spec) == grid, "In-place opacity edit invalidated the wrong lineage");
+}
+
+void reread_filter_grid_contract(const std::filesystem::path& directory) {
+    const auto path = directory / "grid-input.ply";
+    const Json config { { "inputs", { io::path_utf8(path) } }, { "output", "source" } };
+    const Json input { { "input", "source" } };
+    const voxel::GridSpec spec { 0.125f, 0.1f };
+    pipeline::TaskContext context;
+    auto data = cloud(8, 0);
+    io::write_splat(path, *data);
+    task("Read", config, context);
+    task("Voxel", { { "input", "source" }, { "output", io::path_utf8(directory / "reread-voxel") }, { "backend", "cpu" }, { "voxelResolution", 0.125 }, { "filterCluster", false }, { "autoDenseBox", false } }, context);
+    const auto grid = context.find_grid(input, spec);
+    require(grid != nullptr, "Missing initial Read grid");
+    // The path, file size and timestamp can all stay equal across a rewrite.
+    const auto stamp = std::filesystem::last_write_time(path);
+    auto reread = [&] {
+        io::write_splat(path, *data);
+        std::filesystem::last_write_time(path, stamp);
+        task("Read", config, context);
+    };
+    data->gaussians[0].sh[0] += 1;
+    reread();
+    require(context.find_grid(input, spec) == grid, "Color-only edit discarded reusable occupancy");
+    data->gaussians[0].mean.x() += 10;
+    reread();
+    require(!context.find_grid(input, spec), "Rewritten input reused stale occupancy");
+}
 } // namespace
 
 int main() {
@@ -679,6 +798,8 @@ int main() {
         modify_block_contracts(directory);
         modify_contracts(directory);
         select_contracts(directory);
+        filter_contracts(directory);
+        reread_filter_grid_contract(directory);
         replace_contracts();
         extract_contracts();
         shared_lod_contracts(directory);

@@ -68,7 +68,7 @@ std::pair<bool, bool> transform(splat::Splat& data, std::span<const uint32_t> in
     return { resize, rotate };
 }
 } // namespace
-void modify(splat::Splat& data, const io::Json& config) {
+bool modify(splat::Splat& data, const io::Json& config) {
     std::array<std::optional<float>, 4> rgba;
     std::optional<uint32_t> max_sh_degree;
     if (config.contains("rgba")) {
@@ -110,6 +110,7 @@ void modify(splat::Splat& data, const io::Json& config) {
     if (paths.size() > data.block_counts.size()) {
         throw std::runtime_error("More modify files than input blocks");
     }
+    bool geometry_changed = rgba[3].has_value();
     std::vector<bool> deleted(data.size(), false);
     for (size_t block = 0; block < paths.size(); ++block) {
         if (paths[block].empty()) {
@@ -119,6 +120,7 @@ void modify(splat::Splat& data, const io::Json& config) {
         const auto spec = io::read_json(io::utf8_path(paths[block]));
         const bool row_major = spec.value("isRowMatrix", true);
         const auto model = matrix(spec.value("transform", io::Json()), row_major);
+        geometry_changed |= !model.isIdentity(0);
         const size_t offset = data.block_offsets[block], count = data.block_counts[block];
         std::vector<bool> used(count, false);
         const auto bitmap = spec.value("deletedIndices", std::vector<uint8_t>());
@@ -147,6 +149,7 @@ void modify(splat::Splat& data, const io::Json& config) {
                 indices.push_back(static_cast<uint32_t>(offset + index));
             }
             const Eigen::Matrix4f combined = matrix(group.at("transform"), row_major) * model;
+            geometry_changed |= !combined.isIdentity(0);
             const auto [scale, rotate] = transform(data, indices, combined);
             logger.info("group[", block, ':', group_index++, "] size=", indices.size(), " scale=", scale, " rotate=", rotate);
         }
@@ -159,6 +162,7 @@ void modify(splat::Splat& data, const io::Json& config) {
         transform(data, remaining, model);
     }
     if (std::any_of(deleted.begin(), deleted.end(), [](bool value) { return value; })) {
+        geometry_changed = true;
         std::vector<uint32_t> remaining;
         for (size_t i = 0; i < data.size(); ++i) {
             if (!deleted[i]) {
@@ -191,5 +195,6 @@ void modify(splat::Splat& data, const io::Json& config) {
     if (max_sh_degree) {
         data.limit_sh_degree(*max_sh_degree);
     }
+    return geometry_changed;
 }
 } // namespace splat_transform::pipeline

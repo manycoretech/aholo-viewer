@@ -83,7 +83,7 @@ Bytes zip(const Archive& files) {
     return result;
 }
 float from_half(uint16_t value) {
-    const auto sign = uint32_t(value & 0x8000) << 16;
+    const auto sign = static_cast<uint32_t>(value & 0x8000) << 16;
     int32_t exponent = (value >> 10) & 31;
     uint32_t fraction = value & 1023;
     uint32_t bits;
@@ -94,19 +94,19 @@ float from_half(uint16_t value) {
             const int32_t shift = 11 - std::bit_width(fraction);
             fraction <<= shift;
             exponent = -14 - shift;
-            bits = sign | (uint32_t(exponent + 127) << 23) | ((fraction & 1023) << 13);
+            bits = sign | (static_cast<uint32_t>(exponent + 127) << 23) | ((fraction & 1023) << 13);
         }
     } else if (exponent == 31) {
         bits = sign | (fraction ? 0x7fc00000 : 0x7f800000);
     } else {
-        bits = sign | (uint32_t(exponent + 112) << 23) | (fraction << 13);
+        bits = sign | (static_cast<uint32_t>(exponent + 112) << 23) | (fraction << 13);
     }
     return std::bit_cast<float>(bits);
 }
 uint16_t to_half(float value) {
     const uint32_t bits = std::bit_cast<uint32_t>(value);
     const uint32_t sign = (bits >> 16) & 0x8000;
-    const int32_t exponent = int32_t((bits >> 23) & 255);
+    const int32_t exponent = static_cast<int32_t>((bits >> 23) & 255);
     const uint32_t fraction = bits & 0x7fffff;
     const int32_t shifted = exponent - 112;
     if (exponent == 255) {
@@ -118,6 +118,6 @@ uint16_t to_half(float value) {
     if (shifted <= 0) {
         return static_cast<uint16_t>(sign | (shifted < -10 ? 0 : ((fraction | 0x800000) >> (14 - shifted))));
     }
-    return static_cast<uint16_t>(sign | (uint32_t(shifted) << 10) | (fraction >> 13));
+    return static_cast<uint16_t>(sign | (static_cast<uint32_t>(shifted) << 10) | (fraction >> 13));
 }
 } // namespace splat_transform::io

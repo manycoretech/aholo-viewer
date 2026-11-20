@@ -17,7 +17,7 @@ struct GzipState {
         if (finished) {
             return 0;
         }
-        const size_t capacity = std::min(output.size(), size_t(std::numeric_limits<uInt>::max()));
+        const size_t capacity = std::min(output.size(), static_cast<size_t>(std::numeric_limits<uInt>::max()));
         stream.next_out = reinterpret_cast<Bytef*>(output.data());
         stream.avail_out = static_cast<uInt>(capacity);
         while (stream.avail_out) {
@@ -55,7 +55,7 @@ struct ZstdState {
         ZSTD_outBuffer out { output.data(), output.size(), 0 };
         while (out.pos < out.size) {
             if (input.pos == input.size && !input_ended) {
-                const auto bytes = source.read_some(std::min(remaining, size_t(128 * 1024)));
+                const auto bytes = source.read_some(std::min(remaining, static_cast<size_t>(128 * 1024)));
                 if (bytes.empty()) {
                     if (remaining != 0 && bounded) {
                         throw std::runtime_error("Truncated SPZ compressed stream");

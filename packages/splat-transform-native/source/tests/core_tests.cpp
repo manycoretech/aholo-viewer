@@ -76,7 +76,7 @@ void device_registry() {
 }
 
 void half_values() {
-    for (uint32_t bits = 0; bits <= UINT16_MAX; ++bits) {
+    for (uint32_t bits = 0; bits <= std::numeric_limits<uint16_t>::max(); ++bits) {
         const auto value = io::from_half(static_cast<uint16_t>(bits));
         const int32_t exponent = (bits >> 10) & 31;
         const auto fraction = bits & 1023;
@@ -88,8 +88,8 @@ void half_values() {
             continue;
         }
         const float magnitude = exponent == 31  ? std::numeric_limits<float>::infinity()
-                                : exponent == 0 ? std::ldexp(float(fraction), -24)
-                                                : std::ldexp(float(1024 + fraction), exponent - 25);
+                                : exponent == 0 ? std::ldexp(static_cast<float>(fraction), -24)
+                                                : std::ldexp(static_cast<float>(1024 + fraction), exponent - 25);
         const float expected = std::copysign(magnitude, negative ? -1.0f : 1.0f);
         if (std::bit_cast<uint32_t>(value) != std::bit_cast<uint32_t>(expected)) {
             throw std::runtime_error("Half decode differs from its exact binary value");
@@ -101,7 +101,7 @@ void quantization() {
     Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> matrix(12, 3);
     for (Eigen::Index row = 0; row < matrix.rows(); ++row) {
         for (Eigen::Index column = 0; column < matrix.cols(); ++column) {
-            matrix(row, column) = float((row * 5 + column) % 9) * 0.25f;
+            matrix(row, column) = static_cast<float>((row * 5 + column) % 9) * 0.25f;
         }
     }
     const auto result = spatial::quantize_1d(matrix);
@@ -128,7 +128,7 @@ void quantization() {
     static_assert(AcceptsQuantization<decltype(transform)>);
     auto transformed = matrix;
     for (Eigen::Index i = 0; i < transformed.size(); ++i) {
-        transformed.data()[i] = static_cast<float>(double(transformed.data()[i]) * 2.5 - 0.125);
+        transformed.data()[i] = static_cast<float>(static_cast<double>(transformed.data()[i]) * 2.5 - 0.125);
     }
     const auto expected = spatial::quantize_1d(transformed);
     const auto actual = spatial::quantize_1d(matrix, transform);
@@ -155,7 +155,7 @@ void quantization() {
     }
     Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> shifted(512, 1);
     for (Eigen::Index row = 0; row < shifted.rows(); ++row) {
-        shifted(row, 0) = 10000.0f + float(row % 65) * 0.001f;
+        shifted(row, 0) = 10000.0f + static_cast<float>(row % 65) * 0.001f;
     }
     const auto shifted_result = spatial::quantize_1d(shifted);
     for (Eigen::Index row = 0; row < shifted.rows(); ++row) {
@@ -171,9 +171,9 @@ void codec_numeric() {
             throw std::runtime_error("Signed log/exp lost float precision");
         }
     }
-    for (size_t count : { size_t { 0 }, size_t { 1 }, size_t { 17 }, size_t { 0x1000001 }, size_t { UINT32_MAX } }) {
+    for (size_t count : { size_t { 0 }, size_t { 1 }, size_t { 17 }, size_t { 0x1000001 }, static_cast<size_t>(std::numeric_limits<uint32_t>::max()) }) {
         const auto [width, height] = codec::texture_size(count);
-        if (width % 4 || height % 4 || uint64_t(width) * height < count) {
+        if (width % 4 || height % 4 || static_cast<uint64_t>(width) * height < count) {
             throw std::runtime_error("Texture dimensions do not cover the integer point count");
         }
     }
@@ -216,7 +216,7 @@ int main() {
         uint32_t random = 12345;
         for (size_t i = 0; i < large.size(); ++i) {
             random = random * 1664525 + 1013904223;
-            large[i] = i % 8 < 3 ? std::byte(random >> 24) : std::byte(i / 1024);
+            large[i] = i % 8 < 3 ? static_cast<std::byte>(random >> 24) : static_cast<std::byte>(i / 1024);
         }
         for (const bool gzip : { true, false }) {
             const auto encoded = gzip ? codec::gzip(large, 6) : codec::zstd_compress(large, 7);

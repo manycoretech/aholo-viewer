@@ -39,7 +39,7 @@ void parallel_rows(size_t rows, F&& run) {
         return;
     }
     auto& pool = threading::default_pool();
-    const size_t step = std::max(size_t(8192), (rows + pool.thread_count() - 1) / pool.thread_count());
+    const size_t step = std::max(static_cast<size_t>(8192), (rows + pool.thread_count() - 1) / pool.thread_count());
     threading::TaskGroup<void> pending(pool, pool.thread_count());
     for (size_t begin = 0; begin < rows; begin += step) {
         pending.submit(run, begin, std::min(rows, begin + step));
@@ -51,7 +51,7 @@ void parallel_rows(size_t rows, F&& run) {
 template<typename F>
 void decode_records(StreamReader& reader, size_t count, size_t stride, F&& decode) {
     constexpr size_t BATCH_BYTES = 8 * 1024 * 1024;
-    const size_t batch_rows = std::max(size_t(1), BATCH_BYTES / stride);
+    const size_t batch_rows = std::max(static_cast<size_t>(1), BATCH_BYTES / stride);
     for (size_t first = 0; first < count;) {
         const size_t rows = std::min(batch_rows, count - first);
         const auto bytes = reader.take(rows * stride);

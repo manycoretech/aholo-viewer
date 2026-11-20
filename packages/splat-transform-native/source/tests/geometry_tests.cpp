@@ -116,7 +116,7 @@ void voxel_geometry() {
     point.opacity = 1;
     point.rotation.setIdentity();
     require(voxel::extents(point) == Eigen::Vector3f(3, 6, 9), "Identity voxel extents changed");
-    point.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(float(std::acos(-1.0) / 2), Eigen::Vector3f::UnitZ()));
+    point.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(static_cast<float>(std::acos(-1.0) / 2), Eigen::Vector3f::UnitZ()));
     require(voxel::extents(point).isApprox(Eigen::Vector3f(6, 3, 9), 1e-6f), "Voxel extents lost the rotation");
     point.opacity = voxel::ALPHA_THRESHOLD;
     point.scale.x() = std::numeric_limits<float>::infinity();
@@ -151,12 +151,12 @@ void voxel_selection() {
         splat::Splat source(12, degree);
         for (size_t i = 0; i < source.size(); ++i) {
             auto& point = source.gaussians[i];
-            point.mean = { float(i), float(i % 3), -float(i) };
+            point.mean = { static_cast<float>(i), static_cast<float>(i % 3), -static_cast<float>(i) };
             point.scale = { 0.1f, 0.2f, 0.3f };
             point.rotation.setIdentity();
             point.opacity = 0.8f;
             for (size_t j = 0; j < point.sh.size(); ++j) {
-                point.sh[j] = float(i * 100 + j);
+                point.sh[j] = static_cast<float>(i * 100 + j);
             }
         }
         for (const auto i : { 0, 3, 5, 7, 11 }) {
@@ -199,7 +199,7 @@ void sh_rotation() {
     for (uint32_t degree = 0; degree <= 3; ++degree) {
         splat::ShCoefficients original(3 + splat::SH_COUNTS[degree]);
         for (size_t i = 0; i < original.size(); ++i) {
-            original[i] = float(std::sin(double(i) * 0.73)) * 0.3f;
+            original[i] = static_cast<float>(std::sin(static_cast<double>(i) * 0.73)) * 0.3f;
         }
         auto actual = original;
         identity.apply(actual);
@@ -212,8 +212,8 @@ void sh_rotation() {
             for (uint32_t band = 1; band <= degree; ++band) {
                 double before = 0, after = 0;
                 for (uint32_t i = band * band; i < (band + 1) * (band + 1); ++i) {
-                    before += double(original[i * 3 + c]) * original[i * 3 + c];
-                    after += double(actual[i * 3 + c]) * actual[i * 3 + c];
+                    before += static_cast<double>(original[i * 3 + c]) * original[i * 3 + c];
+                    after += static_cast<double>(actual[i * 3 + c]) * actual[i * 3 + c];
                 }
                 require(std::abs(before - after) < 2e-5 * (1 + before), "SH rotation changed band energy or RGB order");
             }

@@ -69,6 +69,7 @@ set(SPLAT_TRANSFORM_SOURCE_FILES
     src/pipeline/tasks/read.cpp
     src/pipeline/tasks/write.cpp
     src/pipeline/tasks/modify.cpp
+    src/pipeline/tasks/filter.cpp
     src/pipeline/tasks/select.cpp
     src/pipeline/tasks/replace_append.cpp
     src/pipeline/tasks/extract_lod_level.cpp
@@ -113,6 +114,7 @@ set(SPLAT_TRANSFORM_HEADER_FILES
     include/pipeline/tasks/auto_chunk_lod.h
     include/pipeline/tasks/auto_lod.h
     include/pipeline/tasks/extract_lod_level.h
+    include/pipeline/tasks/filter.h
     include/pipeline/tasks/flex_lod.h
     include/pipeline/tasks/modify.h
     include/pipeline/tasks/read.h
@@ -130,6 +132,7 @@ set(SPLAT_TRANSFORM_HEADER_FILES
     include/splat/splat_block.h
     include/splat/splat_lod.h
     include/utility/logger.h
+    include/utility/parallel.h
     include/utility/random.h
     include/utility/thread_pool.h
     include/voxel/voxel.h
@@ -146,6 +149,8 @@ set(SPLAT_TRANSFORM_PRIVATE_HEADER_FILES
     src/pipeline/data_support.h
     src/pipeline/lod_support.h
     src/voxel/grid.h
+    src/voxel/brick_map.h
+    src/voxel/brick_map.inl
     src/voxel/backend.h
     src/voxel/marching_tables.h
     src/voxel/voxelize.h

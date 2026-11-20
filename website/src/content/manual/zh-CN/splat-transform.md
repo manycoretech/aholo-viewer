@@ -179,6 +179,48 @@ interface ModifyPatch {
 
 patch 中的索引相对于对应输入块。`deletedIndices` 是位图，不是待删除点的索引列表。
 
+### Filter
+
+按高斯中心或体素占用情况筛选普通 splat 资源。`input` 和 `output` 是资源键。结果按输入顺序保留完整高斯属性和 SH，可直接交给 `Write` 或 LOD 任务。
+
+| `mode`           | 对应配置                                                                                  | 保留条件                                                                             |
+| ---------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `0` / `box`      | `box: { min: [x,y,z], max: [x,y,z] }`                                                     | 中心在轴对齐包围盒内，包含边界。                                                     |
+| `1` / `sphere`   | `sphere: { center: [x,y,z], radius }`                                                     | 中心到球心的距离严格小于半径。                                                       |
+| `2` / `cluster`  | `cluster?: { voxelResolution, opacityCutoff, minContribution }`，默认 `1, 0.999, 0.1`     | 取从原点附近最近占用体素出发的连通区，保留中心在区内或对其有足够贡献的高斯。         |
+| `3` / `floaters` | `floaters?: { voxelResolution, opacityCutoff, minContribution }`，默认 `0.05, 0.1, 0.004` | 中心落入占用体素时直接保留，其他高斯至少要在一个占用体素中心达到 `minContribution`。 |
+
+任务名固定为 `Filter`。TypeScript 接受 `FilterMode` 枚举值、数字、全小写名称或枚举成员名称（如 `Cluster`）。原生 JSON 解析忽略模式名称大小写。Box 或 Sphere 缺少所需字段时将输入透传到输出。Cluster 和 Floaters 的配置对象与各字段都可省略。
+
+`voxelResolution` 为输入坐标单位下的体素边长，`opacityCutoff` 决定哪些体素被占用，`minContribution` 用于本次高斯贡献判断。处理器从输入及其祖先查找占用阈值相同的内存网格，优先使用边长相同的网格，其次使用最接近请求边长的更细网格。两种模式可以共享网格。命中更细的网格时，筛选按实际边长执行，占用边界或连通区可能与按请求边长重建的结果不同。读取同一组文件时，几何或透明度发生变化会重新建图。显式 Voxel 裁剪了输入范围或预过滤掉部分高斯时，完整输入会使用覆盖全部数据的网格。缓存未命中时，Filter 用当前输入自动建图。自动建图优先使用可用的 GPU。GPU 不可用或设备初始化失败时，自动切换到 CPU 建图。缓存命中后直接在 CPU 上筛选高斯。显式 Voxel 可提供碰撞清理与导航前的占用网格。只有显式 Voxel 写出碰撞文件。
+
+按默认参数依次调用 Cluster 和 Floaters 会分别建图。如果前置 Voxel 已缓存覆盖完整输入的粗筛网格和主网格，这两个 Filter 可以分别复用对应的网格。可复用的稀疏网格留在 CPU 内存中，随本次原生进程结束统一释放。多个网格的内存用量会累加。
+
+```json
+[
+    {
+        "id": "scene",
+        "type": "Filter",
+        "config": {
+            "input": "source",
+            "output": "scene",
+            "mode": "cluster",
+            "cluster": { "voxelResolution": 0.1, "opacityCutoff": 0.5 }
+        }
+    },
+    {
+        "id": "clean",
+        "type": "Filter",
+        "config": {
+            "input": "scene",
+            "output": "clean",
+            "mode": "floaters",
+            "floaters": { "voxelResolution": 0.1, "opacityCutoff": 0.5 }
+        }
+    }
+]
+```
+
 ### Select
 
 | 参数              | 类型           | 说明                                                                                         |
@@ -469,7 +511,7 @@ try {
 
 `PipelineError` 表示子进程以非零状态或信号退出；启动失败和 `AbortSignal` 取消也可能以普通 Error / AbortError 拒绝。SIGINT、SIGTERM 会转发给子进程。可使用 `resolveExecutable()` 查询原生程序路径，或通过 `SPLAT_TRANSFORM_EXECUTABLE` 指定本地可执行文件的绝对路径。安装缺少平台程序时，确认 npm optional dependencies 未被禁用。
 
-包导出运行时枚举 `ApiType` 和类型 `DeviceInfo`、`PipelineConfig`、`PipelineTask`、`TaskType`、`RunOptions`，以及 `ModifyConfig`、`SelectConfig`、`ReplaceAppendConfig`、`ExtractLodLevelConfig`、`VoxelConfig`。`PipelineTask.config` 仍为 `Record<string, unknown>`，完整参数以上文为准。
+包导出运行时枚举 `ApiType`、`FilterMode` 和类型 `DeviceInfo`、`PipelineConfig`、`PipelineTask`、`TaskType`、`RunOptions`，以及 `FilterConfig`、`ModifyConfig`、`SelectConfig`、`ReplaceAppendConfig`、`ExtractLodLevelConfig`、`VoxelConfig`。`PipelineTask.config` 仍为 `Record<string, unknown>`，完整参数以上文为准。
 
 ## 迁移与资源建议
 

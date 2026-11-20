@@ -44,14 +44,14 @@ struct GzipBlock {
 GzipBlock compress_block(std::span<const std::byte> data, std::span<const std::byte> dictionary, int32_t level, bool last) {
     ZlibStream state(true, level, -15);
     auto& stream = state.stream;
-    if (!dictionary.empty() && deflateSetDictionary(&stream, reinterpret_cast<const Bytef*>(dictionary.data()), uInt(dictionary.size())) != Z_OK) {
+    if (!dictionary.empty() && deflateSetDictionary(&stream, reinterpret_cast<const Bytef*>(dictionary.data()), static_cast<uInt>(dictionary.size())) != Z_OK) {
         throw std::runtime_error("Cannot set gzip dictionary");
     }
-    GzipBlock result { Bytes(deflateBound(&stream, uLong(data.size())) + 16), crc32_z(0, reinterpret_cast<const Bytef*>(data.data()), data.size()), data.size() };
+    GzipBlock result { Bytes(deflateBound(&stream, static_cast<uLong>(data.size())) + 16), crc32_z(0, reinterpret_cast<const Bytef*>(data.data()), data.size()), data.size() };
     stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(data.data()));
-    stream.avail_in = uInt(data.size());
+    stream.avail_in = static_cast<uInt>(data.size());
     stream.next_out = reinterpret_cast<Bytef*>(result.bytes.data());
-    stream.avail_out = uInt(result.bytes.size());
+    stream.avail_out = static_cast<uInt>(result.bytes.size());
     const int32_t status = deflate(&stream, last ? Z_FINISH : Z_SYNC_FLUSH);
     if (status != (last ? Z_STREAM_END : Z_OK) || stream.avail_in || !stream.avail_out) {
         throw std::runtime_error("Cannot compress gzip block");
@@ -64,16 +64,16 @@ Bytes parallel_gzip(std::span<const std::byte> data, int32_t level, int32_t work
     // Their concatenation is one gzip member, including one combined CRC32.
     constexpr size_t BLOCK_SIZE = 1024 * 1024;
     auto& pool = threading::default_pool();
-    Bytes output { std::byte { 0x1f }, std::byte { 0x8b }, std::byte { 8 }, std::byte {}, std::byte {}, std::byte {}, std::byte {}, std::byte {}, std::byte(level == 9 ? 2 : level == 1 ? 4
-                                                                                                                                                                                        : 0),
-        std::byte { 255 } };
+    Bytes output { std::byte { 0x1f }, std::byte { 0x8b }, std::byte { 8 },
+        std::byte {}, std::byte {}, std::byte {}, std::byte {}, std::byte {},
+        static_cast<std::byte>(level == 9 ? 2 : level == 1 ? 4 : 0), std::byte { 255 } };
     uLong checksum = 0;
     for (size_t offset = 0; offset < data.size();) {
-        threading::TaskGroup<GzipBlock> pending(pool, size_t(workers));
+        threading::TaskGroup<GzipBlock> pending(pool, static_cast<size_t>(workers));
         for (int32_t i = 0; i < workers && offset < data.size(); ++i) {
             const size_t size = std::min(BLOCK_SIZE, data.size() - offset);
             const auto block = data.subspan(offset, size);
-            const size_t dictionary_size = std::min(offset, size_t(32768));
+            const size_t dictionary_size = std::min(offset, static_cast<size_t>(32768));
             const auto dictionary = data.subspan(offset - dictionary_size, dictionary_size);
             offset += size;
             pending.submit(compress_block, block, dictionary, level, offset == data.size());
@@ -81,11 +81,11 @@ Bytes parallel_gzip(std::span<const std::byte> data, int32_t level, int32_t work
         for (size_t i = 0; i < pending.size(); ++i) {
             auto block = pending.get(i);
             output.insert(output.end(), block.bytes.begin(), block.bytes.end());
-            checksum = crc32_combine(checksum, block.checksum, z_off_t(block.size));
+            checksum = crc32_combine(checksum, block.checksum, static_cast<z_off_t>(block.size));
         }
     }
-    io::append(output, uint32_t(checksum));
-    io::append(output, uint32_t(data.size()));
+    io::append(output, static_cast<uint32_t>(checksum));
+    io::append(output, static_cast<uint32_t>(data.size()));
     return output;
 }
 ZSTD_threadPool* zstd_pool() {
@@ -128,7 +128,7 @@ Bytes process_gzip(std::span<const std::byte> input, bool encode, int32_t level)
     size_t offset = 0;
     for (;;) {
         if (!stream.avail_in && offset < input.size()) {
-            const auto count = std::min(input.size() - offset, size_t(std::numeric_limits<uInt>::max()));
+            const auto count = std::min(input.size() - offset, static_cast<size_t>(std::numeric_limits<uInt>::max()));
             stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(input.data() + offset));
             stream.avail_in = static_cast<uInt>(count);
             offset += count;
@@ -166,18 +166,18 @@ void gzip_stream(size_t size, const ReadRange& read, const WriteChunk& write, in
     constexpr size_t BLOCK_SIZE = 1024 * 1024;
     const auto workers = compression_workers(size, BLOCK_SIZE);
     if (workers > 1) {
-        const std::array<std::byte, 10> header { std::byte { 0x1f }, std::byte { 0x8b }, std::byte { 8 }, std::byte {}, std::byte {}, std::byte {}, std::byte {}, std::byte {}, std::byte(level == 9 ? 2 : level == 1 ? 4
-                                                                                                                                                                                                                      : 0),
-            std::byte { 255 } };
+        const std::array<std::byte, 10> header { std::byte { 0x1f }, std::byte { 0x8b }, std::byte { 8 },
+            std::byte {}, std::byte {}, std::byte {}, std::byte {}, std::byte {},
+            static_cast<std::byte>(level == 9 ? 2 : level == 1 ? 4 : 0), std::byte { 255 } };
         write(header);
         auto& pool = threading::default_pool();
         uLong checksum = 0;
         for (size_t offset = 0; offset < size;) {
-            threading::TaskGroup<GzipBlock> pending(pool, size_t(workers));
+            threading::TaskGroup<GzipBlock> pending(pool, static_cast<size_t>(workers));
             for (int32_t i = 0; i < workers && offset < size; ++i) {
                 const size_t count = std::min(BLOCK_SIZE, size - offset);
                 pending.submit([&, offset, count] {
-                    const size_t dictionary_size = std::min(offset, size_t(32768));
+                    const size_t dictionary_size = std::min(offset, static_cast<size_t>(32768));
                     Bytes input(dictionary_size + count);
                     read(offset - dictionary_size, input);
                     return compress_block(std::span(input).subspan(dictionary_size), std::span(input).first(dictionary_size), level, offset + count == size);
@@ -187,18 +187,18 @@ void gzip_stream(size_t size, const ReadRange& read, const WriteChunk& write, in
             for (size_t i = 0; i < pending.size(); ++i) {
                 auto block = pending.get(i);
                 write(block.bytes);
-                checksum = crc32_combine(checksum, block.checksum, z_off_t(block.size));
+                checksum = crc32_combine(checksum, block.checksum, static_cast<z_off_t>(block.size));
             }
         }
         Bytes trailer;
-        io::append(trailer, uint32_t(checksum));
-        io::append(trailer, uint32_t(size));
+        io::append(trailer, static_cast<uint32_t>(checksum));
+        io::append(trailer, static_cast<uint32_t>(size));
         write(trailer);
         return;
     }
     ZlibStream state(true, level);
     auto& stream = state.stream;
-    Bytes input(std::min(size, size_t(128 * 1024)));
+    Bytes input(std::min(size, static_cast<size_t>(128 * 1024)));
     std::array<std::byte, 128 * 1024> output;
     size_t offset = 0;
     for (;;) {
@@ -227,7 +227,7 @@ void zstd_stream(size_t size, const ReadRange& read, const WriteChunk& write, in
     if (ZSTD_isError(pledged)) {
         throw std::runtime_error(ZSTD_getErrorName(pledged));
     }
-    Bytes input(std::min(size, size_t(8 * 1024 * 1024)));
+    Bytes input(std::min(size, static_cast<size_t>(8 * 1024 * 1024)));
     Bytes output(ZSTD_CStreamOutSize());
     size_t offset = 0;
     do {

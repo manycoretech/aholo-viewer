@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstdint>
 #include <deque>
-#include <limits>
 #include <stdexcept>
 #include <utility/logger.h>
 
@@ -19,108 +18,61 @@ Grid::Grid(Eigen::Vector3i dimensions) : size(dimensions) {
     if (block_count() > 0x7fffffff) {
         throw std::runtime_error("Voxel grid exceeds the 31-bit block limit");
     }
+    masks = Storage(blocks);
 }
-uint32_t Grid::block_index(Eigen::Vector3i p) const { return p[0] + p[1] * blocks[0] + uint64_t(p[2]) * blocks[0] * blocks[1]; }
-Eigen::Vector3i Grid::block_point(uint32_t index) const { return { int32_t(index % blocks[0]), int32_t((index / blocks[0]) % blocks[1]), int32_t(index / (uint64_t(blocks[0]) * blocks[1])) }; }
-uint64_t Grid::block_count() const { return uint64_t(blocks[0]) * blocks[1] * blocks[2]; }
-bool Grid::contains(Eigen::Vector3i p) const { return p[0] >= 0 && p[1] >= 0 && p[2] >= 0 && p[0] < size[0] && p[1] < size[1] && p[2] < size[2]; }
-uint64_t Grid::mask(uint32_t index) const {
-    const auto found = masks.find(index);
-    return found == masks.end() ? default_mask : found->second;
+uint32_t Grid::block_index(Eigen::Vector3i p) const { return p[0] + p[1] * blocks[0] + static_cast<uint64_t>(p[2]) * blocks[0] * blocks[1]; }
+Eigen::Vector3i Grid::block_point(uint32_t index) const {
+    return { static_cast<int32_t>(index % blocks[0]),
+        static_cast<int32_t>((index / blocks[0]) % blocks[1]),
+        static_cast<int32_t>(index / (static_cast<uint64_t>(blocks[0]) * blocks[1])) };
 }
-void Grid::set_mask(uint32_t index, uint64_t value) {
-    if (value == default_mask) {
-        masks.erase(index);
-    } else {
-        masks[index] = value;
+uint64_t Grid::block_count() const { return static_cast<uint64_t>(blocks[0]) * blocks[1] * blocks[2]; }
+uint64_t Grid::mask(uint32_t index) const { return masks.get(block_point(index)); }
+void Grid::set_mask(uint32_t index, uint64_t value) { masks.set(block_point(index), value); }
+void Grid::or_mask(Eigen::Vector3i block, uint64_t value) {
+    if (value) {
+        masks.set(block, masks.get(block) | value);
     }
-}
-void Grid::or_mask(uint32_t index, uint64_t value) { set_mask(index, mask(index) | value); }
-bool Grid::get(Eigen::Vector3i p) const {
-    if (!contains(p)) {
-        return false;
-    }
-    return (mask(block_index({ p[0] / 4, p[1] / 4, p[2] / 4 })) >> ((p[0] & 3) + 4 * (p[1] & 3) + 16 * (p[2] & 3))) & 1;
 }
 void Grid::set(Eigen::Vector3i p) {
     if (contains(p)) {
-        or_mask(block_index({ p[0] / 4, p[1] / 4, p[2] / 4 }), uint64_t { 1 } << ((p[0] & 3) + 4 * (p[1] & 3) + 16 * (p[2] & 3)));
+        or_mask(p / 4, uint64_t { 1 } << ((p.x() & 3) + 4 * (p.y() & 3) + 16 * (p.z() & 3)));
     }
 }
 Grid Grid::inverted() const {
     Grid output = *this;
-    output.default_mask = ~default_mask;
-    for (auto& [index, bits] : output.masks) {
-        bits = ~bits;
-    }
+    output.masks.invert();
     return output;
 }
 Grid Grid::crop(Eigen::Vector3i minimum, Eigen::Vector3i maximum, bool invert) const {
-    Grid output({ (maximum[0] - minimum[0]) * 4, (maximum[1] - minimum[1]) * 4, (maximum[2] - minimum[2]) * 4 });
-    output.default_mask = invert ? ~default_mask : default_mask;
-    for (auto [index, bits] : masks) {
-        auto p = block_point(index);
-        bool inside = true;
-        for (size_t a = 0; a < 3; ++a) {
-            inside &= p[a] >= minimum[a] && p[a] < maximum[a];
-            p[a] -= minimum[a];
-        }
-        if (inside) {
-            output.set_mask(output.block_index(p), invert ? ~bits : bits);
-        }
+    Grid output((maximum - minimum) * 4);
+    if (invert != (masks.background() != 0)) {
+        output.masks.invert();
     }
+    masks.for_each_block(masks.background(), [&](Eigen::Vector3i p, uint64_t bits) {
+        if ((p.array() >= minimum.array()).all() && (p.array() < maximum.array()).all()) {
+            output.masks.set(p - minimum, invert ? ~bits : bits);
+        }
+    });
     return output;
 }
 std::optional<std::array<Eigen::Vector3i, 2>> Grid::extent(bool navigable) const {
     Eigen::Vector3i minimum = blocks, maximum { -1, -1, -1 };
-    auto visit = [&](uint32_t index, uint64_t bits) {
-        if (!(navigable ? bits != FULL_BLOCK : bits != 0)) {
-            return;
-        }
-        const auto p = block_point(index);
-        for (size_t a = 0; a < 3; ++a) {
-            minimum[a] = std::min(minimum[a], p[a]);
-            maximum[a] = std::max(maximum[a], p[a]);
-        }
-    };
-    if (navigable ? default_mask != FULL_BLOCK : default_mask != 0) {
-        for (uint32_t index = 0; index < block_count(); ++index) {
-            visit(index, mask(index));
-        }
-    } else {
-        for (auto [index, bits] : masks) {
-            visit(index, bits);
-        }
-    }
-    if (maximum[0] < 0) {
+    masks.for_each_block(navigable ? FULL_BLOCK : 0, [&](Eigen::Vector3i p, uint64_t) {
+        minimum = minimum.cwiseMin(p);
+        maximum = maximum.cwiseMax(p);
+    });
+    if (maximum.x() < 0) {
         return std::nullopt;
     }
     return std::array<Eigen::Vector3i, 2> { minimum, maximum };
 }
-uint64_t Grid::voxel_count() const {
-    int64_t total = int64_t(block_count()) * std::popcount(default_mask);
-    for (auto [index, bits] : masks) {
-        total += std::popcount(bits) - std::popcount(default_mask);
-    }
-    return static_cast<uint64_t>(total);
-}
+uint64_t Grid::voxel_count() const { return masks.voxel_count(); }
 std::vector<uint32_t> Grid::active_blocks() const {
     std::vector<uint32_t> output;
-    if (default_mask) {
-        for (uint32_t index = 0; index < block_count(); ++index) {
-            if (mask(index)) {
-                output.push_back(index);
-            }
-        }
-    } else {
-        output.reserve(masks.size());
-        for (auto [index, bits] : masks) {
-            if (bits) {
-                output.push_back(index);
-            }
-        }
-        std::sort(output.begin(), output.end());
-    }
+    output.reserve(masks.occupied_blocks());
+    masks.for_each_block(0, [&](Eigen::Vector3i p, uint64_t) { output.push_back(block_index(p)); });
+    std::sort(output.begin(), output.end());
     return output;
 }
 Grid unite(const Grid& left, const Grid& right) {
@@ -128,13 +80,15 @@ Grid unite(const Grid& left, const Grid& right) {
         throw std::runtime_error("Voxel grid dimensions do not match");
     }
     Grid output(left.size);
-    output.default_mask = left.default_mask | right.default_mask;
-    for (auto [index, bits] : left.masks) {
-        output.set_mask(index, bits | right.mask(index));
+    if (left.masks.background() || right.masks.background()) {
+        output.masks.invert();
     }
-    for (auto [index, bits] : right.masks) {
-        output.set_mask(index, bits | left.mask(index));
-    }
+    left.masks.for_each_block(left.masks.background(), [&](Eigen::Vector3i p, uint64_t bits) {
+        output.masks.set(p, bits | right.masks.get(p));
+    });
+    right.masks.for_each_block(right.masks.background(), [&](Eigen::Vector3i p, uint64_t bits) {
+        output.masks.set(p, bits | left.masks.get(p));
+    });
     return output;
 }
 Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool boundary) {
@@ -147,7 +101,7 @@ Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool 
             }
         }
         const auto index = allowed.block_index(p);
-        bits &= allowed.mask(index) & ~visited.mask(index);
+        bits &= allowed.masks.get(p) & ~visited.masks.get(p);
         if (bits) {
             queue.emplace_back(index, bits);
         }
@@ -175,7 +129,8 @@ Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool 
     while (!queue.empty()) {
         auto [index, incoming] = queue.front();
         queue.pop_front();
-        const uint64_t old = visited.mask(index), permitted = allowed.mask(index);
+        const auto p = allowed.block_point(index);
+        const uint64_t old = visited.masks.get(p), permitted = allowed.masks.get(p);
         if (!(incoming & permitted & ~old)) {
             continue;
         }
@@ -192,8 +147,7 @@ Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool 
             }
             reached = expanded;
         }
-        visited.set_mask(index, reached);
-        const auto p = allowed.block_point(index);
+        visited.masks.set(p, reached);
         const uint64_t added = reached & ~old;
         for (int32_t axis = 0; axis < 3; ++axis) {
             auto neighbor = p;
@@ -231,12 +185,10 @@ Grid filter_blocks(const Grid& grid) {
     constexpr std::array<uint64_t, 3> HIGH_FACE { face_mask(0, 3), face_mask(1, 3), face_mask(2, 3) };
     Grid output = grid;
     uint64_t removed = 0, filled = 0;
-    for (auto index : grid.active_blocks()) {
-        const uint64_t bits = grid.mask(index);
+    grid.masks.for_each_block(0, [&](Eigen::Vector3i block, uint64_t bits) {
         if (bits == FULL_BLOCK) {
-            continue;
+            return;
         }
-        const auto block = grid.block_point(index);
         uint64_t any_neighbor = 0, all_neighbors = FULL_BLOCK;
         for (int32_t axis = 0; axis < 3; ++axis) {
             const int32_t stride = BIT_STRIDES[axis];
@@ -247,21 +199,21 @@ Grid filter_blocks(const Grid& grid) {
             auto adjacent = block;
             if (block[axis] + 1 < grid.blocks[axis]) {
                 ++adjacent[axis];
-                plus |= (grid.mask(grid.block_index(adjacent)) & LOW_FACE[axis]) << (3 * stride);
+                plus |= (grid.masks.get(adjacent) & LOW_FACE[axis]) << (3 * stride);
             }
             if (block[axis] > 0) {
                 adjacent = block;
                 --adjacent[axis];
-                minus |= (grid.mask(grid.block_index(adjacent)) & HIGH_FACE[axis]) >> (3 * stride);
+                minus |= (grid.masks.get(adjacent) & HIGH_FACE[axis]) >> (3 * stride);
             }
             any_neighbor |= plus | minus;
             all_neighbors &= plus & minus;
         }
         const uint64_t filtered = (bits & any_neighbor) | all_neighbors;
-        output.set_mask(index, filtered);
+        output.masks.set(block, filtered);
         removed += std::popcount(bits & ~filtered);
         filled += std::popcount(filtered & ~bits);
-    }
+    });
     utility::logger().info("voxel filter: ", removed, " voxels removed, ", filled, " voxels filled");
     return output;
 }
@@ -284,13 +236,13 @@ void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const N
     auto seed_cell = [&] {
         Eigen::Vector3i p = Eigen::Vector3i::Zero();
         for (int32_t a = 0; a < 3; ++a) {
-            p[a] = int32_t(std::floor(((*options.seed)[a] - bounds.min()[a]) / resolution));
+            p[a] = static_cast<int32_t>(std::floor(((*options.seed)[a] - bounds.min()[a]) / resolution));
         }
         return p;
     };
     if (options.exterior_radius != 0 && options.seed) {
         auto elapsed = logger.time("Fill exterior");
-        const int32_t radius = int32_t(std::ceil(options.exterior_radius / resolution));
+        const int32_t radius = static_cast<int32_t>(std::ceil(options.exterior_radius / resolution));
         const auto seed = seed_cell();
         const auto blocked = backend.dilate(grid, { radius, radius, radius });
         auto outside = flood(blocked.inverted(), {}, true);
@@ -303,7 +255,7 @@ void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const N
     }
     if (options.floor_fill) {
         auto elapsed = logger.time("Fill floor");
-        const int32_t radius = int32_t(std::ceil(options.floor_dilation / resolution));
+        const int32_t radius = static_cast<int32_t>(std::ceil(options.floor_dilation / resolution));
         auto blocked = backend.dilate(grid, { radius, 0, radius });
         Grid found(grid.size);
         for (int32_t z = 0; z < grid.size[2]; ++z) {
@@ -317,7 +269,7 @@ void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const N
     }
     if (options.capsule_height > 0 && options.seed) {
         auto elapsed = logger.time("Carve nav");
-        const int32_t rx = int32_t(std::ceil(options.capsule_radius / resolution)), ry = int32_t(std::ceil(options.capsule_height * 0.5f / resolution));
+        const int32_t rx = static_cast<int32_t>(std::ceil(options.capsule_radius / resolution)), ry = static_cast<int32_t>(std::ceil(options.capsule_height * 0.5f / resolution));
         if (options.capsule_radius < 0) {
             throw std::runtime_error("navCapsule.radius must be nonnegative");
         }

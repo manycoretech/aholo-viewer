@@ -14,7 +14,7 @@ inline float signed_log(float value) { return std::copysign(std::log1p(std::abs(
 inline float signed_exp(float value) { return std::copysign(std::expm1(std::abs(value)), value); }
 inline std::byte quantize_byte(float value) { return static_cast<std::byte>(std::clamp(std::floor(value + 0.5f), 0.0f, 255.0f)); }
 inline std::array<uint32_t, 2> texture_size(size_t count) {
-    auto width = std::max(4u, static_cast<uint32_t>(std::ceil(std::sqrt(float(count)) / 4) * 4));
+    auto width = std::max(4u, static_cast<uint32_t>(std::ceil(std::sqrt(static_cast<float>(count)) / 4) * 4));
     const auto rows = (count + width - 1) / width;
     auto height = std::max(4u, static_cast<uint32_t>((rows + 3) / 4 * 4));
     return { width, height };
@@ -107,9 +107,9 @@ inline uint32_t encode_oct_quaternion(const Eigen::Quaternionf& quaternion) {
         u = (1 - std::abs(v)) * (u >= 0 ? 1 : -1);
         v = (1 - std::abs(previous)) * (v >= 0 ? 1 : -1);
     }
-    return uint32_t(std::clamp((u * 0.5f + 0.5f) * 1023, 0.0f, 1023.0f)) |
-           (uint32_t(std::clamp((v * 0.5f + 0.5f) * 1023, 0.0f, 1023.0f)) << 10) |
-           (uint32_t(std::clamp(angle * 4095, 0.0f, 4095.0f)) << 20);
+    return static_cast<uint32_t>(std::clamp((u * 0.5f + 0.5f) * 1023, 0.0f, 1023.0f)) |
+           (static_cast<uint32_t>(std::clamp((v * 0.5f + 0.5f) * 1023, 0.0f, 1023.0f)) << 10) |
+           (static_cast<uint32_t>(std::clamp(angle * 4095, 0.0f, 4095.0f)) << 20);
 }
 inline Eigen::Quaternionf decode_oct_quaternion(uint32_t value) {
     float x = (value & 1023) / 1023.0f * 2 - 1;

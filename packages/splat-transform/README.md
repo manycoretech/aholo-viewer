@@ -49,7 +49,7 @@ Both the npm CLI and the native executable accept a pipeline file or a single da
 }
 ```
 
-Supported tasks are Read, Write, Modify, Select, ReplaceAppend, ExtractLodLevel, SkeletonLod, FlexLod, AutoLod, AutoChunkLod, Split, and Voxel. JavaScript and TypeScript use `Split`; the native C++ pipeline loader also accepts the legacy name `SplitSplatTask`. Version 1 pipeline structure remains supported; see the task reference for current fields and defaults. GPU enumeration uses the native executable's standalone `--list-gpu` command through `enumerateAdapters()` and does not enter the pipeline. Task logs keep the 1.x prefixes, counts, LOD summaries, file progress, and timing labels. Information, progress, and timing logs go to stdout; warnings and errors go to stderr.
+Supported tasks are Read, Write, Modify, Filter, Select, ReplaceAppend, ExtractLodLevel, SkeletonLod, FlexLod, AutoLod, AutoChunkLod, Split, and Voxel. JavaScript and TypeScript use `Split`; the native C++ pipeline loader also accepts the legacy name `SplitSplatTask`. Version 1 pipeline structure remains supported; see the task reference for current fields and defaults. GPU enumeration uses the native executable's standalone `--list-gpu` command through `enumerateAdapters()` and does not enter the pipeline. Task logs keep the 1.x prefixes, counts, LOD summaries, file progress, and timing labels. Information, progress, and timing logs go to stdout; warnings and errors go to stderr.
 
 Tasks run sequentially. Top-level `gpu` defaults to device index `0`. Task `input` and processing `output` fields are in-memory resource keys; `Write.output` and `Voxel.output` are filesystem destinations. Task-level `release: string[]` removes resource keys after the task succeeds, so release shared resources only after their final consumer. Failures stop subsequent tasks without rolling back completed output.
 
@@ -92,7 +92,7 @@ const vulkan = adapters.filter(adapter => adapter.api === ApiType.Vulkan);
 
 Version 2 removes injectCustomTask, SplatData and other in-memory processing APIs, and deep module imports. Pipeline data stays inside the native process. CLI commands and version 1 pipeline files remain the supported processing interface.
 
-The package exports the runtime `ApiType` enum and `DeviceInfo` type, plus `ModifyConfig`, `SelectConfig`, `ReplaceAppendConfig`, `ExtractLodLevelConfig`, and `VoxelConfig` for typed task construction, alongside `PipelineConfig`, `PipelineTask`, `TaskType`, and `RunOptions`. `PipelineTask.config` remains `Record<string, unknown>`; the manual lists complete task parameters and cancellation examples.
+The package exports the runtime `ApiType` and `FilterMode` enums and `DeviceInfo` type, plus `FilterConfig`, `ModifyConfig`, `SelectConfig`, `ReplaceAppendConfig`, `ExtractLodLevelConfig`, and `VoxelConfig` for typed task construction, alongside `PipelineConfig`, `PipelineTask`, `TaskType`, and `RunOptions`. `PipelineTask.config` remains `Record<string, unknown>`; the manual lists complete task parameters and cancellation examples.
 
 ## Native builds
 

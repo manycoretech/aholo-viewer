@@ -88,7 +88,7 @@ void compressed_windows() {
             io::StreamReader source(bytes, 17);
             auto decoded = gzip ? io::gzip_reader(source) : io::zstd_reader(source, bounded ? encoded.size() : std::numeric_limits<size_t>::max());
             for (size_t offset = 0; offset < expected.size();) {
-                const size_t count = std::min(size_t(131071), expected.size() - offset);
+                const size_t count = std::min(static_cast<size_t>(131071), expected.size() - offset);
                 const auto part = decoded.take(count);
                 require(std::equal(part.begin(), part.end(), expected.begin() + offset), "Stream decompression changed bytes");
                 offset += count;
@@ -119,9 +119,9 @@ void compressed_writes() {
     uint32_t random = 37;
     for (size_t i = 0; i < expected.size(); ++i) {
         random = random * 1664525 + 1013904223;
-        expected[i] = i % 8 < 3 ? std::byte(random >> 24) : std::byte(i / 1024);
+        expected[i] = i % 8 < 3 ? static_cast<std::byte>(random >> 24) : static_cast<std::byte>(i / 1024);
     }
-    for (size_t size : { size_t(0), size_t(131075), size_t(2 * 1024 * 1024 - 1), expected.size() }) {
+    for (size_t size : { static_cast<size_t>(0), static_cast<size_t>(131075), static_cast<size_t>(2 * 1024 * 1024 - 1), expected.size() }) {
         for (int32_t level : { 1, 6 }) {
             for (bool gzip : { false, true }) {
                 const auto input = std::span(expected).first(size);
@@ -148,18 +148,18 @@ void spz_shapes(const std::filesystem::path& directory) {
         splat::Splat source(97, degree);
         for (size_t i = 0; i < source.size(); ++i) {
             auto& p = source.gaussians[i];
-            p.mean = Eigen::Vector3f(float(i) / 13, -float(i) / 17, float(i) / 19);
+            p.mean = Eigen::Vector3f(static_cast<float>(i) / 13, -static_cast<float>(i) / 17, static_cast<float>(i) / 19);
             p.scale = Eigen::Vector3f(0.3f, 0.7f, 1.1f);
             p.rotation = Eigen::Quaternionf(0.2f, -0.8f, 0.4f, -0.1f).normalized();
-            p.opacity = float(i) / 96;
+            p.opacity = static_cast<float>(i) / 96;
             for (size_t c = 0; c < p.sh.size(); ++c) {
-                p.sh[c] = float(int32_t((i + c) % 23) - 11) / 16;
+                p.sh[c] = static_cast<float>(static_cast<int32_t>((i + c) % 23) - 11) / 16;
             }
         }
-        for (size_t count : { size_t(0), size_t(1), source.size() }) {
+        for (size_t count : { static_cast<size_t>(0), static_cast<size_t>(1), source.size() }) {
             std::vector<uint32_t> indices(count);
             for (size_t i = 0; i < count; ++i) {
-                indices[i] = uint32_t((source.size() - 1 - i) / 2);
+                indices[i] = static_cast<uint32_t>((source.size() - 1 - i) / 2);
             }
             const auto raw = io::SpzFile(3, -1).write(source, indices);
             const auto expected = io::SpzFile().read({ "expected.uspz", raw, degree });
@@ -177,12 +177,12 @@ void format_streams(const std::filesystem::path& directory) {
     splat::Splat source(300001, 3);
     for (size_t i = 0; i < source.size(); ++i) {
         auto& p = source.gaussians[i];
-        p.mean = Eigen::Vector3f(float(i % 97) / 8, float(i % 113) / 8, float(i % 127) / 8);
+        p.mean = Eigen::Vector3f(static_cast<float>(i % 97) / 8, static_cast<float>(i % 113) / 8, static_cast<float>(i % 127) / 8);
         p.scale = Eigen::Vector3f(0.5f, 0.25f, 1.0f);
         p.rotation = Eigen::Quaternionf::Identity();
-        p.opacity = float(i % 255) / 255;
+        p.opacity = static_cast<float>(i % 255) / 255;
         for (size_t c = 0; c < p.sh.size(); ++c) {
-            p.sh[c] = float(int32_t((i * 7 + c * 3) % 97) - 48) / 128;
+            p.sh[c] = static_cast<float>(static_cast<int32_t>((i * 7 + c * 3) % 97) - 48) / 128;
         }
     }
     std::vector<uint32_t> indices(source.size());

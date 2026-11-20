@@ -59,6 +59,94 @@ void write_gpu_requirements() {
     context.set({ { "output", "bundle" } }, std::vector<pipeline::SingleFile> { { "data.esz", source }, { "data.SOG", source } });
     require(task.requires_gpu(config, context), "GPU query missed a SOG entry in a mixed bundle");
 }
+static_assert(voxel::ValidBrickSize<4> && voxel::ValidBrickSize<12> && voxel::ValidBrickSize<32>);
+static_assert(!voxel::ValidBrickSize<0> && !voxel::ValidBrickSize<6>);
+template<uint32_t Side> requires voxel::ValidBrickSize<Side>
+void brick_size_contract() {
+    using Map = voxel::BrickMap<Side>;
+    constexpr int32_t edge = Map::block_side;
+    const Eigen::Vector3i dims = Eigen::Vector3i::Constant(edge + 1);
+    Map map(dims);
+    std::array<typename Map::Masks, 8> source;
+    for (size_t i = 0; i < source.size(); ++i) {
+        for (size_t j = 0; j < source[i].size(); ++j) {
+            source[i][j] = i == 7 ? voxel::FULL_BLOCK : uint64_t { 1 } << ((i + j) % 64);
+        }
+    }
+    map.assign_bricks(source.size(), [](size_t i) { return static_cast<uint32_t>(i); },
+        [&](size_t i) -> const typename Map::Masks& { return source[i]; });
+    uint64_t voxels = 0;
+    size_t visited = 0;
+    map.for_each_block(0, [&](Eigen::Vector3i p, uint64_t bits) {
+        require((p.array() >= 0).all() && (p.array() < dims.array()).all(), "Brick traversal visited padding");
+        const auto id = p.x() / edge + 2 * (p.y() / edge + 2 * (p.z() / edge));
+        const auto local = p.x() % edge + edge * (p.y() % edge + edge * (p.z() % edge));
+        require(bits == source[id][local] && map.get(p) == bits, "Brick size changed traversal or addressing");
+        voxels += std::popcount(bits);
+        ++visited;
+    });
+    require(visited == static_cast<size_t>(dims.prod()) && map.occupied_blocks() == visited && map.voxel_count() == voxels, "Brick size changed valid counts");
+    map.invert();
+    map.set(dims - Eigen::Vector3i::Ones(), 5);
+    require(map.voxel_count() == visited * 64 - voxels + 2, "Updating an inverse edge brick changed other voxels");
+}
+void brick_storage() {
+    brick_size_contract<4>();
+    brick_size_contract<8>();
+    brick_size_contract<12>();
+    brick_size_contract<32>();
+    voxel::Grid grid({ 20, 20, 20 });
+    const std::array<uint32_t, 8> ids { 5, 0, 2, 7, 4, 1, 3, 6 };
+    std::array<voxel::Grid::Storage::Masks, 8> bricks;
+    for (size_t i = 0; i < bricks.size(); ++i) {
+        for (uint32_t j = 0; j < 64; ++j) {
+            bricks[i][j] = uint64_t { 1 } << j;
+        }
+    }
+    // The last brick has just one valid block. Its padding must not affect
+    // uniform compression, traversal, or counting.
+    bricks[7][0] = voxel::FULL_BLOCK;
+    grid.masks.assign_bricks(ids.size(), [&](size_t i) { return ids[i]; },
+        [&](size_t i) -> const voxel::Grid::Storage::Masks& { return bricks[ids[i]]; });
+    std::array<uint64_t, 125> expected;
+    for (uint32_t i = 0; i < expected.size(); ++i) {
+        const auto p = grid.block_point(i);
+        const auto brick = p.x() / 4 + 2 * (p.y() / 4) + 4 * (p.z() / 4);
+        expected[i] = bricks[brick][(p.x() % 4) + 4 * (p.y() % 4) + 16 * (p.z() % 4)];
+    }
+    const auto check = [&](const voxel::Grid& actual, uint64_t flip) {
+        uint64_t voxels = 0;
+        std::vector<uint32_t> active;
+        for (uint32_t i = 0; i < expected.size(); ++i) {
+            const auto bits = expected[i] ^ flip;
+            require(actual.mask(i) == bits, "Brick directory returned the wrong pool slot");
+            voxels += std::popcount(bits);
+            if (bits) {
+                active.push_back(i);
+            }
+        }
+        require(actual.active_blocks() == active && actual.voxel_count() == voxels, "Partial brick traversal or ordering differs");
+    };
+    check(grid, 0);
+    for (uint32_t i = 0; i < expected.size(); ++i) {
+        const auto p = grid.block_point(i);
+        if (p.y() < 4 && p.z() < 4) {
+            expected[i] = p.x() < 4 ? 0 : voxel::FULL_BLOCK;
+            grid.set_mask(i, expected[i]);
+        }
+    }
+    check(grid, 0);
+    auto inverse = grid.inverted();
+    check(inverse, voxel::FULL_BLOCK);
+    inverse.masks.set({ 4, 4, 4 }, 13);
+    require(grid.masks.get({ 4, 4, 4 }) == voxel::FULL_BLOCK, "Mutating an inverted copy changed its source");
+    const auto crop = inverse.crop({ 1, 1, 1 }, { 5, 5, 5 }, true);
+    for (uint32_t i = 0; i < crop.block_count(); ++i) {
+        require(crop.mask(i) == ~inverse.masks.get(crop.block_point(i) + Eigen::Vector3i::Ones()), "Unaligned inverted brick crop differs");
+    }
+    const auto solid = voxel::unite(grid, grid.inverted());
+    require(solid.voxel_count() == expected.size() * 64 && solid.inverted().masks.empty(), "Uniform edge brick union differs");
+}
 void filter_neighborhoods() {
     std::mt19937_64 random(0x8193);
     for (const Eigen::Vector3i dimensions : { Eigen::Vector3i { 4, 4, 4 }, Eigen::Vector3i { 8, 12, 16 }, Eigen::Vector3i { 12, 8, 4 } }) {
@@ -116,18 +204,19 @@ int main() {
         }
     } cleanup { directory };
     try {
+        brick_storage();
         filter_neighborhoods();
         splat::Splat points(16, 3);
         for (size_t i = 0; i < points.size(); ++i) {
             for (size_t a = 0; a < 3; ++a) {
-                points.gaussians[i].attribute(a) = float(std::sin((i + 1) * (a + 1)));
+                points.gaussians[i].attribute(a) = static_cast<float>(std::sin((i + 1) * (a + 1)));
                 points.gaussians[i].attribute(splat::ScaleX + a) = 0.125f;
-                points.gaussians[i].attribute(splat::Red + a) = float((i + a) % 8) / 8;
+                points.gaussians[i].attribute(splat::Red + a) = static_cast<float>((i + a) % 8) / 8;
             }
             points.gaussians[i].attribute(splat::Alpha) = 0.75f;
             points.gaussians[i].attribute(splat::QuatW) = 1;
             for (size_t c = 0; c < points.sh_count(); ++c) {
-                points.gaussians[i].attribute(splat::ShOffset + c) = float(std::sin(i + c) * 0.1);
+                points.gaussians[i].attribute(splat::ShOffset + c) = static_cast<float>(std::sin(i + c) * 0.1);
             }
         }
         write_gpu_requirements();
@@ -187,7 +276,7 @@ int main() {
         }
         io::Bytes scores;
         for (size_t i = 0; i < points.size(); ++i) {
-            io::append(scores, float(i));
+            io::append(scores, static_cast<float>(i));
         }
         io::write_bytes(directory / "scores.bin", scores);
         const auto path = [&](const char* name) { return (directory / name).generic_string(); };

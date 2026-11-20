@@ -26,7 +26,7 @@ ThreadPool& default_pool() {
 
 ThreadPool::ThreadPool(size_t thread_count)
     : state_(std::make_unique<State>()) {
-    thread_count = std::max(thread_count, size_t(1));
+    thread_count = std::max(thread_count, static_cast<size_t>(1));
     state_->workers.reserve(thread_count);
     for (size_t i = 0; i < thread_count; ++i) {
         state_->workers.emplace_back(worker_loop, state_.get());

@@ -90,7 +90,7 @@ Bytes Resources::read(const std::string& name) const {
             }
             return 0;
         }();
-        (void)initialized;
+        static_cast<void>(initialized);
         auto handle = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>(curl_easy_init(), curl_easy_cleanup);
         if (!handle) {
             throw std::bad_alloc();

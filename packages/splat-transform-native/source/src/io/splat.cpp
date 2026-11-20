@@ -20,7 +20,7 @@ splat::Splat read_splat_stream(StreamReader& input) {
                 result.gaussians[i].attribute(c == 3 ? splat::Alpha : splat::Red + c) = static_cast<float>(reader.read<uint8_t>() / 255.0f);
             }
             for (size_t c = 0; c < 4; ++c) {
-                result.gaussians[i].attribute(c == 0 ? splat::QuatW : splat::QuatX + c - 1) = (int32_t(reader.read<uint8_t>()) - 128) / 128.0f;
+                result.gaussians[i].attribute(c == 0 ? splat::QuatW : splat::QuatX + c - 1) = (static_cast<int32_t>(reader.read<uint8_t>()) - 128) / 128.0f;
             }
             result.gaussians[i].rotation.normalize();
         }
@@ -44,7 +44,7 @@ Bytes SplatFile::write(const splat::Splat& data, std::span<const uint32_t> indic
             append(output, data.gaussians[index].attribute(c));
         }
         for (size_t c = 0; c < 4; ++c) {
-            output.push_back(static_cast<std::byte>(std::clamp(std::floor(float(data.gaussians[index].attribute(c == 3 ? splat::Alpha : splat::Red + c)) * 255 + 0.5f), 0.0f, 255.0f)));
+            output.push_back(static_cast<std::byte>(std::clamp(std::floor(static_cast<float>(data.gaussians[index].attribute(c == 3 ? splat::Alpha : splat::Red + c)) * 255 + 0.5f), 0.0f, 255.0f)));
         }
         const float sign = data.gaussians[index].rotation.w() < 0 ? -1 : 1;
         for (size_t c = 0; c < 4; ++c) {

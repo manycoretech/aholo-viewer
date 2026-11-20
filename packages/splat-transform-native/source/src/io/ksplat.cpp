@@ -24,14 +24,14 @@ splat::Splat KsplatFile::read(const FileInput& source) const {
     }
     uint32_t degree = 0;
     for (size_t s = 0; s < section_count; ++s) {
-        degree = std::max(degree, uint32_t(input.read_at<uint16_t>(4096 + s * 1024 + 40)));
+        degree = std::max(degree, static_cast<uint32_t>(input.read_at<uint16_t>(4096 + s * 1024 + 40)));
     }
     splat::Splat result(count, source.retained_degree(degree));
     constexpr std::array<size_t, 45> SH_INDEX {
         0, 3, 6, 1, 4, 7, 2, 5, 8, 9, 14, 19, 10, 15, 20, 11, 16, 21, 12, 17, 22, 13, 18, 23,
         24, 31, 38, 25, 32, 39, 26, 33, 40, 27, 34, 41, 28, 35, 42, 29, 36, 43, 30, 37, 44
     };
-    size_t section_base = 4096 + size_t(section_count) * 1024;
+    size_t section_base = 4096 + static_cast<size_t>(section_count) * 1024;
     size_t output = 0;
     for (size_t s = 0; s < section_count; ++s) {
         const ByteReader header(bytes.subspan(4096 + s * 1024));
@@ -49,22 +49,22 @@ splat::Splat KsplatFile::read(const FileInput& source) const {
         const size_t sh_bytes = compression == 0 ? 4 : compression == 1 ? 2
                                                                         : 1;
         const size_t stride = scalar_bytes * 10 + 4 + sh_count * sh_bytes;
-        const size_t bucket_base = section_base + size_t(partial_count) * 4;
-        const size_t data_base = bucket_base + size_t(bucket_storage) * bucket_count;
-        size_t partial = full_count, partial_start = size_t(full_count) * bucket_size;
+        const size_t bucket_base = section_base + static_cast<size_t>(partial_count) * 4;
+        const size_t data_base = bucket_base + static_cast<size_t>(bucket_storage) * bucket_count;
+        size_t partial = full_count, partial_start = static_cast<size_t>(full_count) * bucket_size;
         for (size_t i = 0; i < n; ++i, ++output) {
             if (output >= count) {
                 throw std::runtime_error("KSPLAT count mismatch");
             }
             size_t bucket = 0;
             if (compression) {
-                if (i < size_t(full_count) * bucket_size) {
+                if (i < static_cast<size_t>(full_count) * bucket_size) {
                     if (!bucket_size) {
                         throw std::runtime_error("Invalid KSPLAT bucket size");
                     }
                     bucket = i / bucket_size;
                 } else {
-                    while (partial < size_t(full_count) + partial_count) {
+                    while (partial < static_cast<size_t>(full_count) + partial_count) {
                         auto length = input.read_at<uint32_t>(section_base + (partial - full_count) * 4);
                         if (i < partial_start + length) {
                             break;
@@ -84,7 +84,10 @@ splat::Splat KsplatFile::read(const FileInput& source) const {
             }
             ByteReader reader(bytes.subspan(record_offset, stride));
             for (size_t axis = 0; axis < 3; ++axis) {
-                result.gaussians[output].attribute(axis) = compression == 0 ? reader.read<float>() : static_cast<float>((float(reader.read<uint16_t>()) - range) * block_size / 2 / range + input.read_at<float>(bucket_base + (bucket * 3 + axis) * 4));
+                result.gaussians[output].attribute(axis) = compression == 0
+                    ? reader.read<float>()
+                    : static_cast<float>((static_cast<float>(reader.read<uint16_t>()) - range) * block_size / 2 / range +
+                          input.read_at<float>(bucket_base + (bucket * 3 + axis) * 4));
             }
             for (size_t axis = 0; axis < 3; ++axis) {
                 result.gaussians[output].attribute(splat::ScaleX + axis) = compression == 0 ? reader.read<float>() : from_half(reader.read<uint16_t>());

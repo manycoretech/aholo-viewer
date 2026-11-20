@@ -8,6 +8,7 @@
 #include <ranges>
 #include <splat/splat.h>
 #include <stdexcept>
+#include <utility/parallel.h>
 #include <utility>
 
 namespace splat_transform::splat {
@@ -185,10 +186,12 @@ void Splat::limit_sh_degree(uint32_t maximum) {
 Splat Splat::select(std::span<const uint32_t> indices) const& {
     Splat output;
     output.sh_degree = sh_degree;
-    output.gaussians.reserve(indices.size());
-    for (auto index : indices) {
-        output.gaussians.push_back(gaussians.at(index));
-    }
+    output.gaussians.resize(indices.size());
+    threading::parallel_chunks(indices.size(), 4096, [&](size_t begin, size_t end) {
+        for (auto i = begin; i < end; ++i) {
+            output.gaussians[i] = gaussians.at(indices[i]);
+        }
+    });
     return output;
 }
 

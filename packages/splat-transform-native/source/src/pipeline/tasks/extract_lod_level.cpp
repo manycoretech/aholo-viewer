@@ -1,4 +1,5 @@
 #include "../data_support.h"
+#include <limits>
 #include <pipeline/tasks/extract_lod_level.h>
 #include <unordered_map>
 #include <utility/logger.h>
@@ -70,7 +71,7 @@ void ExtractLodLevelTask::exec(const io::Json& config, TaskContext& context) con
         if (offset > data->size() || count > data->size() - offset) {
             throw std::runtime_error("ExtractLodLevel interval exceeds chunk size");
         }
-        if (count > UINT32_MAX - total) {
+        if (count > std::numeric_limits<uint32_t>::max() - total) {
             throw std::runtime_error("ExtractLodLevel result exceeds the supported splat count");
         }
         total += count;

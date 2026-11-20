@@ -25,7 +25,7 @@ std::string duration_text(float milliseconds) {
     if (hours) {
         text << hours << ':' << std::setfill('0') << std::setw(2);
     }
-    text << minutes << ':' << std::setfill('0') << std::setw(6) << fixed(std::fmod(milliseconds, 60000) / 1000, 3)
+    text << minutes << ':' << std::setfill('0') << std::setw(6) << fixed(std::fmod(milliseconds, 60000.0f) / 1000.0f, 3)
          << (hours ? " (h:mm:ss.mmm)" : " (m:ss.mmm)");
     return text.str();
 }
@@ -101,8 +101,8 @@ std::string fixed(float value, int32_t precision) {
 }
 std::string format_size(size_t bytes) {
     if (bytes < 1024 * 1024) {
-        return fixed(float(bytes) / 1024, 1) + " KB";
+        return fixed(static_cast<float>(bytes) / 1024, 1) + " KB";
     }
-    return fixed(float(bytes) / (1024 * 1024), 1) + " MB";
+    return fixed(static_cast<float>(bytes) / (1024 * 1024), 1) + " MB";
 }
 } // namespace splat_transform::utility

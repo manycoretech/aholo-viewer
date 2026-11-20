@@ -22,8 +22,10 @@ void require(bool condition, const char* message) {
 // Independent voxel-first reference: double precision matrix rotation and a
 // serial scan of every Gaussian, without spatial bins, jobs, or early exit.
 voxel::Grid reference(const voxel::PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff) {
-    voxel::Grid output({ int32_t(std::lround(bounds.sizes().x() / resolution)), int32_t(std::lround(bounds.sizes().y() / resolution)), int32_t(std::lround(bounds.sizes().z() / resolution)) });
-    const double threshold = -std::log1p(-std::min(double(cutoff), 1.0 - 1e-8));
+    voxel::Grid output({ static_cast<int32_t>(std::lround(bounds.sizes().x() / resolution)),
+        static_cast<int32_t>(std::lround(bounds.sizes().y() / resolution)),
+        static_cast<int32_t>(std::lround(bounds.sizes().z() / resolution)) });
+    const double threshold = -std::log1p(-std::min(static_cast<double>(cutoff), 1.0 - 1e-8));
     for (int32_t z = 0; z < output.size[2]; ++z) {
         for (int32_t y = 0; y < output.size[1]; ++y) {
             for (int32_t x = 0; x < output.size[0]; ++x) {
@@ -49,8 +51,8 @@ voxel::Grid reference(const voxel::PreparedData& data, const Eigen::AlignedBox3f
                     const Eigen::Quaterniond rotation(g[4], g[5], g[6], g[7]);
                     const Eigen::Vector3d local = (rotation.toRotationMatrix().transpose() * difference).cwiseQuotient(Eigen::Vector3d(g[8], g[9], g[10]).cwiseMax(1e-8));
                     const double distance = local.squaredNorm();
-                    if (distance <= -2 * std::log(double(voxel::ALPHA_THRESHOLD) / g[3])) {
-                        density += float(g[3] * std::exp(-0.5 * distance));
+                    if (distance <= -2 * std::log(static_cast<double>(voxel::ALPHA_THRESHOLD) / g[3])) {
+                        density += static_cast<float>(g[3] * std::exp(-0.5 * distance));
                         touched = true;
                     }
                 }
@@ -68,10 +70,12 @@ void numerical_contracts() {
     splat::Splat source(37, 0);
     for (size_t i = 0; i < source.size(); ++i) {
         auto& g = source.gaussians[i];
-        g.mean = { float(int32_t(i % 9) - 4) * 0.5625f, float(int32_t(i % 7) - 3) * 0.4375f, float(int32_t(i % 5) - 2) * 0.3125f };
+        g.mean = { static_cast<float>(static_cast<int32_t>(i % 9) - 4) * 0.5625f,
+            static_cast<float>(static_cast<int32_t>(i % 7) - 3) * 0.4375f,
+            static_cast<float>(static_cast<int32_t>(i % 5) - 2) * 0.3125f };
         g.scale = { 0.125f, 0.25f, 0.1875f };
-        g.opacity = 0.05f + float(i % 4) * 0.15f;
-        g.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(float(i) * 0.2f, Eigen::Vector3f(1, 2, 3).normalized()));
+        g.opacity = 0.05f + static_cast<float>(i % 4) * 0.15f;
+        g.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(static_cast<float>(i) * 0.2f, Eigen::Vector3f(1, 2, 3).normalized()));
     }
     const auto prepared = voxel::prepare(source);
     for (float cutoff : { 0.0f, 0.1f, 0.7f, 1.0f }) {
@@ -108,13 +112,24 @@ void numerical_contracts() {
         "CPU candidate generation accepted nonfinite geometry");
     require(voxel::cpu_backend()->voxelize(voxel::prepare({}), unit, 0.125f, 0.1f).voxel_count() == 0,
         "Empty CPU input generated occupied voxels");
+
+    // The origin is in cell 10 at 0.1f resolution, closer to cell 11 than to cell 8.
+    const Eigen::AlignedBox3f island_bounds(Eigen::Vector3f(-1.0f, 0, 0), Eigen::Vector3f(0.6f, 0.4f, 0.4f));
+    voxel::Occupancy islands { voxel::Grid({ 16, 4, 4 }), island_bounds, { 0.1f, 0.1f } };
+    islands.grid.set({ 8, 0, 0 });
+    islands.grid.set({ 11, 0, 0 });
+    splat::Splat points(2, 0);
+    points.gaussians[0].mean = { -0.15f, 0.05f, 0.05f };
+    points.gaussians[1].mean = { 0.15f, 0.05f, 0.05f };
+    require(voxel::filter_indices(points, islands, 0.1f, true) == std::vector<uint32_t> { 1 },
+        "Cluster seed must use the same float cell coordinates as Gaussian centers");
 }
 
 void scheduling_contracts() {
     splat::Splat source(8201, 0);
     for (size_t i = 0; i < source.size(); ++i) {
         auto& g = source.gaussians[i];
-        g.mean = { float(i % 31) * 0.125f, float(i % 13) * 0.125f, float(i % 17) * 0.125f };
+        g.mean = { static_cast<float>(i % 31) * 0.125f, static_cast<float>(i % 13) * 0.125f, static_cast<float>(i % 17) * 0.125f };
         g.scale.setConstant(0.0625f);
         g.opacity = 0.08f;
         g.rotation.setIdentity();

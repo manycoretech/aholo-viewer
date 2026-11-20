@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <numeric>
 
 namespace splat_transform::voxel {
@@ -81,7 +82,7 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
     std::vector<Triangle> triangles;
     std::vector<std::vector<uint32_t>> incident(count);
     auto append = [&](Triangle triangle) {
-        const auto index = uint32_t(triangles.size());
+        const auto index = static_cast<uint32_t>(triangles.size());
         triangles.push_back(triangle);
         if (triangle.alive) {
             for (auto vertex : triangle.vertices) {
@@ -244,7 +245,7 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
         }
     }
     Mesh output;
-    std::vector<uint32_t> remap(count, UINT32_MAX);
+    std::vector<uint32_t> remap(count, std::numeric_limits<uint32_t>::max());
     for (const auto& triangle : triangles) {
         if (triangle.alive) {
             for (auto vertex : triangle.vertices) {
@@ -253,8 +254,8 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
         }
     }
     for (size_t i = 0; i < count; ++i) {
-        if (remap[i] != UINT32_MAX) {
-            remap[i] = uint32_t(output.positions.size() / 3);
+        if (remap[i] != std::numeric_limits<uint32_t>::max()) {
+            remap[i] = static_cast<uint32_t>(output.positions.size() / 3);
             output.positions.insert(output.positions.end(), mesh.positions.begin() + i * 3, mesh.positions.begin() + i * 3 + 3);
         }
     }

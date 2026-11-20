@@ -12,7 +12,7 @@ namespace splat_transform::spatial {
 struct ClusterSession::Impl {
     Impl(FeatureView points, size_t centroid_count, size_t max_batch_rows)
         : points_(points), columns_(points.dimensions()), rows_(points.rows()), centroid_count_(centroid_count), stride_((columns_ + 3) / 4 * 4) {
-        if (!rows_ || !columns_ || !centroid_count_ || centroid_count_ > UINT32_MAX) {
+        if (!rows_ || !columns_ || !centroid_count_ || centroid_count_ > std::numeric_limits<uint32_t>::max()) {
             throw std::runtime_error("Invalid GPU clustering dimensions");
         }
         const size_t centroid_bytes = centroid_count_ * stride_ * sizeof(float);
@@ -75,7 +75,7 @@ struct ClusterSession::Impl {
             for (size_t c = 0; c < columns_; ++c) {
                 const auto value = centroids(row, c);
                 packed[row * stride_ + c] = value;
-                norm += float(value) * value;
+                norm += static_cast<float>(value) * value;
             }
             std::fill(packed + row * stride_ + columns_, packed + (row + 1) * stride_, 0.0f);
             norms[row] = norm;
@@ -157,8 +157,8 @@ private:
         std::array<double, 3> durations;
         durations.fill(std::numeric_limits<double>::infinity());
         auto commands = device_.create_commands();
-        const uint32_t count = uint32_t(std::min({ schedule_.batch_rows, rows_ / 32, size_t(131072) }));
-        const std::array<uint32_t, 2> parameters { count, uint32_t(centroid_count_) };
+        const uint32_t count = static_cast<uint32_t>(std::min({ schedule_.batch_rows, rows_ / 32, static_cast<size_t>(131072) }));
+        const std::array<uint32_t, 2> parameters { count, static_cast<uint32_t>(centroid_count_) };
         for (size_t pass = 0; pass < 3; ++pass) {
             for (size_t i = 0; i < durations.size(); ++i) {
                 const size_t option = pass % 2 ? durations.size() - i - 1 : i;
@@ -188,7 +188,7 @@ private:
             }
         }
         commands.reset();
-        const size_t best = size_t(std::min_element(durations.begin(), durations.end()) - durations.begin());
+        const size_t best = static_cast<size_t>(std::min_element(durations.begin(), durations.end()) - durations.begin());
         // Retain the original choice when the difference is within timing noise.
         if (best && durations[best] < durations[0] * 0.95) {
             for (auto& slot : cached_) {
@@ -202,8 +202,8 @@ private:
         }
         tune_pending_ = false;
         utility::logger().info("GPU k-means tile selected: ", tile_, " (sample rows=", count,
-            ", variant ms=", utility::fixed(float(durations[0] * 1000), 3), '/',
-            utility::fixed(float(durations[1] * 1000), 3), '/', utility::fixed(float(durations[2] * 1000), 3), ')');
+            ", variant ms=", utility::fixed(static_cast<float>(durations[0] * 1000), 3), '/',
+            utility::fixed(static_cast<float>(durations[1] * 1000), 3), '/', utility::fixed(static_cast<float>(durations[2] * 1000), 3), ')');
     }
     gpu::Buffer buffer(size_t bytes, gpu::BufferMemory memory = gpu::BufferMemory::Device) {
         return device_.create_buffer(bytes, memory, memory == gpu::BufferMemory::Device);
@@ -299,11 +299,11 @@ private:
         if (upload) {
             slot.command.copy(slot.upload, slot.points, slot.count * stride_ * sizeof(float));
         }
-        const std::array<uint32_t, 2> parameters { uint32_t(slot.count), uint32_t(centroid_count_) };
+        const std::array<uint32_t, 2> parameters { static_cast<uint32_t>(slot.count), static_cast<uint32_t>(centroid_count_) };
         slot.command.bind_pipeline(pipeline_);
         slot.command.bind_descriptor_table(slot.table);
         slot.command.push_constants(std::as_bytes(std::span(parameters)));
-        slot.command.dispatch({ uint32_t((slot.count + 127) / 128), 1, 1 });
+        slot.command.dispatch({ static_cast<uint32_t>((slot.count + 127) / 128), 1, 1 });
         slot.command.copy(slot.labels, slot.readback, slot.count * sizeof(uint32_t));
         slot.command.end();
     }

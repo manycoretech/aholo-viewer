@@ -1,7 +1,10 @@
 #pragma once
 #include <filesystem>
+#include <functional>
+#include <memory>
 #include <optional>
 #include <splat/splat.h>
+#include <vector>
 
 namespace splat_transform::voxel {
 enum class BackendType {
@@ -57,6 +60,13 @@ struct Options {
     Navigation navigation;
 };
 
+struct GridSpec {
+    float voxel_resolution;
+    float opacity_cutoff;
+    bool operator==(const GridSpec&) const = default;
+};
+struct Occupancy;
 bool requires_gpu(BackendType backend);
-void write(const splat::Splat& data, const std::filesystem::path& directory, const Options& options = {});
+void write(const splat::Splat& data, const std::filesystem::path& directory, const Options& options = {},
+    const std::function<void(Occupancy&&)>& cache_grid = {});
 } // namespace splat_transform::voxel

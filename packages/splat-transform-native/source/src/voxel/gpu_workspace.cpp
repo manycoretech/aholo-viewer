@@ -21,8 +21,8 @@ uint64_t pipeline_hash(const gpu::ComputeShader& shader) noexcept {
     }
     const auto code = shader.code.bytes;
     const std::array<uint64_t, 6> fields {
-        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(code.data())), uint64_t(code.size()),
-        shader.push_constant_bytes, uint64_t(shader.bindings.size()), uint64_t(shader.constants.size()), constants
+        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(code.data())), static_cast<uint64_t>(code.size()),
+        shader.push_constant_bytes, static_cast<uint64_t>(shader.bindings.size()), static_cast<uint64_t>(shader.constants.size()), constants
     };
     uint64_t hash = XXH3_64bits(fields.data(), fields.size() * sizeof(uint64_t));
     for (const auto access : shader.bindings) {

@@ -2,6 +2,7 @@ export type TaskType =
     | 'Read'
     | 'Write'
     | 'Modify'
+    | 'Filter'
     | 'Select'
     | 'ReplaceAppend'
     | 'ExtractLodLevel'
@@ -35,6 +36,38 @@ export type SelectConfig = {
     input: string;
     output: string;
 } & ({ indices: number[]; indicesPath?: never } | { indicesPath: string; indices?: never });
+
+export enum FilterMode {
+    Box = 0,
+    Sphere,
+    Cluster,
+    Floaters,
+}
+
+/** Filter Gaussian centers or select Gaussians supported by an occupancy grid. */
+export interface FilterConfig extends Record<string, unknown> {
+    input: string;
+    output: string;
+    mode: FilterMode | keyof typeof FilterMode | Lowercase<keyof typeof FilterMode>;
+    box?: { min: [number, number, number]; max: [number, number, number] };
+    sphere?: { center: [number, number, number]; radius: number };
+    cluster?: {
+        /** @default 1.0 */
+        voxelResolution?: number;
+        /** @default 0.999 */
+        opacityCutoff?: number;
+        /** @default 0.1 */
+        minContribution?: number;
+    };
+    floaters?: {
+        /** @default 0.05 */
+        voxelResolution?: number;
+        /** @default 0.1 */
+        opacityCutoff?: number;
+        /** @default 0.004 */
+        minContribution?: number;
+    };
+}
 
 /** Replace indexed points with the patch prefix, then append its remainder. */
 export interface ReplaceAppendConfig extends Record<string, unknown> {

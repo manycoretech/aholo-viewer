@@ -70,8 +70,8 @@ void read_float_vertices(const Element& element, std::span<const int32_t> bindin
     std::array<size_t, splat::ShOffset + splat::SH_COUNTS.back()> offsets;
     offsets.fill(MISSING);
     for (size_t p = 0; p < bindings.size(); ++p) {
-        if (bindings[p] >= 0 && size_t(bindings[p]) < result.attribute_count()) {
-            offsets[size_t(bindings[p])] = p * sizeof(float);
+        if (bindings[p] >= 0 && static_cast<size_t>(bindings[p]) < result.attribute_count()) {
+            offsets[static_cast<size_t>(bindings[p])] = p * sizeof(float);
         }
     }
     const auto decode = [&](std::span<const std::byte> bytes, size_t first, size_t begin, size_t end) {
@@ -102,7 +102,7 @@ void read_float_vertices(const Element& element, std::span<const int32_t> bindin
         }
     };
     constexpr size_t MIN_PARALLEL_VERTICES = 65536;
-    const size_t batch_rows = std::max(size_t(1), batch_bytes / stride);
+    const size_t batch_rows = std::max(static_cast<size_t>(1), batch_bytes / stride);
     for (size_t first = 0; first < element.count;) {
         const size_t count = std::min(batch_rows, element.count - first);
         const auto bytes = reader.take(count * stride);
@@ -110,7 +110,7 @@ void read_float_vertices(const Element& element, std::span<const int32_t> bindin
             decode(bytes, first, 0, count);
         } else {
             auto& pool = threading::default_pool();
-            const size_t chunk = std::max(size_t(8192), (count + pool.thread_count() - 1) / pool.thread_count());
+            const size_t chunk = std::max(static_cast<size_t>(8192), (count + pool.thread_count() - 1) / pool.thread_count());
             threading::TaskGroup<void> pending(pool, pool.thread_count());
             for (size_t begin = 0; begin < count; begin += chunk) {
                 pending.submit(decode, bytes, first, begin, std::min(count, begin + chunk));
@@ -123,7 +123,7 @@ void read_float_vertices(const Element& element, std::span<const int32_t> bindin
     }
 }
 bool next_line(std::istream& stream, std::string& line) {
-    return bool(std::getline(stream, line)) && !stream.eof();
+    return static_cast<bool>(std::getline(stream, line)) && !stream.eof();
 }
 bool next_line(StreamReader& stream, std::string& line) {
     line.clear();
@@ -193,7 +193,7 @@ splat::Splat read_ply(const Header& header, Reader& reader, uint32_t max_sh_degr
         if (element.name == (compressed ? "sh" : "vertex")) {
             for (const auto& property : element.properties) {
                 if (property.name.starts_with("f_rest_")) {
-                    sh_count = std::max(sh_count, size_t(std::stoul(property.name.substr(7))) + 1);
+                    sh_count = std::max(sh_count, static_cast<size_t>(std::stoul(property.name.substr(7))) + 1);
                 }
             }
         }
@@ -282,13 +282,13 @@ splat::Splat read_ply(const Header& header, Reader& reader, uint32_t max_sh_degr
                     auto mix = [&](const std::string& field, float t) {
                         return limits.at("min_" + field) + t * (limits.at("max_" + field) - limits.at("min_" + field));
                     };
-                    result.gaussians[i].attribute(splat::X + axis) = mix(xyz[axis], float((packed[0] >> shift) & mask) / mask);
-                    result.gaussians[i].attribute(splat::ScaleX + axis) = std::exp(mix("scale_" + xyz[axis], float((packed[2] >> shift) & mask) / mask));
-                    result.gaussians[i].attribute(splat::Red + axis) = mix(rgb[axis], float((packed[3] >> (24 - 8 * axis)) & 255) / 255);
+                    result.gaussians[i].attribute(splat::X + axis) = mix(xyz[axis], static_cast<float>((packed[0] >> shift) & mask) / mask);
+                    result.gaussians[i].attribute(splat::ScaleX + axis) = std::exp(mix("scale_" + xyz[axis], static_cast<float>((packed[2] >> shift) & mask) / mask));
+                    result.gaussians[i].attribute(splat::Red + axis) = mix(rgb[axis], static_cast<float>((packed[3] >> (24 - 8 * axis)) & 255) / 255);
                 }
-                const float a = (float((packed[1] >> 20) & 1023) / 1023 - 0.5f) * std::sqrt(2.0f);
-                const float b = (float((packed[1] >> 10) & 1023) / 1023 - 0.5f) * std::sqrt(2.0f);
-                const float c = (float(packed[1] & 1023) / 1023 - 0.5f) * std::sqrt(2.0f);
+                const float a = (static_cast<float>((packed[1] >> 20) & 1023) / 1023 - 0.5f) * std::sqrt(2.0f);
+                const float b = (static_cast<float>((packed[1] >> 10) & 1023) / 1023 - 0.5f) * std::sqrt(2.0f);
+                const float c = (static_cast<float>(packed[1] & 1023) / 1023 - 0.5f) * std::sqrt(2.0f);
                 const float d = std::sqrt(std::max(0.0f, 1 - a * a - b * b - c * c));
                 const auto order = packed[1] >> 30;
                 result.gaussians[i].attribute(splat::QuatX) = static_cast<float>(order == 0 ? a : order == 1 ? d
@@ -297,7 +297,7 @@ splat::Splat read_ply(const Header& header, Reader& reader, uint32_t max_sh_degr
                                                                                                              : c);
                 result.gaussians[i].attribute(splat::QuatZ) = static_cast<float>(order <= 2 ? c : d);
                 result.gaussians[i].attribute(splat::QuatW) = static_cast<float>(order == 0 ? d : a);
-                result.gaussians[i].attribute(splat::Alpha) = float(packed[3] & 255) / 255;
+                result.gaussians[i].attribute(splat::Alpha) = static_cast<float>(packed[3] & 255) / 255;
             }
             if (element.name == "vertex") {
                 result.gaussians[i].rotation.normalize();

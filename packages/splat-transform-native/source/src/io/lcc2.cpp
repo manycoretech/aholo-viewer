@@ -67,9 +67,9 @@ splat::Splat Lcc2File::read(const FileInput& source) const {
         auto part = format->read({ utf8_path(resources.resolve(name)), input, source.max_sh_degree });
         std::vector<std::pair<size_t, size_t>> ranges;
         for (const auto& ref : refs) {
-            const auto start = ref.value("start", int64_t(0));
-            const auto count = ref.value("count", int64_t(part.size()) - start);
-            if (start < 0 || count < 0 || uint64_t(start) + uint64_t(count) > part.size()) {
+            const auto start = ref.value("start", static_cast<int64_t>(0));
+            const auto count = ref.value("count", static_cast<int64_t>(part.size()) - start);
+            if (start < 0 || count < 0 || static_cast<uint64_t>(start) + static_cast<uint64_t>(count) > part.size()) {
                 throw std::runtime_error("Invalid LCC2 splat range");
             }
             ranges.emplace_back(static_cast<size_t>(start), static_cast<size_t>(start + count));

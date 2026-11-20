@@ -179,6 +179,48 @@ interface ModifyPatch {
 
 Patch indices are local to the corresponding input block. `deletedIndices` is a bitmap, not a list of point indices.
 
+### Filter
+
+Select Gaussians from a plain splat resource by center position or voxel occupancy. Both `input` and `output` are resource keys. Selected Gaussians retain their original order, attributes, and SH coefficients for subsequent Write or LOD tasks.
+
+| `mode`           | Configuration                                                                                 | Selection                                                                                                                 |
+| ---------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `0` / `box`      | `box: { min: [x,y,z], max: [x,y,z] }`                                                         | Keep centers inside the axis-aligned box, including its boundary.                                                         |
+| `1` / `sphere`   | `sphere: { center: [x,y,z], radius }`                                                         | Keep centers strictly within the radius.                                                                                  |
+| `2` / `cluster`  | `cluster?: { voxelResolution, opacityCutoff, minContribution }`, defaults `1, 0.999, 0.1`     | Find the occupied component nearest the origin. Keep Gaussians centered in it or contributing sufficiently to it.         |
+| `3` / `floaters` | `floaters?: { voxelResolution, opacityCutoff, minContribution }`, defaults `0.05, 0.1, 0.004` | Keep centers in occupied voxels. Other Gaussians must contribute at least `minContribution` at one occupied voxel center. |
+
+Use `Filter` as the task name. TypeScript accepts `FilterMode` enum values, numbers, lowercase names, or enum member names such as `Cluster`. Native JSON accepts case-insensitive mode names. Box and Sphere pass their input through when required fields are missing. Cluster and Floaters accept an omitted options object or omitted individual fields.
+
+`voxelResolution` sets voxel edge length in input units. `opacityCutoff` sets the occupancy threshold and `minContribution` controls per-Gaussian selection. The task searches the input and its ancestors for a grid with the same occupancy threshold. It prefers the requested edge length, then the closest finer grid. Both modes can use it. A finer grid is queried at its actual resolution, so occupancy boundaries or connected components can differ from a fresh grid at the requested resolution. Rereading the same files with changed geometry or opacity starts a new grid lineage. Filtering the full input requires a grid built from all its Gaussians and covering its extents. On a cache miss, Filter automatically builds occupancy from the current input. Automatic grid generation prefers an available GPU and falls back to CPU when a GPU is unavailable or device initialization fails. A cache hit runs Gaussian selection on the CPU. An explicit Voxel task can supply its occupancy grid before collision cleanup and navigation. Only an explicit Voxel task writes collision files.
+
+With default options, consecutive Cluster and Floaters tasks build separate grids. If a preceding Voxel task cached both its coarse prefilter grid and its main grid over the complete input, each Filter can reuse its corresponding grid. Reusable sparse grids stay in CPU memory for the lifetime of the native pipeline process. Their memory usage is additive.
+
+```json
+[
+    {
+        "id": "scene",
+        "type": "Filter",
+        "config": {
+            "input": "source",
+            "output": "scene",
+            "mode": "cluster",
+            "cluster": { "voxelResolution": 0.1, "opacityCutoff": 0.5 }
+        }
+    },
+    {
+        "id": "clean",
+        "type": "Filter",
+        "config": {
+            "input": "scene",
+            "output": "clean",
+            "mode": "floaters",
+            "floaters": { "voxelResolution": 0.1, "opacityCutoff": 0.5 }
+        }
+    }
+]
+```
+
 ### Select
 
 | Parameter         | Type               | Description                                                                                                                              |
@@ -469,7 +511,7 @@ try {
 
 `PipelineError` represents a nonzero child exit or termination signal. Process-start failures and `AbortSignal` cancellation can reject with a regular Error / AbortError. SIGINT and SIGTERM are forwarded to the child. Use `resolveExecutable()` to locate the native executable or set `SPLAT_TRANSFORM_EXECUTABLE` to an absolute local build path. If a platform executable is missing, check that npm optional dependencies are enabled.
 
-The package exports the runtime `ApiType` enum and the types `DeviceInfo`, `PipelineConfig`, `PipelineTask`, `TaskType`, `RunOptions`, `ModifyConfig`, `SelectConfig`, `ReplaceAppendConfig`, `ExtractLodLevelConfig`, and `VoxelConfig`. `PipelineTask.config` remains `Record<string, unknown>`; use the reference above for complete parameters.
+The package exports the runtime `ApiType` and `FilterMode` enums and the types `DeviceInfo`, `PipelineConfig`, `PipelineTask`, `TaskType`, `RunOptions`, `FilterConfig`, `ModifyConfig`, `SelectConfig`, `ReplaceAppendConfig`, `ExtractLodLevelConfig`, and `VoxelConfig`. `PipelineTask.config` remains `Record<string, unknown>`; use the reference above for complete parameters.
 
 ## Migration and Resource Guidance
 

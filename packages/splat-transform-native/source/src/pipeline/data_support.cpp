@@ -1,15 +1,26 @@
 #include "data_support.h"
+#include <array>
 #include <cmath>
+#include <limits>
 #include <unordered_set>
 
 namespace splat_transform::pipeline {
+Eigen::Vector3f read_vector3(const io::Json& value) {
+    std::array<float, 3> coordinates;
+    if (value.is_object()) {
+        coordinates = { value.at("x").get<float>(), value.at("y").get<float>(), value.at("z").get<float>() };
+    } else {
+        value.get_to(coordinates);
+    }
+    return Eigen::Map<const Eigen::Vector3f>(coordinates.data());
+}
 uint32_t unsigned_integer(const io::Json& value, std::string_view field) {
     if (!value.is_number()) {
         throw std::runtime_error(std::string(field) + " must be a nonnegative 32-bit integer");
     }
     // Check the JSON number before narrowing; float cannot represent every uint32_t index.
     const double number = value.get<double>();
-    if (!std::isfinite(number) || number < 0 || number > UINT32_MAX || std::floor(number) != number) {
+    if (!std::isfinite(number) || number < 0 || number > std::numeric_limits<uint32_t>::max() || std::floor(number) != number) {
         throw std::runtime_error(std::string(field) + " must be a nonnegative 32-bit integer");
     }
     return static_cast<uint32_t>(number);
@@ -50,7 +61,7 @@ const splat::Splat& plain_splat(const Resource& resource) {
     return **pointer;
 }
 void validate_layout(const splat::Splat& data) {
-    if (data.sh_degree > 3 || data.size() > UINT32_MAX) {
+    if (data.sh_degree > 3 || data.size() > std::numeric_limits<uint32_t>::max()) {
         throw std::runtime_error("Unsupported splat size or SH degree");
     }
     for (const auto& point : data.gaussians) {

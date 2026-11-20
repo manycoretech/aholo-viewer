@@ -45,7 +45,7 @@ struct Fixture {
 Fixture fixture(int32_t version, uint32_t degree = 0, size_t palette_count = 1, uint32_t label = 0) {
     std::array<float, 256> scales {}, colors {}, sh;
     for (size_t i = 0; i < sh.size(); ++i) {
-        sh[i] = float(i) / 16;
+        sh[i] = static_cast<float>(i) / 16;
     }
     Fixture result { { { "version", version }, { "count", 4 },
                          { "means", { { "mins", { 0, 0, 0 } }, { "maxs", { 1, 1, 1 } }, { "files", { "means_l.webp", "means_u.webp" } } } },
@@ -81,7 +81,7 @@ Fixture fixture(int32_t version, uint32_t degree = 0, size_t palette_count = 1, 
     if (degree) {
         const size_t coefficients = version == 1 ? 15 : splat::SH_COUNTS[degree] / 3;
         const auto width = static_cast<uint32_t>(64 * coefficients), height = static_cast<uint32_t>((palette_count + 63) / 64);
-        io::Bytes centroids(size_t(width) * height * 4, std::byte { 255 });
+        io::Bytes centroids(static_cast<size_t>(width) * height * 4, std::byte { 255 });
         for (size_t j = 0; j < coefficients; ++j) {
             for (size_t c = 0; c < 3; ++c) {
                 centroids[(label * coefficients + j) * 4 + c] = static_cast<std::byte>(j * 3 + c + 1);
@@ -108,7 +108,7 @@ splat::Splat cloud(uint32_t degree = 0) {
     splat::Splat result(4, degree);
     for (size_t i = 0; i < result.size(); ++i) {
         auto& point = result.gaussians[i];
-        point.mean = { float(i), -float(i), float(i) / 2 };
+        point.mean = { static_cast<float>(i), -static_cast<float>(i), static_cast<float>(i) / 2 };
         point.scale.setConstant(0.125f);
         point.sh[0] = point.sh[1] = point.sh[2] = 0.5f;
         for (size_t c = 3; c < point.sh.size(); ++c) {
@@ -147,7 +147,7 @@ void rotation_and_opacity() {
     }
     for (uint32_t i = 0; i < 256; ++i) {
         const auto value = static_cast<std::byte>(i);
-        const float expected = float(i) * float(i) / (204 * 204);
+        const float expected = static_cast<float>(i) * static_cast<float>(i) / (204 * 204);
         require(std::abs(codec::decode_sog_opacity(value) - expected) < 3e-7f, "Opacity does not follow the v3 square law");
         require(codec::encode_sog_opacity(expected) == value, "Opacity byte failed to round-trip");
     }
@@ -165,7 +165,7 @@ void readers(const std::filesystem::path& directory) {
             require(std::abs(data.gaussians[3].opacity - opacity) < 1e-6f, "SOG opacity decoding differs from known bytes");
             require(data.gaussians[0].mean.isZero() && data.gaussians[0].scale == Eigen::Vector3f::Ones(), "SOG position or scale decoding changed");
             for (size_t c = 0; c < data.sh_count(); ++c) {
-                require(data.gaussians[0].attribute(splat::ShOffset + c) == float(c + 1) / 16, "SOG SH palette channels are reordered");
+                require(data.gaussians[0].attribute(splat::ShOffset + c) == static_cast<float>(c + 1) / 16, "SOG SH palette channels are reordered");
             }
             const auto reduced = io::read_splat({ "fixture.sog", bytes, 0 });
             require(reduced.sh_degree == 0 && reduced.gaussians[0].sh.size() == 3, "SOG maxShDegree was ignored");
@@ -274,9 +274,9 @@ void wide_palette_writer() {
         point.rotation = Eigen::Quaternionf::Identity();
         point.opacity = 1;
         point.sh[0] = point.sh[1] = point.sh[2] = 0.5f;
-        point.sh[3] = float(i & 63);
-        point.sh[4] = float((i >> 6) & 63);
-        point.sh[5] = float(i >> 12);
+        point.sh[3] = static_cast<float>(i & 63);
+        point.sh[4] = static_cast<float>((i >> 6) & 63);
+        point.sh[5] = static_cast<float>(i >> 12);
     }
     constexpr std::array<uint32_t, 2> indices { 65536, 0 };
     const auto bytes = io::SogFile(3, COUNT).write(source, indices);

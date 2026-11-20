@@ -19,7 +19,7 @@ struct RefSplat {
 
     RefSplat(splat::Splat& splat) : source(splat), box(splat.bounding_box), need_split(true) {
         gaussians.resize(splat.gaussians.size());
-        std::iota(gaussians.begin(), gaussians.end(), size_t(0));
+        std::iota(gaussians.begin(), gaussians.end(), 0);
     }
     RefSplat(RefSplat& splat) : source(splat.source), need_split(true) {}
     RefSplat(RefSplat&& splat) = default;

@@ -2,6 +2,7 @@
 #include <pipeline/tasks/auto_chunk_lod.h>
 #include <pipeline/tasks/auto_lod.h>
 #include <pipeline/tasks/extract_lod_level.h>
+#include <pipeline/tasks/filter.h>
 #include <pipeline/tasks/flex_lod.h>
 #include <pipeline/tasks/modify.h>
 #include <pipeline/tasks/read.h>
@@ -24,6 +25,7 @@ const std::array TASKS {
     TaskType { "Read", make_task<ReadTask> },
     TaskType { "Write", make_task<WriteTask> },
     TaskType { "Modify", make_task<ModifyTask> },
+    TaskType { "Filter", make_task<FilterTask> },
     TaskType { "Select", make_task<SelectTask> },
     TaskType { "ReplaceAppend", make_task<ReplaceAppendTask> },
     TaskType { "ExtractLodLevel", make_task<ExtractLodLevelTask> },

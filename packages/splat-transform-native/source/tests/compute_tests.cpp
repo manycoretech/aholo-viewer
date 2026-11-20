@@ -5,6 +5,7 @@
 #include <gpu/compute.h>
 #include <gpu/context.h>
 #include <iostream>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -289,7 +290,7 @@ void descriptor_table_lifetimes(const gpu::ComputeDevice& device) {
 }
 void timeline_progress(const gpu::ComputeDevice& device) {
     auto& queue = device.default_queue();
-    const uint64_t initial = uint64_t(1) << 40;
+    const uint64_t initial = static_cast<uint64_t>(1) << 40;
     auto fence = device.create_fence(initial);
     require(fence.completed_value() == initial, "Fence truncated its 64-bit initial value");
     queue.wait_cpu(fence, initial);
@@ -348,13 +349,14 @@ void timeline_progress(const gpu::ComputeDevice& device) {
     readback.read_into(std::as_writable_bytes(std::span(result)));
     require(result[0] == 43, "Polled completion did not make the transfer available");
 
-    auto terminal = device.create_fence(UINT64_MAX - 1);
+    constexpr auto max_value = std::numeric_limits<uint64_t>::max();
+    auto terminal = device.create_fence(max_value - 1);
     const auto last = queue.submit(unused, terminal);
-    require(last == UINT64_MAX, "Fence increment truncated the final 64-bit value");
+    require(last == max_value, "Fence increment truncated the final 64-bit value");
     queue.wait_cpu(terminal, last);
-    require(terminal.completed_value() == UINT64_MAX, "Fence truncated its final 64-bit value");
+    require(terminal.completed_value() == max_value, "Fence truncated its final 64-bit value");
     rejects([&] { queue.submit(unused, terminal); });
-    require(terminal.completed_value() == UINT64_MAX, "Exhausted fence wrapped its completion value");
+    require(terminal.completed_value() == max_value, "Exhausted fence wrapped its completion value");
 
     // Exhausting one fence must not poison the recording or another fence.
     auto fresh = device.create_fence();

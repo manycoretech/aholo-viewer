@@ -5,6 +5,7 @@
 #include <cstring>
 #include <gpu/context.h>
 #include <iomanip>
+#include <limits>
 #include <numeric>
 #include <sstream>
 #include <string_view>
@@ -36,7 +37,7 @@ DeviceInfo describe(const vk::raii::PhysicalDevice& physical) {
     const auto& base = properties.get<vk::PhysicalDeviceProperties2>().properties;
     std::ostringstream uuid;
     for (auto byte : properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID) {
-        uuid << std::hex << std::setw(2) << std::setfill('0') << uint32_t(byte);
+        uuid << std::hex << std::setw(2) << std::setfill('0') << static_cast<uint32_t>(byte);
     }
     return { .name = base.deviceName.data(),
         .api = ApiType::Vulkan,
@@ -63,7 +64,7 @@ Device::Device(uint32_t index) : instance_(create_instance(context_)) {
     limits_ = properties.get<vk::PhysicalDeviceProperties2>().properties.limits;
     storage_limit_ = std::min<uint64_t>(limits_.maxStorageBufferRange, properties.get<vk::PhysicalDeviceMaintenance3Properties>().maxMemoryAllocationSize);
     const auto families = physical_.getQueueFamilyProperties();
-    auto found = std::find_if(families.begin(), families.end(), [](const auto& family) { return family.queueCount && bool(family.queueFlags & vk::QueueFlagBits::eCompute); });
+    auto found = std::find_if(families.begin(), families.end(), [](const auto& family) { return family.queueCount && static_cast<bool>(family.queueFlags & vk::QueueFlagBits::eCompute); });
     if (found == families.end()) {
         throw std::runtime_error("Selected Vulkan device has no compute queue");
     }
@@ -113,7 +114,7 @@ Device::Device(uint32_t index) : instance_(create_instance(context_)) {
 }
 Device::~Device() = default;
 ComputeLimits Device::limits() const {
-    return { storage_limit_, size_t(limits_.minStorageBufferOffsetAlignment),
+    return { storage_limit_, static_cast<size_t>(limits_.minStorageBufferOffsetAlignment),
         std::min(limits_.maxPerStageDescriptorStorageBuffers, limits_.maxDescriptorSetStorageBuffers),
         limits_.maxPushConstantsSize, limits_.maxComputeSharedMemorySize,
         { limits_.maxComputeWorkGroupCount[0], limits_.maxComputeWorkGroupCount[1], limits_.maxComputeWorkGroupCount[2] },
@@ -127,10 +128,10 @@ size_t Device::available_memory() const {
     uint64_t available = 0;
     for (uint32_t i = 0; i < properties.memoryHeapCount; ++i) {
         if (properties.memoryHeaps[i].flags & vk::MemoryHeapFlagBits::eDeviceLocal) {
-            available = std::max(available, budgets[i].budget > budgets[i].usage ? budgets[i].budget - budgets[i].usage : uint64_t(0));
+            available = std::max(available, budgets[i].budget > budgets[i].usage ? budgets[i].budget - budgets[i].usage : static_cast<uint64_t>(0));
         }
     }
-    return size_t(available);
+    return static_cast<size_t>(available);
 }
 size_t Device::allocation_bytes() const {
     VmaTotalStatistics statistics {};
@@ -208,7 +209,7 @@ std::unique_ptr<detail::BackendPipeline> Device::create_pipeline(const ComputeSh
     std::vector<vk::SpecializationMapEntry> entries;
     std::vector<uint32_t> values;
     for (const auto& constant : description.constants) {
-        entries.emplace_back(constant.id, uint32_t(values.size() * sizeof(uint32_t)), sizeof(uint32_t));
+        entries.emplace_back(constant.id, static_cast<uint32_t>(values.size() * sizeof(uint32_t)), sizeof(uint32_t));
         values.push_back(constant.value);
     }
     vk::SpecializationInfo specialization;
@@ -229,7 +230,7 @@ std::unique_ptr<detail::BackendDescriptorTable> Device::create_descriptor_table(
         return table;
     }
     const auto& pipeline = static_cast<Pipeline&>(base);
-    const vk::DescriptorPoolSize size(vk::DescriptorType::eStorageBuffer, uint32_t(buffers.size()));
+    const vk::DescriptorPoolSize size(vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(buffers.size()));
     table->pool = device_.createDescriptorPool(vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 1, size));
     auto sets = device_.allocateDescriptorSets(vk::DescriptorSetAllocateInfo(*table->pool, *pipeline.descriptors));
     table->set = std::move(sets.front());
@@ -342,7 +343,7 @@ public:
     void wait_cpu(detail::BackendFence& fence, uint64_t value) override {
         const auto semaphore = static_cast<Fence&>(fence).handle();
         const vk::SemaphoreWaitInfo info({}, semaphore, value);
-        if (context_.device_.waitSemaphores(info, UINT64_MAX) != vk::Result::eSuccess) {
+        if (context_.device_.waitSemaphores(info, std::numeric_limits<uint64_t>::max()) != vk::Result::eSuccess) {
             throw std::runtime_error("Vulkan timeline semaphore CPU wait failed");
         }
     }

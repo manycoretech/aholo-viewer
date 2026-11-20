@@ -4,44 +4,12 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include <utility/thread_pool.h>
+#include <utility/parallel.h>
 
 namespace splat_transform::voxel {
 namespace {
-constexpr int32_t BATCH_VOXELS = 16;
-constexpr int32_t BATCH_BLOCKS = BATCH_VOXELS / 4;
-
-// Keep only one job per available worker in the shared queue. Dynamic chunks
-// balance sparse/dense regions; TaskGroup joins borrowed state on exceptions and
-// cooperatively waits when voxelization itself runs inside the default pool.
-template<typename F>
-void parallel_chunks(size_t count, size_t grain, F&& function) {
-    if (!count) {
-        return;
-    }
-    if (count <= grain) {
-        function(size_t(0), count);
-        return;
-    }
-    auto& pool = threading::default_pool();
-    const size_t workers = std::min(pool.thread_count(), (count - 1) / grain + 1);
-    std::atomic<size_t> next { 0 };
-    threading::TaskGroup<void> tasks(pool, workers);
-    for (size_t worker = 0; worker < workers; ++worker) {
-        tasks.submit([&] {
-            for (;;) {
-                const auto begin = next.fetch_add(grain, std::memory_order_relaxed);
-                if (begin >= count) {
-                    return;
-                }
-                function(begin, std::min(count, begin + grain));
-            }
-        });
-    }
-    for (size_t worker = 0; worker < tasks.size(); ++worker) {
-        tasks.get(worker);
-    }
-}
+constexpr int32_t BATCH_VOXELS = Grid::Storage::voxel_side;
+constexpr int32_t BATCH_BLOCKS = Grid::Storage::block_side;
 
 // Match the historical CPU worker's floor/ceil voxel window, including a
 // Gaussian whose center lies outside the grid but whose extent overlaps it.
@@ -58,8 +26,8 @@ bool voxel_range(const Gaussian& gaussian, const Grid& grid, const Eigen::Aligne
             return false;
         }
         // Clamp in floating point before converting extreme coordinates.
-        minimum[a] = int32_t(std::max(0.0f, low));
-        maximum[a] = int32_t(std::min(float(grid.size[a] - 1), high));
+        minimum[a] = static_cast<int32_t>(std::max(0.0f, low));
+        maximum[a] = static_cast<int32_t>(std::min(static_cast<float>(grid.size[a] - 1), high));
         if (minimum[a] > maximum[a]) {
             return false;
         }
@@ -80,7 +48,7 @@ public:
         for (int32_t a = 0; a < 3; ++a) {
             dimensions[a] = (grid.blocks[a] + BATCH_BLOCKS - 1) / BATCH_BLOCKS;
         }
-        const size_t batch_count = size_t(dimensions[0]) * dimensions[1] * dimensions[2];
+        const size_t batch_count = static_cast<size_t>(dimensions[0]) * dimensions[1] * dimensions[2];
         std::vector<uint32_t> counts(batch_count);
         auto visit_batches = [&](size_t index, auto&& visit) {
             Eigen::Vector3i minimum, maximum;
@@ -90,12 +58,12 @@ public:
             for (int32_t z = minimum[2] / BATCH_VOXELS; z <= maximum[2] / BATCH_VOXELS; ++z) {
                 for (int32_t y = minimum[1] / BATCH_VOXELS; y <= maximum[1] / BATCH_VOXELS; ++y) {
                     for (int32_t x = minimum[0] / BATCH_VOXELS; x <= maximum[0] / BATCH_VOXELS; ++x) {
-                        visit(x + size_t(y) * dimensions[0] + size_t(z) * dimensions[0] * dimensions[1]);
+                        visit(x + static_cast<size_t>(y) * dimensions[0] + static_cast<size_t>(z) * dimensions[0] * dimensions[1]);
                     }
                 }
             }
         };
-        parallel_chunks(data.gaussians.size(), 4096, [&](size_t begin, size_t end) {
+        threading::parallel_chunks(data.gaussians.size(), 4096, [&](size_t begin, size_t end) {
             for (size_t i = begin; i < end; ++i) {
                 visit_batches(i, [&](size_t key) { std::atomic_ref(counts[key]).fetch_add(1, std::memory_order_relaxed); });
             }
@@ -104,7 +72,7 @@ public:
         std::vector<uint32_t> active;
         for (size_t i = 0; i < batch_count; ++i) {
             if (counts[i]) {
-                active.push_back(uint32_t(i));
+                active.push_back(static_cast<uint32_t>(i));
             }
             if (counts[i] > std::vector<uint32_t>().max_size() - offsets[i]) {
                 throw std::runtime_error("CPU voxel candidate buffer exceeds addressable memory");
@@ -115,24 +83,24 @@ public:
         // geometry copies, per-bin vectors, or copies of the source's SH data.
         std::vector<uint32_t> indices(offsets.back());
         std::fill(counts.begin(), counts.end(), 0);
-        parallel_chunks(data.gaussians.size(), 4096, [&](size_t begin, size_t end) {
+        threading::parallel_chunks(data.gaussians.size(), 4096, [&](size_t begin, size_t end) {
             for (size_t i = begin; i < end; ++i) {
                 visit_batches(i, [&](size_t key) {
                     const auto position = std::atomic_ref(counts[key]).fetch_add(1, std::memory_order_relaxed);
-                    indices[offsets[key] + position] = uint32_t(i);
+                    indices[offsets[key] + position] = static_cast<uint32_t>(i);
                 });
             }
         });
         std::vector<uint32_t>().swap(counts);
-        std::vector<std::array<uint64_t, 64>> masks(active.size());
+        std::vector<Grid::Storage::Masks> masks(active.size());
         const float half = resolution * 0.5f;
-        const float sigma_cutoff = float(-std::log1p(-std::min(double(cutoff), 1.0 - 1e-8)));
-        parallel_chunks(active.size(), 1, [&](size_t begin, size_t end) {
+        const float sigma_cutoff = static_cast<float>(-std::log1p(-std::min(static_cast<double>(cutoff), 1.0 - 1e-8)));
+        threading::parallel_chunks(active.size(), 1, [&](size_t begin, size_t end) {
             for (size_t batch = begin; batch < end; ++batch) {
                 const auto key = active[batch];
-                const Eigen::Vector3i origin { int32_t(key % dimensions[0]) * BATCH_VOXELS,
-                    int32_t(key / dimensions[0] % dimensions[1]) * BATCH_VOXELS,
-                    int32_t(key / (size_t(dimensions[0]) * dimensions[1])) * BATCH_VOXELS };
+                const Eigen::Vector3i origin { static_cast<int32_t>(key % dimensions[0]) * BATCH_VOXELS,
+                    static_cast<int32_t>(key / dimensions[0] % dimensions[1]) * BATCH_VOXELS,
+                    static_cast<int32_t>(key / (static_cast<size_t>(dimensions[0]) * dimensions[1])) * BATCH_VOXELS };
                 std::array<float, BATCH_VOXELS * BATCH_VOXELS * BATCH_VOXELS> density {};
                 auto& result = masks[batch];
                 // Atomic scatter order varies; accumulation must not.
@@ -155,12 +123,13 @@ public:
                         for (int32_t y = minimum[1]; y <= maximum[1]; ++y) {
                             for (int32_t x = minimum[0]; x <= maximum[0]; ++x) {
                                 const Eigen::Vector3i local { x - origin[0], y - origin[1], z - origin[2] };
-                                const int32_t block = local[0] / 4 + local[1] / 4 * 4 + local[2] / 4 * 16;
+                                const int32_t block = local[0] / 4 + BATCH_BLOCKS * (local[1] / 4 + BATCH_BLOCKS * (local[2] / 4));
                                 const uint64_t bit = uint64_t { 1 } << ((x & 3) + (y & 3) * 4 + (z & 3) * 16);
                                 if (result[block] & bit) {
                                     continue;
                                 }
-                                const Eigen::Vector3f center = bounds.min() + (Eigen::Vector3f(float(x), float(y), float(z)).array() + 0.5f).matrix() * resolution;
+                                const Eigen::Vector3f center = bounds.min() +
+                                    (Eigen::Vector3f(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)).array() + 0.5f).matrix() * resolution;
                                 const Eigen::Map<const Eigen::Vector3f> mean(g.data());
                                 const Eigen::Vector3f difference = mean.cwiseMax((center.array() - half).matrix()).cwiseMin((center.array() + half).matrix()) - mean;
                                 const float distance = (inverse_rotation * difference).cwiseProduct(inverse_scale).squaredNorm();
@@ -178,19 +147,9 @@ public:
                 }
             }
         });
-        // Grid's sparse map is merged on the caller after all independent masks are
-        // complete. Workers never mutate the shared unordered_map.
-        for (size_t batch = 0; batch < active.size(); ++batch) {
-            const auto key = active[batch];
-            const Eigen::Vector3i origin { int32_t(key % dimensions[0]) * BATCH_BLOCKS,
-                int32_t(key / dimensions[0] % dimensions[1]) * BATCH_BLOCKS,
-                int32_t(key / (size_t(dimensions[0]) * dimensions[1])) * BATCH_BLOCKS };
-            for (int32_t block = 0; block < 64; ++block) {
-                if (masks[batch][block]) {
-                    grid.set_mask(grid.block_index({ origin[0] + block % 4, origin[1] + block / 4 % 4, origin[2] + block / 16 }), masks[batch][block]);
-                }
-            }
-        }
+        grid.masks.assign_bricks(active.size(),
+            [&](size_t i) { return active[i]; },
+            [&](size_t i) -> const Grid::Storage::Masks& { return masks[i]; });
         return grid;
     }
     Grid dilate(const Grid& grid, Eigen::Vector3i radius) const override {
@@ -198,20 +157,18 @@ public:
         for (int32_t axis = 0; axis < 3; ++axis) {
             for (int32_t distance = 0; distance < radius[axis]; ++distance) {
                 Grid next = output;
-                for (auto index : output.active_blocks()) {
-                    auto p = output.block_point(index);
-                    const uint64_t bits = output.mask(index);
-                    next.or_mask(index, ((bits & ~face_mask(axis, 3)) << BIT_STRIDES[axis]) | ((bits & ~face_mask(axis, 0)) >> BIT_STRIDES[axis]));
+                output.masks.for_each_block(0, [&](Eigen::Vector3i p, uint64_t bits) {
+                    next.or_mask(p, ((bits & ~face_mask(axis, 3)) << BIT_STRIDES[axis]) | ((bits & ~face_mask(axis, 0)) >> BIT_STRIDES[axis]));
                     if (p[axis] > 0) {
                         --p[axis];
-                        next.or_mask(next.block_index(p), (bits & face_mask(axis, 0)) << (3 * BIT_STRIDES[axis]));
+                        next.or_mask(p, (bits & face_mask(axis, 0)) << (3 * BIT_STRIDES[axis]));
                         ++p[axis];
                     }
                     if (p[axis] + 1 < output.blocks[axis]) {
                         ++p[axis];
-                        next.or_mask(next.block_index(p), (bits & face_mask(axis, 3)) >> (3 * BIT_STRIDES[axis]));
+                        next.or_mask(p, (bits & face_mask(axis, 3)) >> (3 * BIT_STRIDES[axis]));
                     }
-                }
+                });
                 output = std::move(next);
             }
         }

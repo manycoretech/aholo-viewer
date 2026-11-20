@@ -55,7 +55,7 @@ struct FileStream::Impl {
                     FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
                 if (handle == INVALID_HANDLE_VALUE) {
                     const auto error = GetLastError();
-                    throw std::system_error(int32_t(error), std::system_category(), "Cannot open input/output file: " + path_utf8(path));
+                    throw std::system_error(static_cast<int32_t>(error), std::system_category(), "Cannot open input/output file: " + path_utf8(path));
                 }
                 boost::system::error_code error;
                 native->assign(handle, error);

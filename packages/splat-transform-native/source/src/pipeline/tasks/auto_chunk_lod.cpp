@@ -101,7 +101,7 @@ std::vector<SingleFile> chunk_lod(splat::Splat source, const Json& config) {
         count_width = std::max(count_width, count_text.size());
         logger.info('\t', "Level ", level, std::setw(9), '(' + utility::fixed(levels[level].at("precision").get<float>() * 100) + "%)",
             ": ", std::setw(static_cast<int32_t>(count_width)), count_text,
-            std::setw(9), '(' + utility::fixed(float(count) / source_count * 100) + "%)");
+            std::setw(9), '(' + utility::fixed(static_cast<float>(count) / source_count * 100) + "%)");
     }
     Json meta { { "magicCode", 0x262834 }, { "type", "lod-splat" }, { "version", "1.0" }, { "counts", source_count },
         { "shDegree", source_degree }, { "levels", levels.size() }, { "forwardBox", io::bounds_json(forward) },
@@ -112,6 +112,6 @@ std::vector<SingleFile> chunk_lod(splat::Splat source, const Json& config) {
 } // namespace
 void AutoChunkLodTask::exec(const Json& config, TaskContext& context) const {
     utility::logger().info("loaded -> \"", config.at("input").get<std::string>(), '"');
-    context.set(config, chunk_lod(context.take_splat(config), config));
+    context.set(config, chunk_lod(context.take_splat(config), config), false);
 }
 } // namespace splat_transform::pipeline

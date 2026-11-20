@@ -25,7 +25,7 @@ void read_attribute(StreamReader& input, splat::Splat& result, uint32_t degree, 
         input.skip(result.size() * sh_count);
         return;
     }
-    const float fraction = std::ldexp(1.0f, -int32_t(fractional_bits));
+    const float fraction = std::ldexp(1.0f, -static_cast<int32_t>(fractional_bits));
     decode_records(input, result.size(), strides[field], [&](std::span<const std::byte> bytes, size_t first, size_t count) {
         ByteReader reader(bytes);
         for (size_t i = first; i < first + count; ++i) {
@@ -37,7 +37,7 @@ void read_attribute(StreamReader& input, splat::Splat& result, uint32_t degree, 
                     } else {
                         const auto value = reader.take(3);
                         const uint32_t bits = std::to_integer<uint32_t>(value[0]) | (std::to_integer<uint32_t>(value[1]) << 8) | (std::to_integer<uint32_t>(value[2]) << 16);
-                        const int32_t scalar = int32_t(bits) - ((bits & 0x800000) ? 0x1000000 : 0);
+                        const int32_t scalar = static_cast<int32_t>(bits) - ((bits & 0x800000) ? 0x1000000 : 0);
                         point.attribute(axis) = static_cast<float>(scalar * fraction);
                     }
                 }
@@ -64,13 +64,13 @@ void read_attribute(StreamReader& input, splat::Splat& result, uint32_t degree, 
                     auto packed = reader.read<uint32_t>();
                     const auto largest = packed >> 30;
                     for (int32_t c = 3; c >= 0; --c) {
-                        if (uint32_t(c) == largest) {
+                        if (static_cast<uint32_t>(c) == largest) {
                             continue;
                         }
                         const auto magnitude = packed & 0x1ff;
                         const auto sign = (packed >> 9) & 1;
                         packed >>= 10;
-                        rotation[c] = std::sqrt(0.5f) * (float(magnitude) / 511) * (sign ? -1 : 1);
+                        rotation[c] = std::sqrt(0.5f) * (static_cast<float>(magnitude) / 511) * (sign ? -1 : 1);
                         sum += rotation[c] * rotation[c];
                     }
                     rotation[largest] = std::sqrt(std::max(0.0f, 1 - sum));
@@ -78,7 +78,7 @@ void read_attribute(StreamReader& input, splat::Splat& result, uint32_t degree, 
                 point.rotation.normalize();
             } else {
                 for (size_t c = 0; c < sh_count; ++c) {
-                    const auto value = (int32_t(reader.read<uint8_t>()) - 128) / 128.0f;
+                    const auto value = (static_cast<int32_t>(reader.read<uint8_t>()) - 128) / 128.0f;
                     if (c < result.sh_count()) {
                         point.sh[c + 3] = value;
                     }
@@ -109,14 +109,16 @@ splat::Splat read_spz_stream(StreamReader& source, uint32_t max_sh_degree) {
     if (degree > 3 || fractional_bits > 30) {
         throw std::runtime_error("Invalid SPZ SH degree or fractional bits");
     }
-    splat::Splat result(count, std::min(uint32_t(degree), max_sh_degree));
+    splat::Splat result(count, std::min(static_cast<uint32_t>(degree), max_sh_degree));
     if (version == 4) {
         const auto toc_offset = input.read<uint32_t>();
         if (toc_offset < 32 || streams != (degree ? 6 : 5)) {
             throw std::runtime_error("Invalid SPZ TOC");
         }
         input.skip(toc_offset - 20);
-        const std::array<size_t, 6> expected { size_t(count) * 9, count, size_t(count) * 3, size_t(count) * 3, size_t(count) * 4, size_t(count) * splat::SH_COUNTS[degree] };
+        const std::array<size_t, 6> expected { static_cast<size_t>(count) * 9, count,
+            static_cast<size_t>(count) * 3, static_cast<size_t>(count) * 3,
+            static_cast<size_t>(count) * 4, static_cast<size_t>(count) * splat::SH_COUNTS[degree] };
         std::array<size_t, 6> compressed_sizes {};
         for (size_t field = 0; field < streams; ++field) {
             const auto compressed = input.read<uint64_t>();
@@ -163,7 +165,7 @@ public:
             offsets_[field + 1] = offsets_[field] + indices.size() * strides_[field];
         }
         append(header_, SPZ_MAGIC);
-        append(header_, uint32_t(version));
+        append(header_, static_cast<uint32_t>(version));
         append(header_, static_cast<uint32_t>(indices.size()));
         header_.push_back(static_cast<std::byte>(data.sh_degree));
         header_.push_back(std::byte { 12 });
@@ -187,7 +189,7 @@ public:
             if (level_ != -1) {
                 codec::gzip_stream(size, read, output, level_);
             } else {
-                Bytes bytes(std::min(size, size_t(8 * 1024 * 1024)));
+                Bytes bytes(std::min(size, static_cast<size_t>(8 * 1024 * 1024)));
                 for (size_t offset = 0; offset < size;) {
                     const size_t count = std::min(bytes.size(), size - offset);
                     read(offset, std::span(bytes).first(count));
@@ -199,7 +201,7 @@ public:
         }
         const size_t streams = data_.sh_degree ? 6 : 5;
         auto header = header_;
-        append(header, uint32_t(32));
+        append(header, static_cast<uint32_t>(32));
         header.resize(32 + streams * 16, std::byte {});
         output(header);
         size_t position = header.size();
@@ -213,8 +215,8 @@ public:
                 position += bytes.size();
             };
             codec::zstd_stream(size, read, write, level_);
-            append(toc, uint64_t(position - start));
-            append(toc, uint64_t(size));
+            append(toc, static_cast<uint64_t>(position - start));
+            append(toc, static_cast<uint64_t>(size));
         }
         // Each frame is already on disk; only the small directory needs a patch.
         seek(32);
@@ -228,7 +230,7 @@ private:
             const auto& point = data_.gaussians[indices_[first + row]];
             if (field == 0) {
                 for (size_t c = 0; c < 3; ++c) {
-                    const auto value = static_cast<uint32_t>(static_cast<int32_t>(std::clamp(float(point.attribute(c)) * 4096, -8388607.0f, 8388607.0f)));
+                    const auto value = static_cast<uint32_t>(static_cast<int32_t>(std::clamp(static_cast<float>(point.attribute(c)) * 4096, -8388607.0f, 8388607.0f)));
                     output[c * 3] = static_cast<std::byte>(value & 255);
                     output[c * 3 + 1] = static_cast<std::byte>((value >> 8) & 255);
                     output[c * 3 + 2] = static_cast<std::byte>((value >> 16) & 255);
@@ -266,7 +268,7 @@ private:
             } else {
                 for (size_t c = 0; c < data_.sh_count(); ++c) {
                     const float step = c < 9 ? 8 : 16;
-                    const float quantized = std::floor((std::floor(float(point.attribute(splat::ShOffset + c)) * 128 + 0.5f) + 128 + step / 2) / step) * step;
+                    const float quantized = std::floor((std::floor(static_cast<float>(point.attribute(splat::ShOffset + c)) * 128 + 0.5f) + 128 + step / 2) / step) * step;
                     output[c] = static_cast<std::byte>(std::clamp(quantized, 0.0f, 255.0f));
                 }
             }

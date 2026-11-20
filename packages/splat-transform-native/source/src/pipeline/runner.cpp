@@ -38,7 +38,7 @@ void run(const io::Json& pipeline) {
         context.begin_task(spec.value("release", io::Json::array()));
         if (!gpu_selected && tasks[i]->requires_gpu(config, context)) {
             auto gpu_log = logger.scope("[Task:GPU]");
-            auto gpu_index = pipeline.value("gpu", uint32_t(0));
+            auto gpu_index = pipeline.value("gpu", static_cast<uint32_t>(0));
             logger.info("Any task requires GPU detected, initialize GPU adapter: ", gpu_index, ".");
             gpu::select_device(gpu_index);
             gpu_selected = true;

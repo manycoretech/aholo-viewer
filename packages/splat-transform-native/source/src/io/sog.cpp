@@ -146,7 +146,7 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         utility::logger().warn("SOG v2 clamps opacity above 1; use version: 3 to preserve it");
     }
     const auto [width, height] = codec::texture_size(indices.size());
-    const size_t image_size = size_t(width) * height * 4;
+    const size_t image_size = static_cast<size_t>(width) * height * 4;
     struct EncodedTextures {
         Archive files;
         Json metadata = Json::object();
@@ -252,7 +252,7 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         const size_t centroid_count = static_cast<size_t>(clustering.centroids.rows());
         const auto texture_width = static_cast<uint32_t>(64 * coefficients);
         const auto texture_height = static_cast<uint32_t>((centroid_count + 63) / 64);
-        Bytes centroids(size_t(texture_width) * texture_height * 4, std::byte { 255 });
+        Bytes centroids(static_cast<size_t>(texture_width) * texture_height * 4, std::byte { 255 });
         for (size_t i = 0; i < centroid_count; ++i) {
             for (size_t j = 0; j < coefficients; ++j) {
                 for (size_t c = 0; c < 3; ++c) {

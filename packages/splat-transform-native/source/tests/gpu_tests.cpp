@@ -149,10 +149,10 @@ int main(int argc, char** argv) {
             splat::Splat points(3, 0);
             for (size_t i = 0; i < points.size(); ++i) {
                 auto& g = points.gaussians[i];
-                g.mean = { float(i) * 0.25f - 0.25f, 0.1f, -0.1f };
+                g.mean = { static_cast<float>(i) * 0.25f - 0.25f, 0.1f, -0.1f };
                 g.scale = { 0.18f, 0.07f, 0.11f };
                 g.opacity = 0.8f;
-                g.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(0.6f + float(i) * 0.3f, Eigen::Vector3f(1, 2, 3).normalized()));
+                g.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(0.6f + static_cast<float>(i) * 0.3f, Eigen::Vector3f(1, 2, 3).normalized()));
             }
             const Eigen::AlignedBox3f bounds(Eigen::Vector3f::Constant(-1), Eigen::Vector3f::Ones());
             const auto prepared = voxel::prepare(points);
@@ -171,7 +171,7 @@ int main(int argc, char** argv) {
             splat::Splat points(512, 0);
             for (size_t i = 0; i < points.size(); ++i) {
                 auto& g = points.gaussians[i];
-                g.mean = { float(i) * 1.6f + 0.05f, 0.05f, 0.05f };
+                g.mean = { static_cast<float>(i) * 1.6f + 0.05f, 0.05f, 0.05f };
                 g.scale = { 0.02f, 0.02f, 0.02f };
                 g.rotation = Eigen::Quaternionf::Identity();
                 g.opacity = 0.9f;
@@ -181,7 +181,7 @@ int main(int argc, char** argv) {
                 throw std::runtime_error("Scene-wide voxel dispatch changed isolated Gaussian occupancy");
             }
             for (size_t i = 0; i < points.size(); ++i) {
-                if (!grid.get({ int32_t(i * 16), 0, 0 })) {
+                if (!grid.get({ static_cast<int32_t>(i * 16), 0, 0 })) {
                     throw std::runtime_error("Scene-wide voxel dispatch lost a batch after the old 256-batch boundary");
                 }
             }
@@ -194,7 +194,7 @@ int main(int argc, char** argv) {
             splat::Splat points(bins * copies, 0);
             for (size_t i = 0; i < points.size(); ++i) {
                 auto& g = points.gaussians[i];
-                g.mean = { float(i % bins) * 1.6f + 0.05f, 0.05f, 0.05f };
+                g.mean = { static_cast<float>(i % bins) * 1.6f + 0.05f, 0.05f, 0.05f };
                 g.scale.setConstant(0.005f);
                 g.rotation.setIdentity();
                 g.opacity = 0.02f;
@@ -207,7 +207,7 @@ int main(int argc, char** argv) {
                     throw std::runtime_error("Parallel candidate sorting changed voxel occupancy");
                 }
                 for (size_t bin = 0; bin < bins; ++bin) {
-                    if (!grid.get({ int32_t(bin * 16), 0, 0 })) {
+                    if (!grid.get({ static_cast<int32_t>(bin * 16), 0, 0 })) {
                         throw std::runtime_error("Parallel candidate sorting lost a dense bin or tail");
                     }
                 }
@@ -218,22 +218,22 @@ int main(int argc, char** argv) {
             Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> points(257, columns), centroids(129, columns);
             for (size_t c = 0; c < columns; ++c) {
                 for (size_t k = 0; k < 129; ++k) {
-                    centroids(k, c) = float(std::sin((k + 1) * (c + 3) * 0.173));
+                    centroids(k, c) = static_cast<float>(std::sin((k + 1) * (c + 3) * 0.173));
                 }
                 for (size_t row = 0; row < 257; ++row) {
-                    points(row, c) = centroids(row % 129, c) + float(std::cos(row + c) * 0.003);
+                    points(row, c) = centroids(row % 129, c) + static_cast<float>(std::cos(row + c) * 0.003);
                 }
             }
             const auto input = feature_splats(points, degree);
             spatial::ClusterSession session(spatial::FeatureView(input), static_cast<size_t>(centroids.rows()));
             const auto actual = session.assign(centroids);
             for (size_t row = 0; row < actual.size(); ++row) {
-                double best = INFINITY;
+                double best = std::numeric_limits<double>::infinity();
                 uint32_t expected = 0;
                 for (uint32_t k = 0; k < 129; ++k) {
                     double distance = 0;
                     for (size_t c = 0; c < columns; ++c) {
-                        const double delta = double(points(row, c)) - centroids(k, c);
+                        const double delta = static_cast<double>(points(row, c)) - centroids(k, c);
                         distance += delta * delta;
                     }
                     if (distance < best) {
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
                 if (actual[row] != expected) {
                     double distance = 0;
                     for (size_t c = 0; c < columns; ++c) {
-                        const double delta = double(points(row, c)) - centroids(actual[row], c);
+                        const double delta = static_cast<double>(points(row, c)) - centroids(actual[row], c);
                         distance += delta * delta;
                     }
                     if (distance - best > 2e-6 * columns) {
@@ -253,12 +253,12 @@ int main(int argc, char** argv) {
                 }
             }
             spatial::ClusterSession batched(spatial::FeatureView(input), static_cast<size_t>(centroids.rows()), 128);
-            std::vector<uint32_t> labels(actual.size(), UINT32_MAX);
+            std::vector<uint32_t> labels(actual.size(), std::numeric_limits<uint32_t>::max());
             size_t previous = 0, callbacks = 0;
             batched.assign(centroids, labels, [&](size_t ready) {
                 if (ready <= previous || ready > labels.size() || ready - previous > 128 ||
                     !std::equal(labels.begin(), labels.begin() + ready, actual.begin()) ||
-                    !std::all_of(labels.begin() + ready, labels.end(), [](auto label) { return label == UINT32_MAX; })) {
+                    !std::all_of(labels.begin() + ready, labels.end(), [](auto label) { return label == std::numeric_limits<uint32_t>::max(); })) {
                     throw std::runtime_error("Clustering callback exposed incomplete or unordered labels");
                 }
                 previous = ready;
@@ -291,7 +291,7 @@ int main(int argc, char** argv) {
             Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> points(ROWS, COLUMNS), centroids(CENTROIDS, COLUMNS);
             for (size_t c = 0; c < COLUMNS; ++c) {
                 for (size_t k = 0; k < CENTROIDS; ++k) {
-                    centroids(k, c) = float(std::sin((k + 1) * (c + 3) * 0.173));
+                    centroids(k, c) = static_cast<float>(std::sin((k + 1) * (c + 3) * 0.173));
                 }
                 for (size_t row = 0; row < ROWS; ++row) {
                     points(row, c) = centroids(row % CENTROIDS, c);
@@ -381,7 +381,7 @@ int main(int argc, char** argv) {
                     throw std::runtime_error("Density fixture must cross the cutoff only after both contributions");
                 }
                 large[large.size() - 2] = large.back() = weak;
-                const std::array<uint32_t, 2> remapped { uint32_t(large.size() - 2), uint32_t(large.size() - 1) };
+                const std::array<uint32_t, 2> remapped { static_cast<uint32_t>(large.size() - 2), static_cast<uint32_t>(large.size() - 1) };
                 batch.index_count = 2;
                 if (session.voxelize(large, remapped, std::span(&batch, 1), 0.1f, 0.1f, 1) != expected) {
                     throw std::runtime_error("Voxel input compaction lost global Gaussian indices");
@@ -391,7 +391,7 @@ int main(int argc, char** argv) {
                 std::vector<uint32_t> dense_indices(2 * 1024 * 1024 + 1);
                 dense_indices.front() = remapped[0];
                 dense_indices.back() = remapped[1];
-                batch.index_count = uint32_t(dense_indices.size());
+                batch.index_count = static_cast<uint32_t>(dense_indices.size());
                 if (session.voxelize(large, dense_indices, std::span(&batch, 1), 0.1f, 0.1f, 1) != expected) {
                     throw std::runtime_error("Voxel density changed across candidate chunks");
                 }
@@ -412,7 +412,7 @@ int main(int argc, char** argv) {
                 voxel::VoxelBatch padded { 0, 0, 65535, 1, 1, 0, 0, 0 };
                 const auto empty = session.voxelize({}, {}, std::span(&padded, 1), 1, 0, 65536);
                 if (empty.size() != 65536 * 2 || empty[65535 * 2] || empty.back() ||
-                    std::ranges::any_of(empty.begin(), empty.end() - 2, [](uint32_t word) { return word != UINT32_MAX; })) {
+                    std::ranges::any_of(empty.begin(), empty.end() - 2, [](uint32_t word) { return word != std::numeric_limits<uint32_t>::max(); })) {
                     throw std::runtime_error("Voxel X dispatch split lost its block offset or padding");
                 }
                 std::cout << "Large voxel X/Z workgroup splits passed\n";
@@ -434,13 +434,13 @@ int main(int argc, char** argv) {
                         throw std::runtime_error("Chunked candidate scatter changed bin offsets");
                     }
                     uint64_t seen = 0;
-                    for (size_t i = result.offsets[bin]; i < size_t(result.offsets[bin]) + 64; ++i) {
+                    for (size_t i = result.offsets[bin]; i < static_cast<size_t>(result.offsets[bin]) + 64; ++i) {
                         if (result.indices[i] >= 64) {
                             throw std::runtime_error("Chunked candidate scatter returned an invalid index");
                         }
-                        seen |= uint64_t(1) << result.indices[i];
+                        seen |= static_cast<uint64_t>(1) << result.indices[i];
                     }
-                    if (seen != UINT64_MAX) {
+                    if (seen != std::numeric_limits<uint64_t>::max()) {
                         throw std::runtime_error("Chunked candidate scatter duplicated or lost an index");
                     }
                 }
@@ -453,7 +453,7 @@ int main(int argc, char** argv) {
                 const auto result = session.candidates(std::span(&boundary, 1), { 0, 0, 0 }, 1, { 4096, 8193, 1 });
                 const size_t first = 8191 * 4096, second = 8192 * 4096;
                 if (result.indices != std::vector<uint32_t> { 0, 0 } || result.counts[first] != 1 || result.counts[second] != 1 ||
-                    result.offsets[first] != 0 || result.offsets[second] != 1 || std::accumulate(result.counts.begin(), result.counts.end(), uint64_t(0)) != 2) {
+                    result.offsets[first] != 0 || result.offsets[second] != 1 || std::accumulate(result.counts.begin(), result.counts.end(), static_cast<uint64_t>(0)) != 2) {
                     throw std::runtime_error("Candidate bin window lost a boundary overlap");
                 }
                 std::cout << "Large candidate bin window passed\n";
@@ -462,11 +462,11 @@ int main(int argc, char** argv) {
                 voxel::VoxelSession session;
                 // Cross the 65535-workgroup X limit in expand, dilate, and compact.
                 constexpr uint32_t BLOCKS = 1024 * 1024 * 512 / 64;
-                std::vector<uint32_t> packed(size_t(65535 * 128 + 1) * 3);
+                std::vector<uint32_t> packed(static_cast<size_t>(65535 * 128 + 1) * 3);
                 packed[packed.size() - 3] = BLOCKS - 1;
                 packed.back() = 0x80000000;
                 const auto masks = session.dilate_blocks(packed, { 1024, 1024, 512 }, { 1, 0, 0 });
-                if (masks.size() != size_t(BLOCKS) * 2 || masks.back() != 0xc0000000 ||
+                if (masks.size() != static_cast<size_t>(BLOCKS) * 2 || masks.back() != 0xc0000000 ||
                     std::ranges::any_of(masks.begin(), masks.end() - 1, [](uint32_t word) { return word != 0; })) {
                     throw std::runtime_error("Vulkan multidimensional dispatch lost dilation blocks");
                 }
@@ -510,11 +510,11 @@ int main(int argc, char** argv) {
             std::vector<uint32_t> packed;
             for (auto index : grid.active_blocks()) {
                 const auto mask = grid.mask(index);
-                packed.insert(packed.end(), { index, uint32_t(mask), uint32_t(mask >> 32) });
+                packed.insert(packed.end(), { index, static_cast<uint32_t>(mask), static_cast<uint32_t>(mask >> 32) });
             }
-            const auto actual = session.dilate_blocks(packed, { uint32_t(dimension), uint32_t(dimension), uint32_t(dimension) }, { 1, 2, 1 });
+            const auto actual = session.dilate_blocks(packed, { static_cast<uint32_t>(dimension), static_cast<uint32_t>(dimension), static_cast<uint32_t>(dimension) }, { 1, 2, 1 });
             for (uint32_t i = 0; i < grid.block_count(); ++i) {
-                if ((uint64_t(actual[i * 2]) | (uint64_t(actual[i * 2 + 1]) << 32)) != expected.mask(i)) {
+                if ((static_cast<uint64_t>(actual[i * 2]) | (static_cast<uint64_t>(actual[i * 2 + 1]) << 32)) != expected.mask(i)) {
                     throw std::runtime_error("Vulkan expand/dilate/compact mismatch");
                 }
             }

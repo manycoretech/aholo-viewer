@@ -34,7 +34,7 @@ Quantization detail::quantize_values(std::vector<float> values, size_t rows, siz
     std::vector<float> sums(bins, 0), centers(bins), weights(bins);
     for (size_t i = 0; i < n; ++i) {
         const float uniform = (sorted[i] - min) / range;
-        const size_t bin = std::min(bins - 1, static_cast<size_t>(std::floor(bins * (beta * (float(i) / n) + (1 - beta) * uniform))));
+        const size_t bin = std::min(bins - 1, static_cast<size_t>(std::floor(bins * (beta * (static_cast<float>(i) / n) + (1 - beta) * uniform))));
         ++counts[bin];
         sums[bin] += uniform;
     }
@@ -114,7 +114,7 @@ Clustering k_means(FeatureView points, size_t count, size_t iterations) {
     }
     Clustering result { Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>::Zero(count, points.dimensions()), {} };
     auto& rng = utility::default_random();
-    auto random_index = [&](size_t upper) { return static_cast<size_t>((uint64_t(rng()) * upper) >> 32); };
+    auto random_index = [&](size_t upper) { return static_cast<size_t>((static_cast<uint64_t>(rng()) * upper) >> 32); };
     std::unordered_set<size_t> selected;
     size_t centroid = 0;
     for (size_t j = rows - count; j < rows; ++j) {
@@ -167,7 +167,7 @@ Clustering k_means(FeatureView points, size_t count, size_t iterations) {
                         const auto label = result.labels[row];
                         ++part.counts[label];
                         for (size_t c = 0; c < points.dimensions(); ++c) {
-                            part.sums[size_t(label) * points.dimensions() + c] += points(row, c);
+                            part.sums[static_cast<size_t>(label) * points.dimensions() + c] += points(row, c);
                         }
                     }
                 });

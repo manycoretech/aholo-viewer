@@ -52,7 +52,7 @@ struct Module {
             const size_t count = words[offset] >> 16;
             require(count != 0 && count <= words.size() - offset, "Invalid SPIR-V instruction");
             const auto instruction = Words(words).subspan(offset, count);
-            const auto opcode = uint16_t(instruction[0]);
+            const auto opcode = static_cast<uint16_t>(instruction[0]);
             instructions.push_back(instruction);
             if (opcode >= TypeInt && opcode <= TypePointer) {
                 types.emplace(instruction[1], instruction);
@@ -65,7 +65,7 @@ struct Module {
     }
     uint32_t decoration(uint32_t id, uint32_t kind) const {
         for (const auto instruction : instructions) {
-            if (uint16_t(instruction[0]) == Decorate && instruction[1] == id && instruction[2] == kind) {
+            if (static_cast<uint16_t>(instruction[0]) == Decorate && instruction[1] == id && instruction[2] == kind) {
                 return instruction[3];
             }
         }
@@ -73,7 +73,7 @@ struct Module {
     }
     uint32_t size(uint32_t id) const {
         const auto type = types.at(id);
-        switch (uint16_t(type[0])) {
+        switch (static_cast<uint16_t>(type[0])) {
         case TypeInt:
         case TypeFloat:
             require(type[2] == 32, "Shader ABI requires 32-bit scalars");
@@ -95,10 +95,10 @@ struct Module {
     }
     void scalar_offsets(uint32_t id) const {
         const auto type = types.at(id);
-        require(uint16_t(type[0]) == TypeStruct, "Expected an ABI struct");
+        require(static_cast<uint16_t>(type[0]) == TypeStruct, "Expected an ABI struct");
         size_t offsets = 0;
         for (const auto instruction : instructions) {
-            if (uint16_t(instruction[0]) != MemberDecorate || instruction[1] != id || instruction[3] != 35) {
+            if (static_cast<uint16_t>(instruction[0]) != MemberDecorate || instruction[1] != id || instruction[3] != 35) {
                 continue;
             }
             const auto member = instruction[2];
@@ -145,7 +145,7 @@ void check(std::span<const std::byte> bytes, Words strides, uint32_t push_size, 
     std::vector<bool> bindings(strides.size());
     uint32_t shared = 0, pushes = 0, entries = 0, local_sizes = 0;
     for (const auto instruction : module.instructions) {
-        const auto opcode = uint16_t(instruction[0]);
+        const auto opcode = static_cast<uint16_t>(instruction[0]);
         require(opcode != Extension, "Shader unexpectedly requires a SPIR-V extension");
         if (opcode == Capability) {
             require(instruction[1] == 1, "Shader unexpectedly requires an optional Vulkan capability");
@@ -162,7 +162,7 @@ void check(std::span<const std::byte> bytes, Words strides, uint32_t push_size, 
             continue;
         }
         const auto pointer = module.types.at(instruction[1]);
-        require(uint16_t(pointer[0]) == TypePointer, "Expected a variable pointer");
+        require(static_cast<uint16_t>(pointer[0]) == TypePointer, "Expected a variable pointer");
         const auto type_id = pointer[3];
         if (instruction[3] == 4) { // Workgroup
             shared += module.size(type_id);
@@ -175,12 +175,12 @@ void check(std::span<const std::byte> bytes, Words strides, uint32_t push_size, 
             require(module.decoration(instruction[2], 34) == 0, "Descriptor set mismatch");
             require(binding < strides.size() && !bindings[binding], "Descriptor binding mismatch");
             const auto block = module.types.at(type_id);
-            require(uint16_t(block[0]) == TypeStruct && block.size() == 3, "Expected a storage buffer block");
+            require(static_cast<uint16_t>(block[0]) == TypeStruct && block.size() == 3, "Expected a storage buffer block");
             const auto array = module.types.at(block[2]);
-            require(uint16_t(array[0]) == TypeRuntimeArray, "Expected a runtime storage array");
+            require(static_cast<uint16_t>(array[0]) == TypeRuntimeArray, "Expected a runtime storage array");
             require(module.decoration(array[1], 6) == strides[binding], "Storage buffer stride mismatch");
             require(module.size(array[2]) == strides[binding], "Storage buffer element size mismatch");
-            if (uint16_t(module.types.at(array[2])[0]) == TypeStruct) {
+            if (static_cast<uint16_t>(module.types.at(array[2])[0]) == TypeStruct) {
                 module.scalar_offsets(array[2]);
             }
             bindings[binding] = true;

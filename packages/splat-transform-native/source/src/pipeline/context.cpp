@@ -1,12 +1,55 @@
 #include <algorithm>
+#include <array>
+#include <limits>
 #include <memory>
 #include <new>
 #include <pipeline/context.h>
 #include <string_view>
+#include <utility/parallel.h>
+#include <voxel/grid.h>
 #include <xxhash.h>
 
 namespace splat_transform::pipeline {
 namespace {
+constexpr size_t NO_LINEAGE = std::numeric_limits<size_t>::max();
+
+uint64_t ordered_input_key(const io::Json& inputs) {
+    auto hash = std::unique_ptr<XXH3_state_t, decltype(&XXH3_freeState)>(XXH3_createState(), &XXH3_freeState);
+    if (!hash) {
+        throw std::bad_alloc();
+    }
+    XXH3_64bits_reset(hash.get());
+    for (const auto& input : inputs) {
+        const auto path = io::path_utf8(std::filesystem::absolute(io::utf8_path(input.get<std::string>())).lexically_normal());
+        XXH64_canonical_t length;
+        XXH64_canonicalFromHash(&length, path.size());
+        XXH3_64bits_update(hash.get(), &length, sizeof(length));
+        XXH3_64bits_update(hash.get(), path.data(), path.size());
+    }
+    return XXH3_64bits_digest(hash.get());
+}
+
+// Hash decoded occupancy inputs. Multi-file formats can change even when the
+// manifest and its timestamp are identical. SH and object padding are irrelevant.
+uint64_t geometry_hash(const splat::Splat& data) {
+    constexpr size_t chunk_size = 256;
+    std::vector<uint64_t> chunks((data.size() + chunk_size - 1) / chunk_size);
+    threading::parallel_chunks(chunks.size(), 16, [&](size_t begin, size_t end) {
+        std::array<float, chunk_size * 11> buffer;
+        for (size_t chunk = begin; chunk < end; ++chunk) {
+            auto* out = buffer.data();
+            for (const auto& point : std::span(data.gaussians).subspan(chunk * chunk_size, std::min(chunk_size, data.size() - chunk * chunk_size))) {
+                out = std::copy_n(point.mean.data(), 3, out);
+                out = std::copy_n(point.scale.data(), 3, out);
+                out = std::copy_n(point.rotation.coeffs().data(), 4, out);
+                *out++ = point.opacity;
+            }
+            chunks[chunk] = XXH3_64bits(buffer.data(), (out - buffer.data()) * sizeof(float));
+        }
+    });
+    return XXH3_64bits(chunks.data(), chunks.size() * sizeof(uint64_t));
+}
+
 bool same_voxel_paths(const io::Json& previous, const io::Json& current) {
     if (!previous.is_array() || previous.size() != current.size()) {
         return false;
@@ -22,6 +65,12 @@ bool same_voxel_paths(const io::Json& previous, const io::Json& current) {
     });
 }
 } // namespace
+struct TaskContext::CachedVoxelGrid {
+    size_t lineage;
+    voxel::Occupancy occupancy;
+};
+TaskContext::TaskContext() = default;
+TaskContext::~TaskContext() = default;
 const Resource& TaskContext::input(const io::Json& config) const {
     return resources_.at(config.at("input").get<std::string>()).data;
 }
@@ -47,33 +96,95 @@ splat::Splat TaskContext::take_splat(const io::Json& config) {
     }
     return *pointer;
 }
-void TaskContext::set(const io::Json& config, Resource resource) {
+splat::Splat TaskContext::select_splat(const io::Json& config, std::span<const uint32_t> indices) {
+    const auto& pointer = splat_ptr(config);
+    const auto name = config.at("input").get<std::string>();
+    if ((config.at("output") == name || releases_.contains(name)) && pointer.use_count() == 1) {
+        return std::move(*pointer).select(indices);
+    }
+    return pointer->select(indices);
+}
+void TaskContext::geometry_changed(const io::Json& config) {
+    const auto* changed = splat_ptr(config).get();
+    const auto lineage = parents_.size();
+    parents_.push_back(NO_LINEAGE);
+    for (auto& [key, entry] : resources_) {
+        if (auto* point = std::get_if<SplatPtr>(&entry.data); point && point->get() == changed) {
+            entry.lineage = lineage;
+        }
+    }
+}
+void TaskContext::set(const io::Json& config, Resource resource, bool inherit_grid) {
     size_t source;
+    size_t lineage = parents_.size();
+    size_t parent = NO_LINEAGE;
     if (config.contains("input")) {
-        source = resources_.at(config.at("input").get<std::string>()).source;
+        const auto& input = resources_.at(config.at("input").get<std::string>());
+        source = input.source;
+        if (inherit_grid) {
+            parent = input.lineage;
+            const auto* data = std::get_if<SplatPtr>(&resource);
+            const auto* original = std::get_if<SplatPtr>(&input.data);
+            if (data && original && *data == *original) {
+                lineage = parent;
+            }
+        }
     } else if (config.contains("inputs")) {
-        auto hash = std::unique_ptr<XXH3_state_t, decltype(&XXH3_freeState)>(XXH3_createState(), &XXH3_freeState);
-        if (!hash) {
-            throw std::bad_alloc();
-        }
-        XXH3_64bits_reset(hash.get());
-        // Length prefixes preserve path boundaries, input order, and repeated inputs.
-        for (const auto& input : config.at("inputs")) {
-            const auto path = io::path_utf8(std::filesystem::absolute(io::utf8_path(input.get<std::string>())).lexically_normal());
-            XXH64_canonical_t length;
-            XXH64_canonicalFromHash(&length, path.size());
-            XXH3_64bits_update(hash.get(), &length, sizeof(length));
-            XXH3_64bits_update(hash.get(), path.data(), path.size());
-        }
-        const auto [entry, inserted] = read_sources_.try_emplace(XXH3_64bits_digest(hash.get()), next_source_);
-        source = entry->second;
+        const auto signature = geometry_hash(*std::get<SplatPtr>(resource));
+        auto [entry, inserted] = read_sources_.try_emplace(ordered_input_key(config.at("inputs")), ReadSource { next_source_, NO_LINEAGE, signature });
         if (inserted) {
             ++next_source_;
         }
+        auto& read = entry->second;
+        if (read.root_lineage_id == NO_LINEAGE || read.geometry_hash != signature) {
+            parents_.push_back(NO_LINEAGE);
+            read.root_lineage_id = parents_.size() - 1;
+            read.geometry_hash = signature;
+        }
+        source = read.source_id;
+        lineage = read.root_lineage_id;
     } else {
         source = next_source_++;
     }
-    resources_.insert_or_assign(config.at("output").get<std::string>(), Entry { std::move(resource), source });
+    if (lineage == parents_.size()) {
+        parents_.push_back(parent);
+    }
+    resources_.insert_or_assign(config.at("output").get<std::string>(), Entry { std::move(resource), source, lineage });
+}
+const voxel::Occupancy* TaskContext::find_grid(const io::Json& config, voxel::GridSpec requested) const {
+    const auto& input = resources_.at(config.at("input").get<std::string>());
+    const auto source = voxel_cache_.find(input.source);
+    if (source == voxel_cache_.end()) {
+        return nullptr;
+    }
+    const voxel::Occupancy* best = nullptr;
+    for (auto node = input.lineage; node != NO_LINEAGE; node = parents_[node]) {
+        for (const auto& entry : source->second) {
+            const auto& grid = entry->occupancy;
+            if (entry->lineage != node || grid.spec.opacity_cutoff != requested.opacity_cutoff) {
+                continue;
+            }
+            if (grid.spec.voxel_resolution == requested.voxel_resolution) {
+                return &grid;
+            }
+            if (grid.spec.voxel_resolution < requested.voxel_resolution &&
+                (!best || grid.spec.voxel_resolution > best->spec.voxel_resolution)) {
+                best = &grid;
+            }
+        }
+    }
+    return best;
+}
+const voxel::Occupancy& TaskContext::store_grid(const io::Json& config, voxel::Occupancy&& grid) {
+    const auto& input = resources_.at(config.at("input").get<std::string>());
+    auto& cached_grids = voxel_cache_[input.source];
+    for (const auto& entry : cached_grids) {
+        if (entry->lineage == input.lineage && entry->occupancy.spec == grid.spec) {
+            return entry->occupancy;
+        }
+    }
+    const auto& entry = cached_grids.emplace_back(std::make_unique<CachedVoxelGrid>(CachedVoxelGrid { input.lineage, std::move(grid) }));
+    return entry->occupancy;
 }
 void TaskContext::begin_task(const io::Json& releases) {
     releases_.clear();

@@ -34,18 +34,18 @@ splat::Splat skeleton(const splat::Splat& data, const Json& config) {
     auto groups = group(indices, splat::bounds(data).min(), { 50, 50, 50 });
     float ratio = 0;
     for (const auto& block : groups) {
-        ratio += std::pow(float(block.size()), 1.3f);
+        ratio += std::pow(static_cast<float>(block.size()), 1.3f);
     }
     ratio /= target * 0.1f;
     std::vector<std::vector<uint32_t>> merged;
     for (auto& block : groups) {
-        const size_t size = std::max<size_t>(1, static_cast<size_t>(std::ceil(std::pow(float(block.size()), 1.3f) / ratio)));
+        const size_t size = std::max<size_t>(1, static_cast<size_t>(std::ceil(std::pow(static_cast<float>(block.size()), 1.3f) / ratio)));
         if (size == 1) {
             merged.push_back(std::move(block));
             continue;
         }
         const auto box = splat::bounds(data, block);
-        const float count = std::ceil(std::cbrt(float(size)));
+        const float count = std::ceil(std::cbrt(static_cast<float>(size)));
         const Eigen::Vector3f scale = count / box.sizes().array().max(1e-9f);
         auto subgroups = group(block, box.min(), scale);
         if (subgroups.size() > size) {
@@ -65,7 +65,8 @@ splat::Splat skeleton(const splat::Splat& data, const Json& config) {
         output.gaussians[i].attribute(splat::ScaleX) = output.gaussians[i].attribute(splat::ScaleZ) = 0.005f;
         output.gaussians[i].attribute(splat::QuatW) = 1;
         // Preserve the existing loading-LOD data layout, including its zero Y scale.
-        for (size_t c : { size_t(splat::X), size_t(splat::Y), size_t(splat::Z), size_t(splat::Red), size_t(splat::Green), size_t(splat::Blue), size_t(splat::Alpha) }) {
+        for (size_t c : { static_cast<size_t>(splat::X), static_cast<size_t>(splat::Y), static_cast<size_t>(splat::Z),
+                 static_cast<size_t>(splat::Red), static_cast<size_t>(splat::Green), static_cast<size_t>(splat::Blue), static_cast<size_t>(splat::Alpha) }) {
             float sum = 0;
             for (auto index : merged[i]) {
                 sum += data.gaussians[index].attribute(c);
@@ -79,7 +80,7 @@ splat::Splat skeleton(const splat::Splat& data, const Json& config) {
 void SkeletonLodTask::exec(const Json& config, TaskContext& context) const {
     auto& logger = utility::logger();
     logger.info("loaded -> \"", config.at("input").get<std::string>(), '"');
-    context.set(config, std::make_shared<splat::Splat>(skeleton(*context.splat_ptr(config), config)));
+    context.set(config, std::make_shared<splat::Splat>(skeleton(*context.splat_ptr(config), config)), false);
     logger.info("stored -> key=\"", config.at("output").get<std::string>(), '"');
 }
 } // namespace splat_transform::pipeline

@@ -22,7 +22,7 @@ void coefficient_ownership() {
     for (size_t size : { 0u, 3u, 12u, 27u, 48u }) {
         splat::ShCoefficients original(size);
         for (size_t i = 0; i < size; ++i) {
-            original[i] = float(i + 1);
+            original[i] = static_cast<float>(i + 1);
         }
         auto copy = original;
         if (size) {
@@ -32,12 +32,12 @@ void coefficient_ownership() {
         auto moved = std::move(original);
         require(original.size() == 0 && moved.size() == size, "SH move did not transfer ownership");
         for (size_t i = 0; i < size; ++i) {
-            require(moved[i] == float(i + 1), "SH move corrupted coefficients");
+            require(moved[i] == static_cast<float>(i + 1), "SH move corrupted coefficients");
         }
         moved.resize(3);
         moved.resize(48);
         for (size_t i = 0; i < 48; ++i) {
-            require(moved[i] == (i < std::min(size, size_t(3)) ? float(i + 1) : 0.0f), "SH resize did not preserve/zero bands");
+            require(moved[i] == (i < std::min(size, static_cast<size_t>(3)) ? static_cast<float>(i + 1) : 0.0f), "SH resize did not preserve/zero bands");
         }
         splat::ShCoefficients rgb(3);
         rgb[0] = 9;
@@ -85,14 +85,14 @@ void native_rotation() {
     splat::Splat cloud(1, 1);
     auto& sh = cloud.gaussians[0].sh;
     for (size_t i = 0; i < sh.size(); ++i) {
-        sh[i] = float(i + 1);
+        sh[i] = static_cast<float>(i + 1);
     }
     Eigen::Matrix3f rotation;
     rotation << 0, -1, 0, 1, 0, 0, 0, 0, 1;
     spatial::ShRotation(rotation).apply(sh);
     for (size_t c = 0; c < 3; ++c) {
-        require(sh[c] == float(c + 1), "SH rotation changed DC color");
-        require(sh[3 + c] == float(10 + c) && sh[6 + c] == float(7 + c) && sh[9 + c] == -float(4 + c), "SH rotation changed native coefficient/channel order");
+        require(sh[c] == static_cast<float>(c + 1), "SH rotation changed DC color");
+        require(sh[3 + c] == static_cast<float>(10 + c) && sh[6 + c] == static_cast<float>(7 + c) && sh[9 + c] == -static_cast<float>(4 + c), "SH rotation changed native coefficient/channel order");
     }
     const splat::AttributeView view(cloud, splat::ShOffset);
     require(&view[0] == &sh[3], "Attribute access created a copied column");
@@ -111,8 +111,8 @@ void gaussian_rotation() {
     gaussian.rotation = Eigen::Quaternionf(4, 1, 2, 3);
     const auto& view = gaussian;
     for (size_t c = 0; c < 4; ++c) {
-        require(view.attribute(splat::QuatX + c) == float(c + 1), "Rotation attributes changed xyzw order");
-        gaussian.attribute(splat::QuatX + c) = -float(c + 1);
+        require(view.attribute(splat::QuatX + c) == static_cast<float>(c + 1), "Rotation attributes changed xyzw order");
+        gaussian.attribute(splat::QuatX + c) = -static_cast<float>(c + 1);
     }
     require(gaussian.rotation.x() == -1 && gaussian.rotation.y() == -2 && gaussian.rotation.z() == -3 && gaussian.rotation.w() == -4,
         "Rotation attribute writes do not update the quaternion");
@@ -137,12 +137,12 @@ void formats() {
     std::iota(indices.begin(), indices.end(), 0);
     for (size_t i = 0; i < source.size(); ++i) {
         auto& gaussian = source.gaussians[i];
-        gaussian.mean = Eigen::Vector3f(float(i), float(i) / 4, -float(i));
+        gaussian.mean = Eigen::Vector3f(static_cast<float>(i), static_cast<float>(i) / 4, -static_cast<float>(i));
         gaussian.scale.setConstant(0.125f);
-        gaussian.rotation = Eigen::Quaternionf(-float(i + 1), 1, 2, 3).normalized();
+        gaussian.rotation = Eigen::Quaternionf(-static_cast<float>(i + 1), 1, 2, 3).normalized();
         gaussian.opacity = 0.75f;
         for (size_t c = 0; c < gaussian.sh.size(); ++c) {
-            gaussian.sh[c] = float(std::sin(i + c) / 4);
+            gaussian.sh[c] = static_cast<float>(std::sin(i + c) / 4);
         }
     }
     for (const auto extension : { ".ply", ".spz", ".uspz", ".esz" }) {
@@ -198,7 +198,7 @@ void packed_ply_fields() {
     bytes.insert(bytes.end(), payload.begin(), payload.end());
     const auto decoded = io::PlyFile().read({ {}, bytes, 0 });
     const auto& point = decoded.gaussians.at(0);
-    require(point.mean.z() == float(0xa5a5a5a5u & 2047) / 2047, "Packed PLY position lost integer bits");
+    require(point.mean.z() == static_cast<float>(0xa5a5a5a5u & 2047) / 2047, "Packed PLY position lost integer bits");
     require(point.opacity == 239.0f / 255 && point.sh[0] == 137.0f / 255 && point.sh[2] == 205.0f / 255, "Packed PLY color lost integer bits");
 }
 void float_ply_layouts() {
@@ -237,15 +237,15 @@ void float_ply_layouts() {
         };
         for (size_t row = 0; row < count; ++row) {
             for (size_t c = 0; c < names.size(); ++c) {
-                const float value = float(int32_t((row * 7 + c * 11) % 97) - 48) / 32;
+                const float value = static_cast<float>(static_cast<int32_t>((row * 7 + c * 11) % 97) - 48) / 32;
                 if (mixed && names[c] == "x") {
-                    append_value(double(value));
+                    append_value(static_cast<double>(value));
                 } else {
                     append_value(value);
                 }
             }
             if (mixed) {
-                append_value(uint8_t(17));
+                append_value(static_cast<uint8_t>(17));
             } else {
                 append_value(17.0f);
             }

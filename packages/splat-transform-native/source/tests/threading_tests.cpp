@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
         }
         if (argc == 2) {
             const auto requested = io::Json::parse(argv[1]);
-            expected_workers = size_t(std::min<uint64_t>(requested.get<uint64_t>(), worker_limit));
+            expected_workers = static_cast<size_t>(std::min<uint64_t>(requested.get<uint64_t>(), worker_limit));
             pipeline::run({ { "version", 1 }, { "cpuWorkers", requested }, { "tasks", io::Json::array() } });
         }
         std::array<threading::ThreadPool*, 8> instances {};

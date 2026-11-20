@@ -16,7 +16,7 @@ void ReadTask::exec(const Json& config, TaskContext& context) const {
     }
     auto data = std::make_shared<splat::Splat>(parts.size() == 1 ? std::move(parts.front()) : splat::combine(std::move(parts), true));
     auto& logger = utility::logger();
-    logger.info("load: ", inputs.size(), " files | sizes=", utility::fixed(float(total_bytes) / (1024 * 1024)), "MB");
+    logger.info("load: ", inputs.size(), " files | sizes=", utility::fixed(static_cast<float>(total_bytes) / (1024 * 1024)), "MB");
     for (const auto& input : inputs) {
         logger.info("  - ", io::path_utf8(io::utf8_path(input.get<std::string>())));
     }

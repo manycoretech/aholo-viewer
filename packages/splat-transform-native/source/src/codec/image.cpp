@@ -7,7 +7,7 @@
 
 namespace splat_transform::codec {
 Bytes encode_webp(std::span<const std::byte> rgba, uint32_t width, uint32_t height, bool lossless, float quality) {
-    if (rgba.size() != size_t(width) * height * 4 || !width || !height) {
+    if (rgba.size() != static_cast<size_t>(width) * height * 4 || !width || !height) {
         throw std::runtime_error("Invalid WebP image dimensions");
     }
     WebPConfig config;
@@ -38,11 +38,11 @@ Image decode_webp(std::span<const std::byte> bytes) {
     if (!pixels) {
         throw std::runtime_error("WebP decode failed");
     }
-    const auto rgba = std::as_bytes(std::span(pixels.get(), size_t(width) * height * 4));
+    const auto rgba = std::as_bytes(std::span(pixels.get(), static_cast<size_t>(width) * height * 4));
     return { Bytes(rgba.begin(), rgba.end()), static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
 }
 Bytes encode_avif(std::span<const std::byte> rgba, uint32_t width, uint32_t height, int32_t quality) {
-    if (rgba.size() != size_t(width) * height * 4) {
+    if (rgba.size() != static_cast<size_t>(width) * height * 4) {
         throw std::runtime_error("Invalid AVIF image dimensions");
     }
     avif::ImagePtr image(avifImageCreate(width, height, 8, AVIF_PIXEL_FORMAT_YUV444));
@@ -79,7 +79,7 @@ Image decode_avif(std::span<const std::byte> bytes) {
     if (avifDecoderReadMemory(decoder.get(), image.get(), reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()) != AVIF_RESULT_OK) {
         throw std::runtime_error("AVIF decode failed");
     }
-    Image output { Bytes(size_t(image->width) * image->height * 4), image->width, image->height };
+    Image output { Bytes(static_cast<size_t>(image->width) * image->height * 4), image->width, image->height };
     avifRGBImage rgb {};
     avifRGBImageSetDefaults(&rgb, image.get());
     rgb.format = AVIF_RGB_FORMAT_RGBA;

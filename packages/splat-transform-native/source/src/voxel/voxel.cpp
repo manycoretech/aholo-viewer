@@ -47,21 +47,10 @@ Octree build_octree(const Grid& grid) {
     Octree output;
     std::vector<Level> levels(1);
     auto& leaves = levels.front();
-    const auto add_leaf = [&](uint32_t index, uint64_t mask) {
-        if (mask) {
-            leaves.push_back({ morton(grid.block_point(index)), mask, index, 0, mask == FULL_BLOCK });
-        }
-    };
-    if (grid.default_mask == 0) {
-        leaves.reserve(grid.masks.size());
-        for (const auto& [index, mask] : grid.masks) {
-            add_leaf(index, mask);
-        }
-    } else {
-        for (uint32_t index = 0; index < grid.block_count(); ++index) {
-            add_leaf(index, grid.mask(index));
-        }
-    }
+    leaves.reserve(grid.masks.occupied_blocks());
+    grid.masks.for_each_block(0, [&](Eigen::Vector3i p, uint64_t mask) {
+        leaves.push_back({ morton(p), mask, grid.block_index(p), 0, mask == FULL_BLOCK });
+    });
     if (leaves.empty()) {
         return output;
     }
@@ -82,10 +71,10 @@ Octree build_octree(const Grid& grid) {
         parents.reserve((children.size() + 3) / 4);
         // Morton order keeps every parent's children in one contiguous range.
         for (size_t begin = 0; begin < children.size();) {
-            Node parent { children[begin].key >> 3, 0, uint32_t(begin), 0, true };
+            Node parent { children[begin].key >> 3, 0, static_cast<uint32_t>(begin), 0, true };
             do {
                 const auto& child = children[begin++];
-                parent.children |= uint8_t(1u << (child.key & 7));
+                parent.children |= static_cast<uint8_t>(1u << (child.key & 7));
                 parent.solid &= child.solid;
             } while (begin < children.size() && (children[begin].key >> 3) == parent.key);
             parent.solid &= parent.children == 0xff;
@@ -94,9 +83,9 @@ Octree build_octree(const Grid& grid) {
         node_count += parents.size();
         levels.push_back(std::move(parents));
     } while (levels.back().size() != 1 || levels.back().front().key != 0);
-    output.depth = uint32_t(levels.size() - 1);
+    output.depth = static_cast<uint32_t>(levels.size() - 1);
     output.nodes.reserve(node_count);
-    output.leaves.reserve(size_t(mixed_count) * 2);
+    output.leaves.reserve(static_cast<size_t>(mixed_count) * 2);
     std::vector<uint32_t> wave { 0 }, next;
     for (size_t level = levels.size(); level-- > 0;) {
         next.clear();
@@ -107,16 +96,16 @@ Octree build_octree(const Grid& grid) {
                 output.nodes.push_back(0xff000000u);
             } else if (level == 0) {
                 if (output.mixed > 0xffffff) {
-                    throw OctreeOverflow(uint64_t(output.mixed) + 1);
+                    throw OctreeOverflow(static_cast<uint64_t>(output.mixed) + 1);
                 }
                 output.nodes.push_back(output.mixed++);
-                output.leaves.push_back(uint32_t(node.mask));
-                output.leaves.push_back(uint32_t(node.mask >> 32));
+                output.leaves.push_back(static_cast<uint32_t>(node.mask));
+                output.leaves.push_back(static_cast<uint32_t>(node.mask >> 32));
             } else {
                 if (first > 0xffffff) {
                     throw OctreeOverflow(first + 1);
                 }
-                output.nodes.push_back((uint32_t(node.children) << 24) | uint32_t(first));
+                output.nodes.push_back((static_cast<uint32_t>(node.children) << 24) | static_cast<uint32_t>(first));
                 ++output.interiors;
                 const uint32_t count = std::popcount(node.children);
                 for (uint32_t child = 0; child < count; ++child) {
@@ -132,8 +121,8 @@ Octree build_octree(const Grid& grid) {
 io::Bytes encode_octree(const Octree& tree, bool compact) {
     io::Bytes output;
     if (compact) {
-        const uint32_t tag_bytes = uint32_t((tree.nodes.size() + 3) / 4);
-        for (uint32_t value : { 0x31424356u, 1u, uint32_t(tree.nodes.size()), tree.interiors, tree.mixed, uint32_t(tree.leaves.size()), tag_bytes, tree.interiors }) {
+        const uint32_t tag_bytes = static_cast<uint32_t>((tree.nodes.size() + 3) / 4);
+        for (uint32_t value : { 0x31424356u, 1u, static_cast<uint32_t>(tree.nodes.size()), tree.interiors, tree.mixed, static_cast<uint32_t>(tree.leaves.size()), tag_bytes, tree.interiors }) {
             io::append(output, value);
         }
         io::Bytes tags(tag_bytes), masks;
@@ -141,7 +130,7 @@ io::Bytes encode_octree(const Octree& tree, bool compact) {
             const auto node = tree.nodes[i];
             const uint8_t tag = node == 0xff000000u ? 1 : (node >> 24) ? 2
                                                                        : 0;
-            tags[i / 4] |= std::byte { tag } << ((i % 4) * 2);
+            tags[i / 4] |= static_cast<std::byte>(tag) << ((i % 4) * 2);
             if (tag == 2) {
                 masks.push_back(static_cast<std::byte>(node >> 24));
             }
@@ -164,14 +153,31 @@ float fallback_resolution(float current, float count, float target) {
     const float next = align(current * std::cbrt(count / target));
     return next > current ? next : align(current + 0.01f);
 }
+Occupancy voxelize_occupancy(const PreparedData& data, const Backend& backend, const Eigen::AlignedBox3f& bounds, GridSpec spec) {
+    auto timer = utility::logger().time("Voxelizing (" + std::string(backend.name()) + ") done");
+    return { backend.voxelize(data, bounds, spec.voxel_resolution, spec.opacity_cutoff), bounds, spec };
+}
 } // namespace
-void write(const splat::Splat& input, const std::filesystem::path& directory, const Options& options) {
+Occupancy generate_occupancy(const splat::Splat& data, GridSpec spec) {
+    auto prepared = prepare(data);
+    if (prepared.gaussians.empty() || !prepared.scene.min().allFinite() || !prepared.scene.max().allFinite()) {
+        return { Grid {}, Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f::Constant(4 * spec.voxel_resolution)), spec };
+    }
+    const auto bounds = align_bounds(prepared.scene, spec.voxel_resolution);
+    auto backend = resolve_backend(BackendType::Gpu);
+    return voxelize_occupancy(prepared, *backend, bounds, spec);
+}
+namespace {
+struct CollisionVolume {
+    Occupancy collision;
+    Eigen::AlignedBox3f scene;
+    Octree tree;
+    std::vector<Occupancy> filter_grids;
+};
+
+CollisionVolume generate_collision(const splat::Splat& input, const Options& options) {
     auto& logger = utility::logger();
     const auto backend = resolve_backend(options.backend);
-    constexpr std::array COMPRESSION_NAMES { "none", "gzip", "zstd" };
-    constexpr std::array ENCODING_NAMES { "raw", "compact" };
-    const std::string compression = COMPRESSION_NAMES[static_cast<size_t>(options.compression)];
-    const std::string encoding = ENCODING_NAMES[static_cast<size_t>(options.node_encoding)];
     float resolution = options.voxel_resolution;
     const auto requested_resolution = resolution;
     const float cutoff = options.opacity_cutoff;
@@ -184,10 +190,13 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
     auto prepared = prepare(input);
     bounds_time.finish();
     const auto box = resolve_box(input, prepared.scene, options.box, options.auto_dense_box);
+    std::vector<Occupancy> filter_grids;
     if (options.filter_cluster) {
         logger.info("voxel filterCluster enabled");
         auto filter_time = logger.time("Filter clusters");
-        filter_cluster(prepared, *options.filter_cluster, box, *backend);
+        if (auto original = filter_cluster(prepared, *options.filter_cluster, box, *backend)) {
+            filter_grids.push_back(std::move(*original));
+        }
     }
     if (!prepared.invalid_extents.empty()) {
         logger.info("voxel: skipped ", prepared.invalid_extents.size(), " gaussians with invalid extent values");
@@ -232,12 +241,16 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
         if (resolution != requested_resolution) {
             logger.info("voxel effective resolution=", resolution, " (requested=", requested_resolution, ')');
         }
-        auto voxel_time = logger.time("Voxelizing (" + std::string(backend->name()) + ") done");
-        auto grid = backend->voxelize(prepared, bounds, resolution, cutoff);
-        voxel_time.finish();
+        std::optional<Occupancy> filter_grid;
+        Grid grid;
         {
+            auto raw = voxelize_occupancy(prepared, *backend, bounds, { resolution, cutoff });
             auto filter_time = logger.time("Filter blocks");
-            grid = filter_blocks(grid);
+            grid = filter_blocks(raw.grid);
+            // Only the full input can publish a raw occupancy grid to its lineage.
+            if (prepared.gaussians.size() == input.size() && bounds.contains(prepared.scene)) {
+                filter_grid.emplace(std::move(raw));
+            }
         }
         navigate(grid, bounds, resolution, navigation, *backend);
         {
@@ -252,66 +265,88 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
             if (attempt == 4) {
                 throw;
             }
-            const auto next_resolution = fallback_resolution(resolution, float(error.count), std::floor(0x1000000 * 0.98f));
+            const auto next_resolution = fallback_resolution(resolution, static_cast<float>(error.count), std::floor(0x1000000 * 0.98f));
             logger.info("voxel resolution fallback: octree nodes=", error.count, "; resolution ", resolution, " -> ", next_resolution);
             resolution = next_resolution;
             continue;
         }
-        logger.info("octree: depth=", tree.depth, ", interior=", tree.interiors, ", mixed=", tree.mixed);
-        auto binary = encode_octree(tree, options.node_encoding == NodeEncoding::Compact);
-        const auto raw_bytes = binary.size();
-        std::string filename = "voxel.bin";
-        if (options.compression == Compression::Gzip) {
-            binary = codec::gzip(binary);
-            filename += ".gz";
+        if (filter_grid) {
+            filter_grids.push_back(std::move(*filter_grid));
         }
-        if (options.compression == Compression::Zstd) {
-            binary = codec::zstd_compress(binary, 12);
-            filename += ".zst";
-        }
-        const io::Json metadata {
-            { "version", "1.2" }, { "gridBounds", io::bounds_json(bounds) },
-            { "sceneBounds", io::bounds_json(prepared.scene) },
-            { "voxelResolution", resolution }, { "leafSize", 4 }, { "treeDepth", tree.depth },
-            { "numInteriorNodes", tree.interiors }, { "numMixedLeaves", tree.mixed },
-            { "nodeCount", tree.nodes.size() }, { "leafDataCount", tree.leaves.size() },
-            { "files", io::Json::array({ filename }) }, { "nodeEncoding", encoding }, { "compression", compression }
-        };
-        std::filesystem::create_directories(directory);
-        const auto json = metadata.dump(2);
-        logger.info("writing '", io::path_utf8(directory / "voxel-meta.json"), "'...");
-        io::write_bytes(directory / "voxel-meta.json", std::as_bytes(std::span(json)));
-        logger.info("writing '", io::path_utf8(directory / filename), "'...");
-        io::write_bytes(directory / filename, binary);
-        const auto shape = options.collision_mesh;
-        size_t mesh_bytes = 0;
-        if (shape != CollisionMesh::None) {
-            auto mesh_time = logger.time("Build collision mesh");
-            auto mesh = shape == CollisionMesh::Faces ? voxel_faces(grid, bounds, resolution) : marching_cubes(grid, bounds, resolution);
-            logger.info(shape == CollisionMesh::Faces ? "collision mesh faces: " : "collision mesh smooth: ", mesh.positions.size() / 3, " vertices, ", mesh.indices.size() / 3, " triangles");
-            if (shape != CollisionMesh::Faces) {
-                const auto original_triangles = mesh.indices.size() / 3;
-                mesh = merge_coplanar(mesh, resolution);
-                logger.info("collision mesh merged: ", mesh.positions.size() / 3, " vertices, ", mesh.indices.size() / 3, " triangles");
-                if (original_triangles) {
-                    logger.info("collision mesh reduction: ", utility::fixed((1 - float(mesh.indices.size() / 3) / original_triangles) * 100, 0), '%');
-                }
+        return { { std::move(grid), bounds, { resolution, cutoff } }, prepared.scene, std::move(tree), std::move(filter_grids) };
+    }
+    throw std::logic_error("Voxel generation exhausted its attempts");
+}
+} // namespace
+
+void write(const splat::Splat& input, const std::filesystem::path& directory, const Options& options, const std::function<void(Occupancy&&)>& cache_grid) {
+    auto generated = generate_collision(input, options);
+    const auto& [grid, bounds, spec] = generated.collision;
+    const auto& tree = generated.tree;
+    const float resolution = spec.voxel_resolution;
+    auto& logger = utility::logger();
+    constexpr std::array COMPRESSION_NAMES { "none", "gzip", "zstd" };
+    constexpr std::array ENCODING_NAMES { "raw", "compact" };
+    const std::string compression = COMPRESSION_NAMES[static_cast<size_t>(options.compression)];
+    const std::string encoding = ENCODING_NAMES[static_cast<size_t>(options.node_encoding)];
+    logger.info("octree: depth=", tree.depth, ", interior=", tree.interiors, ", mixed=", tree.mixed);
+    auto binary = encode_octree(tree, options.node_encoding == NodeEncoding::Compact);
+    const auto raw_bytes = binary.size();
+    std::string filename = "voxel.bin";
+    if (options.compression == Compression::Gzip) {
+        binary = codec::gzip(binary);
+        filename += ".gz";
+    }
+    if (options.compression == Compression::Zstd) {
+        binary = codec::zstd_compress(binary, 12);
+        filename += ".zst";
+    }
+    const io::Json metadata {
+        { "version", "1.2" }, { "gridBounds", io::bounds_json(bounds) },
+        { "sceneBounds", io::bounds_json(generated.scene) },
+        { "voxelResolution", resolution }, { "leafSize", 4 }, { "treeDepth", tree.depth },
+        { "numInteriorNodes", tree.interiors }, { "numMixedLeaves", tree.mixed },
+        { "nodeCount", tree.nodes.size() }, { "leafDataCount", tree.leaves.size() },
+        { "files", io::Json::array({ filename }) }, { "nodeEncoding", encoding }, { "compression", compression }
+    };
+    std::filesystem::create_directories(directory);
+    const auto json = metadata.dump(2);
+    logger.info("writing '", io::path_utf8(directory / "voxel-meta.json"), "'...");
+    io::write_bytes(directory / "voxel-meta.json", std::as_bytes(std::span(json)));
+    logger.info("writing '", io::path_utf8(directory / filename), "'...");
+    io::write_bytes(directory / filename, binary);
+    const auto shape = options.collision_mesh;
+    size_t mesh_bytes = 0;
+    if (shape != CollisionMesh::None) {
+        auto mesh_time = logger.time("Build collision mesh");
+        auto mesh = shape == CollisionMesh::Faces ? voxel_faces(grid, bounds, resolution) : marching_cubes(grid, bounds, resolution);
+        logger.info(shape == CollisionMesh::Faces ? "collision mesh faces: " : "collision mesh smooth: ", mesh.positions.size() / 3, " vertices, ", mesh.indices.size() / 3, " triangles");
+        if (shape != CollisionMesh::Faces) {
+            const auto original_triangles = mesh.indices.size() / 3;
+            mesh = merge_coplanar(mesh, resolution);
+            logger.info("collision mesh merged: ", mesh.positions.size() / 3, " vertices, ", mesh.indices.size() / 3, " triangles");
+            if (original_triangles) {
+                logger.info("collision mesh reduction: ", utility::fixed((1 - static_cast<float>(mesh.indices.size() / 3) / original_triangles) * 100, 0), '%');
             }
-            mesh_time.finish();
-            if (mesh.indices.empty()) {
-                logger.warn("collision mesh: no triangles generated, skipping GLB output");
-            } else {
-                const auto glb = encode_glb(mesh);
-                mesh_bytes = glb.size();
-                logger.info("writing '", io::path_utf8(directory / "collision.glb"), "'...");
-                io::write_bytes(directory / "collision.glb", glb);
-            }
         }
-        const auto size_message = compression == "none" ? "octree " + utility::format_size(raw_bytes)
-                                                        : "octree raw: " + utility::format_size(raw_bytes) + ", " + compression + ": " + utility::format_size(binary.size()) +
-                                                              " (" + utility::fixed(raw_bytes ? float(binary.size()) / raw_bytes * 100 : 0) + "%)";
-        logger.info(size_message, mesh_bytes ? ", collision mesh " + utility::format_size(mesh_bytes) : "");
-        return;
+        mesh_time.finish();
+        if (mesh.indices.empty()) {
+            logger.warn("collision mesh: no triangles generated, skipping GLB output");
+        } else {
+            const auto glb = encode_glb(mesh);
+            mesh_bytes = glb.size();
+            logger.info("writing '", io::path_utf8(directory / "collision.glb"), "'...");
+            io::write_bytes(directory / "collision.glb", glb);
+        }
+    }
+    const auto size_message = compression == "none" ? "octree " + utility::format_size(raw_bytes)
+                                                    : "octree raw: " + utility::format_size(raw_bytes) + ", " + compression + ": " + utility::format_size(binary.size()) +
+                                                          " (" + utility::fixed(raw_bytes ? static_cast<float>(binary.size()) / raw_bytes * 100 : 0) + "%)";
+    logger.info(size_message, mesh_bytes ? ", collision mesh " + utility::format_size(mesh_bytes) : "");
+    if (cache_grid) {
+        for (auto& field : generated.filter_grids) {
+            cache_grid(std::move(field));
+        }
     }
 }
 } // namespace splat_transform::voxel

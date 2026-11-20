@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.3.0
+
+- Add the `Filter` pipeline task. `box` and `sphere` select Gaussian centers, `cluster` keeps Gaussians supported by the occupied component nearest the origin, and `floaters` removes Gaussians unsupported by occupied voxels. Retained Gaussians keep their input order and attributes, including spherical harmonic coefficients
+- Export the `FilterMode` enum and `FilterConfig` type. JSON pipelines accept numeric modes `0` through `3` and case-insensitive mode names
+- Reuse in-memory occupancy grids from earlier `Voxel` or `Filter` tasks on the same input or its ancestors. `cluster` and `floaters` require a matching `opacityCutoff` and prefer the requested `voxelResolution`, then the closest finer grid
+- Build missing grids in memory using Vulkan when available, with CPU fallback if device initialization fails. Gaussian selection uses the shared CPU thread pool
+- Store voxel occupancy in directly indexed bricks of 16 × 16 × 16 voxels, allocating masks only for partially occupied bricks
+- Reduce median `Voxel` task time by 19.9–27.0% on CPU and 68.2–69.5% on Vulkan across three SPZ inputs compared with 2.2.0 (Windows x64, i7-14700K, 16 workers, RTX 5070). Peak host memory fell by 70–192 MiB, and both versions produced byte-identical voxel files on each backend
+- Include the MIT license in each native npm package and update the bundled third-party notices
+
 ## 2.2.0
 
 - Add SOG v3 input and output with exp-map quaternion textures, square-root opacity encoding, and 24-bit SH labels; retain v2 output by default and limit SH to degree 3

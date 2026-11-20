@@ -1,4 +1,5 @@
 #include "../data_support.h"
+#include <limits>
 #include <pipeline/tasks/replace_append.h>
 #include <unordered_map>
 #include <utility/logger.h>
@@ -19,7 +20,7 @@ void ReplaceAppendTask::exec(const io::Json& config, TaskContext& context) const
     }
     const auto appended = patch.size() - indices.size();
     const auto source_count = source.size();
-    if (appended > UINT32_MAX - source_count) {
+    if (appended > std::numeric_limits<uint32_t>::max() - source_count) {
         throw std::runtime_error("ReplaceAppend result exceeds the supported splat count");
     }
     std::unordered_map<uint32_t, size_t> replacements;
@@ -35,7 +36,7 @@ void ReplaceAppendTask::exec(const io::Json& config, TaskContext& context) const
     }
     result->gaussians.insert(result->gaussians.end(), patch.gaussians.begin() + indices.size(), patch.gaussians.end());
     single_block(*result);
-    context.set(config, std::move(result));
+    context.set(config, std::move(result), false);
     utility::logger().info("replace-append stored -> key=\"", output, "\" source=", source_count, " replace=", indices.size(), " append=", appended);
 }
 } // namespace splat_transform::pipeline
