@@ -38,11 +38,14 @@ auto BrickMap<BrickSize>::classify(const Masks& masks, const BlockBits& valid) -
     OccupancyBits bits;
     for (size_t word = 0; word < valid.words.size(); ++word) {
         uint64_t nonempty = 0, nonfull = 0;
-        const size_t start = word * 64, count = std::min<size_t>(64, block_capacity - start);
-        for (size_t bit = 0; bit < count; ++bit) {
-            const auto mask = masks[start + bit];
-            nonempty |= static_cast<uint64_t>(mask != 0) << bit;
-            nonfull |= static_cast<uint64_t>(mask != FULL_BLOCK) << bit;
+        const size_t start = word * 64;
+        const size_t count = std::min<size_t>(64, block_capacity - start);
+        for (size_t i = 0; i < count; ++i) {
+            const auto mask = masks[start + i];
+            // MSVC 19.52 on ARM64 miscompiles shifting both comparison results by i.
+            const uint64_t bit = uint64_t { 1 } << i;
+            nonempty |= mask != 0 ? bit : 0;
+            nonfull |= mask != FULL_BLOCK ? bit : 0;
         }
         bits.nonempty.words[word] = nonempty & valid.words[word];
         bits.nonfull.words[word] = nonfull & valid.words[word];
