@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.2
+
+- Standardize path handling across platforms.
+
 ## 2.4.1
 
 - Normalize `.` and `..` in resolved pipeline paths and use native path separators in CLI logs and file errors.

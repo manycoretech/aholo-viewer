@@ -6,11 +6,28 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <spatial/clustering.h>
 #include <splat/splat.h>
+#include <utility/string.h>
 
 namespace {
 using namespace splat_transform;
+
+void lowercase_strings() {
+    const std::u8string original = u8"场景/MODEL.LCC2";
+    const auto expected = u8"场景/model.lcc2";
+    auto mutable_name = original;
+    auto movable_name = original;
+    static_assert(std::same_as<decltype(utility::lower(mutable_name)), std::u8string&>);
+    static_assert(std::same_as<decltype(utility::lower(original)), std::u8string>);
+    static_assert(std::same_as<decltype(utility::lower(std::move(movable_name))), std::u8string>);
+    if (&utility::lower(mutable_name) != &mutable_name || mutable_name != expected ||
+        utility::lower(original) != expected || original != u8"场景/MODEL.LCC2" ||
+        utility::lower(std::move(movable_name)) != expected) {
+        throw std::runtime_error("Lowercase conversion changed its reference or UTF-8 semantics");
+    }
+}
 
 template<typename Transform>
 concept AcceptsQuantization = requires(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& matrix, std::span<const splat::AttributeView> fields, Transform&& transform) {
@@ -233,6 +250,7 @@ int main() {
                 throw std::runtime_error("Half conversion failed");
             }
         }
+        lowercase_strings();
         half_values();
         device_registry();
         quantization();

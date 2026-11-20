@@ -79,7 +79,7 @@ void pipeline_contracts(const std::filesystem::path& directory) {
         gaussian.rotation.setIdentity();
         gaussian.opacity = 0.9f;
     }
-    const auto path = [&](const std::string& relative) { return io::path_utf8(directory / relative); };
+    const auto path = [&](const std::string& relative) { return directory / relative; };
     io::write_splat(directory / "source.ply", source);
     for (bool filter : { false, true }) {
         const std::string suffix = filter ? "filter" : "main";
@@ -120,7 +120,7 @@ void pipeline_contracts(const std::filesystem::path& directory) {
             const auto expected = io::read_json(directory / ("cpu-" + suffix) / "voxel-meta.json");
             require(metadata == expected, "Fallback pipeline metadata differs from explicit CPU output");
             for (const auto& file : metadata.at("files")) {
-                const auto filename = io::utf8_path(file.get<std::string>());
+                const auto filename = file.get<std::filesystem::path>();
                 require(io::read_bytes(directory / name / filename) == io::read_bytes(directory / ("cpu-" + suffix) / filename),
                     "Fallback pipeline binary differs from explicit CPU output");
             }

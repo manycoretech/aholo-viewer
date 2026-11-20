@@ -191,9 +191,12 @@ void readers(const std::filesystem::path& directory) {
     io::write_bytes(directory / "meta.json", json_bytes(source.meta));
     require(io::read_splat(directory / "meta.json").gaussians[3].opacity == 1.5625f, "Unpacked SOG v3 failed");
     io::Archive nested;
-    nested["scene/meta.json"] = json_bytes(source.meta);
+    auto nested_meta = source.meta;
+    nested_meta["means"]["files"][0] = "../纹理/means_l.webp";
+    nested["场景/data/META.JSON"] = json_bytes(nested_meta);
     for (const auto& [name, bytes] : source.files) {
-        nested["scene/" + name] = bytes;
+        const auto entry = name == "means_l.webp" ? "场景/纹理/./MEANS_L.WEBP" : "场景/data/" + name;
+        nested[entry] = bytes;
     }
     const auto bytes = io::zip(nested);
     require(io::read_splat({ "nested.zip", bytes }).size() == 4, "Nested SOG v3 ZIP resources failed");
@@ -244,7 +247,7 @@ void pipeline_options(const std::filesystem::path& directory) {
     for (const auto extension : { ".sog", ".spz", ".uspz" }) {
         for (int32_t version : { -1, 0, 1, 2, 3, 4, 99 }) {
             const auto path = directory / ("options" + std::string(extension));
-            io::Json config { { "input", "source" }, { "output", io::path_utf8(path) }, { "enableMortonSort", false } };
+            io::Json config { { "input", "source" }, { "output", path }, { "enableMortonSort", false } };
             if (version) {
                 config["version"] = version;
             }
@@ -333,7 +336,7 @@ void gpu_writers(const std::filesystem::path& directory) {
             pipeline::TaskContext context;
             context.set({ { "output", "source" } }, std::make_shared<splat::Splat>(source));
             const auto path = directory / "palette.sog";
-            pipeline::WriteTask().exec({ { "input", "source" }, { "output", io::path_utf8(path) }, { "version", version }, { "paletteSize", 2 } }, context);
+            pipeline::WriteTask().exec({ { "input", "source" }, { "output", path }, { "version", version }, { "paletteSize", 2 } }, context);
             const auto pipeline_bytes = io::read_bytes(path);
             require(io::Resources(path, pipeline_bytes, ".sog").meta.at("shN").at("count") == 2, "Write did not forward paletteSize");
         }

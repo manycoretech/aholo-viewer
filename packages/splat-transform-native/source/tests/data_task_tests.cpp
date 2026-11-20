@@ -111,7 +111,7 @@ void modify_contracts(const std::filesystem::path& directory) {
             put_resource(context, "source", source);
             put_resource(context, "alias", source);
             auto expected = *source;
-            const Json original { { "input", "source" }, { "output", "result" }, { "modifyPaths", { io::path_utf8(patch) } } };
+            const Json original { { "input", "source" }, { "output", "result" }, { "modifyPaths", { patch } } };
             pipeline::modify(expected, original);
             for (auto& point : expected.gaussians) {
                 for (size_t c = 0; c < extension.rgba.size(); ++c) {
@@ -143,7 +143,7 @@ void modify_contracts(const std::filesystem::path& directory) {
                  Json { { "rgba", Json::object({ { "a", nullptr } }) } }, Json { { "maxShDegree", -1 } }, Json { { "maxShDegree", 1.5 } },
                  Json { { "maxShDegree", 4 } }, Json { { "maxShDegree", true } }, Json { { "maxShDegree", nullptr } },
                  Json { { "rgba", { 0, 0, 0, 1 } }, { "maxShDegree", 99 } } }) {
-            Json config { { "input", "source" }, { "output", "bad" }, { "modifyPaths", { io::path_utf8(patch) } } };
+            Json config { { "input", "source" }, { "output", "bad" }, { "modifyPaths", { patch } } };
             config.update(invalid);
             rejects([&] { task("Modify", config, context); });
             equal_data(*source, unchanged);
@@ -202,7 +202,7 @@ void modify_block_contracts(const std::filesystem::path& directory) {
     };
 
     // Delete from multiple blocks, including an entire middle block; leave the last block unpatched.
-    apply(Json::array({ io::path_utf8(delete_second), io::path_utf8(delete_all), io::path_utf8(delete_first) }));
+    apply(Json::array({ delete_second, delete_all, delete_first }));
     require(source->block_offsets == std::vector<size_t> { 0, 2, 2, 4 } && source->block_counts == std::vector<size_t> { 2, 0, 2, 2 },
         "Modify did not rebuild block ranges after deletion");
     equal_data(*source, original.select(std::array<uint32_t, 6> { 0, 2, 6, 7, 8, 9 }));
@@ -214,7 +214,7 @@ void modify_block_contracts(const std::filesystem::path& directory) {
     save_json(group_transform, { { "indicesTransform", Json::array({ { { "indices", { 1 } }, { "transform", translation } } }) } });
 
     // Patch local index 1 in the shifted third block and delete from the shifted last block.
-    apply(Json::array({ "", io::path_utf8(empty_block), io::path_utf8(group_transform), io::path_utf8(delete_first) }));
+    apply(Json::array({ "", empty_block, group_transform, delete_first }));
     require(source->block_offsets == std::vector<size_t> { 0, 2, 2, 4 } && source->block_counts == std::vector<size_t> { 2, 0, 2, 1 },
         "Repeated Modify did not retain empty blocks and update counts");
     auto expected = original.select(std::array<uint32_t, 5> { 0, 2, 6, 7, 9 });
@@ -222,14 +222,14 @@ void modify_block_contracts(const std::filesystem::path& directory) {
     equal_data(*source, expected);
 
     // Local indices in a previously modified block refer to its current, compacted contents.
-    apply(Json::array({ io::path_utf8(delete_second) }));
+    apply(Json::array({ delete_second }));
     require(source->block_offsets == std::vector<size_t> { 0, 1, 1, 3 } && source->block_counts == std::vector<size_t> { 1, 0, 2, 1 },
         "Repeated deletion did not shift unpatched blocks");
     expected = original.select(std::array<uint32_t, 4> { 0, 6, 7, 9 });
     expected.gaussians[2].mean.x() += 100;
     equal_data(*source, expected);
 
-    const auto clear = Json::array({ io::path_utf8(delete_all), io::path_utf8(delete_all), io::path_utf8(delete_all), io::path_utf8(delete_all) });
+    const auto clear = Json::array({ delete_all, delete_all, delete_all, delete_all });
     apply(clear);
     require(source->size() == 0 && source->block_offsets == std::vector<size_t> { 0, 0, 0, 0 } && source->block_counts == std::vector<size_t> { 0, 0, 0, 0 },
         "Deleting all Gaussians did not retain empty block slots");
@@ -262,7 +262,7 @@ void select_contracts(const std::filesystem::path& directory) {
             if (std::string_view(name).empty()) {
                 config["indices"] = input;
             } else {
-                config["indicesPath"] = io::path_utf8(directory / name);
+                config["indicesPath"] = directory / name;
             }
             task("Select", config, context);
             const auto& actual = *get(context, "result");
@@ -275,8 +275,8 @@ void select_contracts(const std::filesystem::path& directory) {
         }
         for (const Json& invalid : { Json::object(), Json { { "indices", input }, { "indicesPath", "missing" } },
                  Json { { "indices", { -1 } } }, Json { { "indices", { 1.5 } } }, Json { { "indices", { 10 } } }, Json { { "indices", { 4294967296ull } } },
-                 Json { { "indices", { true } } }, Json { { "indices", nullptr } }, Json { { "indicesPath", io::path_utf8(directory / "bad.bin") } },
-                 Json { { "indicesPath", io::path_utf8(directory / "bad.zst") } } }) {
+                 Json { { "indices", { true } } }, Json { { "indices", nullptr } }, Json { { "indicesPath", directory / "bad.bin" } },
+                 Json { { "indicesPath", directory / "bad.zst" } } }) {
             Json config { { "input", "source" }, { "output", "source" } };
             config.update(invalid);
             rejects([&] { task("Select", config, context); });
@@ -507,9 +507,9 @@ void shared_lod_contracts(const std::filesystem::path& directory) {
     for (const auto& point : get(context, "interactivePick")->gaussians) {
         require(point.sh[0] == 0 && point.sh[1] == 0 && point.sh[2] == 0 && point.opacity == 1, "Interactive RGBA differs");
     }
-    task("Write", { { "input", "interactivePick" }, { "output", io::path_utf8(directory / "interactive.esz") }, { "highPrecision", false } }, context, { "interactivePick" });
+    task("Write", { { "input", "interactivePick" }, { "output", directory / "interactive.esz" }, { "highPrecision", false } }, context, { "interactivePick" });
     for (const auto output : { "low-lod", "high-lod", "repeated-high" }) {
-        task("Write", { { "input", "lod" }, { "output", io::path_utf8(directory / output) }, { "highPrecision", std::string_view(output) != "low-lod" }, { "enableMortonSort", true } }, context);
+        task("Write", { { "input", "lod" }, { "output", directory / output }, { "highPrecision", std::string_view(output) != "low-lod" }, { "enableMortonSort", true } }, context);
         require(io::read_json(directory / output / "lod-meta.json") == meta, "Sequential Write changed LOD metadata");
         for (size_t i = 1; i < files.size(); ++i) {
             equal_data(*std::get<pipeline::SplatPtr>(files[i].content), originals[i - 1]);
@@ -555,7 +555,7 @@ void preserve_order_contract(const std::filesystem::path& directory) {
     for (const bool preserve : { false, true }) {
         put_resource(context, "bundle", std::vector<pipeline::SingleFile> { { "order.esz", source, preserve } });
         const auto output = directory / (preserve ? "preserved" : "sorted");
-        task("Write", { { "input", "bundle" }, { "output", io::path_utf8(output) }, { "highPrecision", true }, { "enableMortonSort", true } }, context);
+        task("Write", { { "input", "bundle" }, { "output", output }, { "highPrecision", true }, { "enableMortonSort", true } }, context);
         const auto decoded = io::read_splat(output / "order.esz");
         for (size_t i = 0; i < 3; ++i) {
             require(decoded.gaussians[i].mean.x() == static_cast<float>(preserve ? (i + 2) % 3 : i), "Write ignored preserve_order or Morton sorting");
@@ -568,10 +568,10 @@ void lod_voxel_contracts(const std::filesystem::path& directory) {
     io::write_splat(source_path, *cloud(64, 0));
     io::write_splat(directory / "other-source.esz", *cloud(32, 0, 10));
     pipeline::TaskContext context;
-    task("Read", { { "inputs", { io::path_utf8(source_path) } }, { "output", "source" } }, context);
+    task("Read", { { "inputs", { source_path } }, { "output", "source" } }, context);
     task("AutoChunkLod", { { "input", "source" }, { "output", "lod" }, { "type", "esz" }, { "levels", Json::array({ { { "precision", 1 }, { "scaleBoost", 1 } } }) } }, context);
     const auto first = directory / "first/lod";
-    task("Write", { { "input", "lod" }, { "output", io::path_utf8(first) } }, context);
+    task("Write", { { "input", "lod" }, { "output", first } }, context);
     require(!io::read_json(first / "lod-meta.json").contains("voxels"), "LOD without voxel output must omit voxels");
     task("AutoLod", { { "input", "source" }, { "output", "simple" }, { "ratio", 0.5 } }, context, { "source" });
     task("Select", { { "input", "simple" }, { "output", "simple" }, { "indices", { 0, 2, 4, 6 } } }, context);
@@ -580,14 +580,14 @@ void lod_voxel_contracts(const std::filesystem::path& directory) {
     const auto voxel = [&](const char* input, const std::filesystem::path& output) {
         std::filesystem::create_directories(output);
         save_json(output / "voxel-meta.json", { { "version", "1.2" } });
-        context.record_voxel({ { "input", input }, { "output", io::path_utf8(output) } });
+        context.record_voxel({ { "input", input }, { "output", output } });
     };
     voxel("simple", directory / "voxels/full");
     voxel("simple", directory / "voxels/./full");
     require(same_paths(io::read_json(first / "lod-meta.json").at("voxels"), Json::array({ "../../voxels/full/voxel-meta.json" })),
         "Simplified input, late voxel output, or duplicate output association failed");
     const auto second = directory / "copies/deep/lod";
-    task("Write", { { "input", "lod" }, { "output", io::path_utf8(second) } }, context);
+    task("Write", { { "input", "lod" }, { "output", second } }, context);
     require(same_paths(io::read_json(second / "lod-meta.json").at("voxels"), Json::array({ "../../../voxels/full/voxel-meta.json" })),
         "Repeated Write reused a relative path from another output directory");
     const auto& files = std::get<std::vector<pipeline::SingleFile>>(context.input({ { "input", "lod" } }));
@@ -608,10 +608,10 @@ void lod_voxel_contracts(const std::filesystem::path& directory) {
     save_json(metadata_path, metadata);
     voxel("level", first / "collision");
     require(same_paths(io::read_json(metadata_path).at("voxels"), expected), "Duplicate voxel paths prevented metadata repair");
-    task("Read", { { "inputs", { io::path_utf8(directory / "./voxel-source.esz") } }, { "output", "read-again" } }, context);
+    task("Read", { { "inputs", { directory / "./voxel-source.esz" } }, { "output", "read-again" } }, context);
     voxel("read-again", directory / "voxels/read-again");
     require(io::read_json(first / "lod-meta.json").at("voxels").size() == 3, "Reading the same normalized input lost voxel associations");
-    task("Read", { { "inputs", { io::path_utf8(directory / "other-source.esz") } }, { "output", "simple" } }, context);
+    task("Read", { { "inputs", { directory / "other-source.esz" } }, { "output", "simple" } }, context);
     voxel("simple", directory / "voxels/other");
     require(io::read_json(first / "lod-meta.json").at("voxels").size() == 3, "Reusing a resource name associated unrelated inputs");
     voxel("simple", directory / "voxels/full");
@@ -626,7 +626,7 @@ void read_source_order_contracts(const std::filesystem::path& directory) {
     io::write_splat(first, *cloud(2, 0));
     io::write_splat(second, *cloud(1, 0, 100));
     pipeline::TaskContext context;
-    const Json inputs = Json::array({ io::path_utf8(first), io::path_utf8(second) });
+    const Json inputs = Json::array({ first, second });
     task("Read", { { "inputs", inputs }, { "output", "ordered" } }, context);
     const auto meta_path = directory / "source-order-lod.json";
     save_json(meta_path, Json::object());
@@ -635,7 +635,7 @@ void read_source_order_contracts(const std::filesystem::path& directory) {
         const auto output = directory / name;
         std::filesystem::create_directories(output);
         save_json(output / "voxel-meta.json", { { "version", "1.2" } });
-        context.record_voxel({ { "input", input }, { "output", io::path_utf8(output) } });
+        context.record_voxel({ { "input", input }, { "output", output } });
     };
 
     task("Read", { { "inputs", { inputs[1], inputs[0] } }, { "output", "reversed" } }, context);
@@ -660,7 +660,7 @@ void read_source_order_contracts(const std::filesystem::path& directory) {
     voxel("same", "source-order-same");
     const Json expected = Json::array({ "source-order-same/voxel-meta.json" });
     require(same_paths(io::read_json(meta_path).at("voxels"), expected), "Identical ordered Read inputs lost their source");
-    task("Read", { { "inputs", { io::path_utf8(directory / "." / first.filename()), io::path_utf8(directory / "." / second.filename()) } }, { "output", "normalized" } }, context);
+    task("Read", { { "inputs", { directory / "." / first.filename(), directory / "." / second.filename() } }, { "output", "normalized" } }, context);
     voxel("normalized", "source-order-same");
     require(same_paths(io::read_json(meta_path).at("voxels"), expected), "Normalized ordered Read inputs lost their source");
 }
@@ -706,7 +706,7 @@ void filter_contracts(const std::filesystem::path& directory) {
     rejects([&] { pipeline::create_task("filter"); });
 
     const auto output = directory / "filter-voxel";
-    task("Voxel", { { "input", "source" }, { "output", io::path_utf8(output) }, { "backend", "cpu" }, { "voxelResolution", 0.125 }, { "opacityCutoff", 0.1 }, { "filterCluster", false }, { "autoDenseBox", false } }, context);
+    task("Voxel", { { "input", "source" }, { "output", output }, { "backend", "cpu" }, { "voxelResolution", 0.125 }, { "opacityCutoff", 0.1 }, { "filterCluster", false }, { "autoDenseBox", false } }, context);
     const auto meta = io::read_bytes(output / "voxel-meta.json"), binary = io::read_bytes(output / "voxel.bin");
     const Json input { { "input", "source" } };
     const voxel::GridSpec spec { 0.125f, 0.1f };
@@ -715,7 +715,7 @@ void filter_contracts(const std::filesystem::path& directory) {
     require(context.find_grid(input, { 0.25f, 0.1f }) == grid && !context.find_grid(input, { 0.0625f, 0.1f }),
         "Filter must accept finer occupancy and reject coarser occupancy");
     const auto second_output = directory / "coarser-voxel";
-    task("Voxel", { { "input", "source" }, { "output", io::path_utf8(second_output) }, { "backend", "cpu" }, { "voxelResolution", 0.25 }, { "opacityCutoff", 0.1 }, { "filterCluster", false }, { "autoDenseBox", false } }, context);
+    task("Voxel", { { "input", "source" }, { "output", second_output }, { "backend", "cpu" }, { "voxelResolution", 0.25 }, { "opacityCutoff", 0.1 }, { "filterCluster", false }, { "autoDenseBox", false } }, context);
     const auto coarser = context.find_grid(input, { 0.25f, 0.1f });
     require(coarser && coarser != grid && context.find_grid(input, { 0.5f, 0.1f }) == coarser &&
                 context.find_grid(input, { 0.1875f, 0.1f }) == grid && !context.find_grid(input, { 0.5f, 0.2f }),
@@ -739,7 +739,7 @@ void filter_contracts(const std::filesystem::path& directory) {
     require(io::read_bytes(output / "voxel-meta.json") == meta && io::read_bytes(output / "voxel.bin") == binary, "Filter overwrote explicit voxel files");
     // A collision export can cover only a fraction of an otherwise matching input.
     const voxel::GridSpec cropped_spec { 0.0625f, 0.1f };
-    task("Voxel", { { "input", "source" }, { "output", io::path_utf8(directory / "cropped") }, { "backend", "cpu" }, { "voxelResolution", 0.0625 }, { "filterCluster", false }, { "autoDenseBox", false }, { "box", { { "minCorner", { -1, -1, -1 } }, { "maxCorner", { 0.5, 1, 1 } } } } }, context);
+    task("Voxel", { { "input", "source" }, { "output", directory / "cropped" }, { "backend", "cpu" }, { "voxelResolution", 0.0625 }, { "filterCluster", false }, { "autoDenseBox", false }, { "box", { { "minCorner", { -1, -1, -1 } }, { "maxCorner", { 0.5, 1, 1 } } } } }, context);
     require(!context.find_grid(input, cropped_spec), "A cropped Voxel grid was published as complete occupancy");
     filter("floaters", { { "floaters", { { "voxelResolution", 0.0625 } } } });
     require(std::ranges::any_of(get(context, "filtered")->gaussians, [&](const auto& point) { return point.mean.x() == x[3]; }),
@@ -748,7 +748,7 @@ void filter_contracts(const std::filesystem::path& directory) {
     // The coarse stage covers the original input. After cluster selection the
     // fine collision grid only describes the selected component.
     const voxel::GridSpec coarse { 0.125f, 0.15f }, fine { 0.0625f, 0.3f };
-    task("Voxel", { { "input", "source" }, { "output", io::path_utf8(directory / "prefiltered") }, { "backend", "cpu" }, { "voxelResolution", 0.0625 }, { "opacityCutoff", 0.3 }, { "autoDenseBox", false }, { "filterCluster", { { "voxelResolution", 0.125 }, { "opacityCutoff", 0.15 }, { "seed", { { "x", 0 }, { "y", 0 }, { "z", 0 } } } } } }, context);
+    task("Voxel", { { "input", "source" }, { "output", directory / "prefiltered" }, { "backend", "cpu" }, { "voxelResolution", 0.0625 }, { "opacityCutoff", 0.3 }, { "autoDenseBox", false }, { "filterCluster", { { "voxelResolution", 0.125 }, { "opacityCutoff", 0.15 }, { "seed", { { "x", 0 }, { "y", 0 }, { "z", 0 } } } } } }, context);
     require(context.find_grid(input, coarse) && !context.find_grid(input, fine), "Voxel retained occupancy from the wrong side of cluster selection");
     put_resource(context, "unrelated", cloud(1, 0));
     require(!context.find_grid({ { "input", "unrelated" } }, spec), "Unrelated resource reused a grid");
@@ -758,14 +758,14 @@ void filter_contracts(const std::filesystem::path& directory) {
 
 void reread_filter_grid_contract(const std::filesystem::path& directory) {
     const auto path = directory / "grid-input.ply";
-    const Json config { { "inputs", { io::path_utf8(path) } }, { "output", "source" } };
+    const Json config { { "inputs", { path } }, { "output", "source" } };
     const Json input { { "input", "source" } };
     const voxel::GridSpec spec { 0.125f, 0.1f };
     pipeline::TaskContext context;
     auto data = cloud(8, 0);
     io::write_splat(path, *data);
     task("Read", config, context);
-    task("Voxel", { { "input", "source" }, { "output", io::path_utf8(directory / "reread-voxel") }, { "backend", "cpu" }, { "voxelResolution", 0.125 }, { "filterCluster", false }, { "autoDenseBox", false } }, context);
+    task("Voxel", { { "input", "source" }, { "output", directory / "reread-voxel" }, { "backend", "cpu" }, { "voxelResolution", 0.125 }, { "filterCluster", false }, { "autoDenseBox", false } }, context);
     const auto grid = context.find_grid(input, spec);
     require(grid != nullptr, "Missing initial Read grid");
     // The path, file size and timestamp can all stay equal across a rewrite.

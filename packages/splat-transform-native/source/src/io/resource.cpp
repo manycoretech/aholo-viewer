@@ -1,47 +1,44 @@
 #include "zip_archive.h"
-#include <algorithm>
 #include <cstdint>
 #include <curl/curl.h>
 #include <io/resource.h>
+#include <unordered_map>
+#include <utility>
+#include <utility/string.h>
 
 namespace splat_transform::io {
-std::string lower(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](uint8_t c) { return std::tolower(c); });
-    return value;
-}
-std::string normalized(std::string value) {
-    std::replace(value.begin(), value.end(), '\\', '/');
-    return path_utf8(utf8_path(value).lexically_normal());
+bool is_archive_metadata(const std::string& entry, std::string_view format) {
+    const auto slash = entry.rfind('/');
+    const auto filename = utility::lower(entry.substr(slash == std::string::npos ? 0 : slash + 1));
+    if (format == ".sog") {
+        return filename == "meta.json";
+    }
+    return !filename.starts_with("._") && filename.size() > format.size() && filename.ends_with(format);
 }
 struct Resources::Impl {
     std::filesystem::path directory;
-    std::filesystem::path metadata;
     std::unique_ptr<ZipArchive> archive;
-    std::vector<std::string> entries;
+    std::unordered_map<std::u8string, std::string> entries;
 };
 Resources::Resources(const std::filesystem::path& path, std::span<const std::byte> bytes, const std::string& format) : impl_(std::make_unique<Impl>()) {
-    impl_->directory = path.has_parent_path() ? path.parent_path() : std::filesystem::path(".");
     if (bytes.size() >= 4 && bytes[0] == std::byte { 'P' } && bytes[1] == std::byte { 'K' }) {
         impl_->archive = std::make_unique<ZipArchive>(bytes);
-        impl_->entries = impl_->archive->entries();
         std::vector<std::string> candidates;
-        for (const auto& name : impl_->entries) {
-            const auto path = utf8_path(normalized(name));
-            if (path_utf8(path.filename()).starts_with("._")) {
-                continue;
-            }
-            if ((format == ".sog" && lower(path_utf8(path.filename())) == "meta.json") ||
-                (format != ".sog" && lower(path_utf8(path.extension())) == format)) {
+        for (auto& name : impl_->archive->entries()) {
+            const auto entry = utf8_path(name).lexically_normal();
+            if (is_archive_metadata(name, format)) {
+                impl_->directory = entry.parent_path();
                 candidates.push_back(name);
             }
+            impl_->entries.try_emplace(utility::lower(entry.generic_u8string()), std::move(name));
         }
         if (candidates.size() != 1) {
             throw std::runtime_error("Archive must contain exactly one " + format + " metadata file");
         }
-        impl_->metadata = utf8_path(normalized(candidates[0]));
         const auto metadata = impl_->archive->read(candidates[0]);
         meta = Json::parse(std::string_view(reinterpret_cast<const char*>(metadata.data()), metadata.size()));
     } else {
+        impl_->directory = path.has_parent_path() ? path.parent_path() : std::filesystem::path(".");
         meta = Json::parse(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
     }
 }
@@ -50,30 +47,26 @@ std::string Resources::resolve(const std::string& name) const {
     if (name.starts_with("https://") || name.starts_with("http://")) {
         return name;
     }
-    const auto relative = utf8_path(normalized(name));
-    const std::array<std::filesystem::path, 3> candidates {
-        impl_->metadata.parent_path() / relative, relative,
-        impl_->metadata.parent_path() / relative.filename()
-    };
+    const auto relative = utf8_path(name).lexically_normal();
+    const auto path = impl_->directory / relative;
+    const auto by_filename = impl_->directory / relative.filename();
     if (impl_->archive) {
-        for (const auto& candidate : candidates) {
-            const auto key = lower(normalized(path_utf8(candidate)));
-            for (const auto& entry : impl_->entries) {
-                if (lower(normalized(entry)) == key) {
-                    return entry;
-                }
+        for (const auto& candidate : { path, relative, by_filename }) {
+            const auto entry = impl_->entries.find(utility::lower(candidate.lexically_normal().generic_u8string()));
+            if (entry != impl_->entries.end()) {
+                return entry->second;
             }
         }
     } else {
-        for (const auto& candidate : candidates) {
-            auto path = impl_->directory / candidate;
-            if (std::filesystem::is_regular_file(path)) {
-                return path_utf8(path);
+        for (const auto& candidate : { path, by_filename }) {
+            if (std::filesystem::is_regular_file(candidate)) {
+                return path_utf8(candidate);
             }
         }
         if (std::filesystem::is_directory(impl_->directory)) {
+            const auto folded_name = utility::lower(std::u8string(name.begin(), name.end()));
             for (const auto& entry : std::filesystem::directory_iterator(impl_->directory)) {
-                if (entry.is_regular_file() && lower(path_utf8(entry.path().filename())) == lower(name)) {
+                if (entry.is_regular_file() && utility::lower(entry.path().filename().u8string()) == folded_name) {
                     return path_utf8(entry.path());
                 }
             }

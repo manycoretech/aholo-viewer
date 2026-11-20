@@ -4,9 +4,6 @@
 #include <memory>
 
 namespace splat_transform::io {
-std::string lower(std::string value);
-std::string normalized(std::string value);
-
 // Resource paths are relative to metadata, including within ZIP archives.
 class Resources {
 public:

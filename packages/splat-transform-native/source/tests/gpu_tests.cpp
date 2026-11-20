@@ -623,7 +623,7 @@ int main(int argc, char** argv) {
         } cleanup { directory };
         std::filesystem::create_directories(directory);
         io::write_splat(directory / "source.esz", source);
-        const auto path = [&](const char* relative) { return io::path_utf8(directory / relative); };
+        const auto path = [&](const char* relative) { return directory / relative; };
         using io::Json;
         pipeline::run({ { "version", 1 }, { "gpu", selected }, { "tasks", Json::array({ { { "type", "Read" }, { "config", { { "inputs", { path("source.esz") } }, { "output", "source" } } } }, { { "type", "AutoChunkLod" }, { "config", { { "input", "source" }, { "output", "lod" }, { "type", "esz" }, { "levels", Json::array({ { { "precision", 1 }, { "scaleBoost", 1 } } }) } } } }, { { "type", "Write" }, { "config", { { "input", "lod" }, { "output", path("scene/lod") } } } }, { { "type", "ExtractLodLevel" }, { "config", { { "input", "lod" }, { "output", "level" }, { "level", 0 } } } }, { { "type", "Voxel" }, { "config", { { "input", "level" }, { "output", path("scene/collision") }, { "filterCluster", false }, { "voxelResolution", 0.1 } } }, { "release", { "level" } } }, { { "type", "Voxel" }, { "config", { { "input", "source" }, { "output", path("scene/lod/voxel") }, { "filterCluster", false }, { "voxelResolution", 0.1 } } }, { "release", { "source" } } }, { { "type", "Write" }, { "config", { { "input", "lod" }, { "output", path("mirror/lod") } } }, { "release", { "lod" } } } }) } });
         const auto first = io::read_json(directory / "scene/lod/lod-meta.json");
@@ -636,10 +636,10 @@ int main(int argc, char** argv) {
             throw std::runtime_error("GPU voxel output association or relative paths differ");
         }
         for (const auto& name : first.at("voxels")) {
-            const auto metadata = directory / "scene/lod" / io::utf8_path(name.get<std::string>());
+            const auto metadata = directory / "scene/lod" / name.get<std::filesystem::path>();
             const auto voxel_meta = io::read_json(metadata);
             for (const auto& file : voxel_meta.at("files")) {
-                if (!std::filesystem::is_regular_file(metadata.parent_path() / io::utf8_path(file.get<std::string>()))) {
+                if (!std::filesystem::is_regular_file(metadata.parent_path() / file.get<std::filesystem::path>())) {
                     throw std::runtime_error("LOD voxel link points to missing voxel data");
                 }
             }

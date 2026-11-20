@@ -4,6 +4,7 @@
 #include <pipeline/tasks/filter.h>
 #include <utility/logger.h>
 #include <utility/parallel.h>
+#include <utility/string.h>
 #include <voxel/voxelize.h>
 
 namespace splat_transform::pipeline {
@@ -18,12 +19,7 @@ constexpr std::array<std::string_view, 4> names { "box", "sphere", "cluster", "f
 FilterMode filter_mode(const Json& config) {
     const auto& value = config.at("mode");
     if (value.is_string()) {
-        auto name = value.get<std::string>();
-        for (auto& c : name) {
-            if (c >= 'A' && c <= 'Z') {
-                c = static_cast<char>(c - 'A' + 'a');
-            }
-        }
+        const auto name = utility::lower(value.get<std::string>());
         const auto found = std::ranges::find(names, name);
         if (found != names.end()) {
             return static_cast<FilterMode>(found - names.begin());

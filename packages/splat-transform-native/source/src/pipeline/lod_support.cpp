@@ -1,7 +1,7 @@
 #include "lod_support.h"
 #include <cstdint>
-#include <io/resource.h>
 #include <utility/logger.h>
+#include <utility/string.h>
 
 namespace splat_transform::pipeline {
 using io::Json;
@@ -20,7 +20,7 @@ splat::block::SplitNormal split_normal(const Json& config) {
         }
     } else if (value.is_string()) {
         constexpr std::array<std::string_view, 4> NAMES { "none", "x", "y", "z" };
-        const auto found = std::ranges::find(NAMES, io::lower(value.get<std::string>()));
+        const auto found = std::ranges::find(NAMES, utility::lower(value.get<std::string>()));
         if (found != NAMES.end()) {
             return static_cast<splat::block::SplitNormal>(found - NAMES.begin());
         }

@@ -136,6 +136,7 @@ set(SPLAT_TRANSFORM_HEADER_FILES
     include/utility/logger.h
     include/utility/parallel.h
     include/utility/random.h
+    include/utility/string.h
     include/utility/thread_pool.h
     include/voxel/voxel.h
 )

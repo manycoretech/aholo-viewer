@@ -4,6 +4,7 @@
 #include <memory>
 #include <new>
 #include <pipeline/context.h>
+#include <span>
 #include <string_view>
 #include <utility/parallel.h>
 #include <voxel/grid.h>
@@ -20,11 +21,12 @@ uint64_t ordered_input_key(const io::Json& inputs, const PathResolver& paths) {
     }
     XXH3_64bits_reset(hash.get());
     for (const auto& input : inputs) {
-        const auto path = io::path_utf8(paths.resolve(input.get<std::string>()));
+        const auto path = paths.resolve(input.get<std::string>());
+        const auto bytes = std::as_bytes(std::span(path.native()));
         XXH64_canonical_t length;
-        XXH64_canonicalFromHash(&length, path.size());
+        XXH64_canonicalFromHash(&length, bytes.size());
         XXH3_64bits_update(hash.get(), &length, sizeof(length));
-        XXH3_64bits_update(hash.get(), path.data(), path.size());
+        XXH3_64bits_update(hash.get(), bytes.data(), bytes.size());
     }
     return XXH3_64bits_digest(hash.get());
 }

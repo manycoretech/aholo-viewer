@@ -90,7 +90,7 @@ void WriteTask::exec(const Json& config, TaskContext& context) const {
     if (const auto* files = std::get_if<std::vector<SingleFile>>(&resource)) {
         for (const auto& file : *files) {
             if (file.name == "lod-meta.json" && std::holds_alternative<std::string>(file.content)) {
-                context.record_lod_metadata(config, output / io::utf8_path(file.name));
+                context.record_lod_metadata(config, output / file.name);
             }
         }
     }

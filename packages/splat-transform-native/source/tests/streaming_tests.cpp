@@ -42,7 +42,7 @@ void file_backends(const std::filesystem::path& directory, bool require_native) 
         expected[i] = static_cast<std::byte>(i * 97 + i / 251);
     }
     for (auto backend : { io::FileStream::Backend::Automatic, io::FileStream::Backend::ThreadPool }) {
-        const auto path = directory / io::utf8_path("流式输入输出.bin");
+        const auto path = directory / u8"流式输入输出.bin";
         {
             io::FileStream file(path, io::FileStream::Access::Write, backend);
             const bool native = file.uses_native_backend();

@@ -31,7 +31,7 @@ void write_options(const std::filesystem::path& directory, const splat::Splat& s
     for (int32_t version : { 3, 4 }) {
         for (int32_t level : { 0, 1, 9 }) {
             const auto path = directory / "options.spz";
-            io::Json config { { "input", "source" }, { "output", io::path_utf8(path) }, { "version", version }, { "enableMortonSort", false } };
+            io::Json config { { "input", "source" }, { "output", path }, { "version", version }, { "enableMortonSort", false } };
             if (level) {
                 config["compressLevel"] = level;
             }

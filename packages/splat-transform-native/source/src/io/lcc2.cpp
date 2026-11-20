@@ -3,6 +3,8 @@
 #include <io/lcc2.h>
 #include <io/resource.h>
 #include <numeric>
+#include <utility>
+#include <utility/string.h>
 
 namespace splat_transform::io {
 splat::Splat Lcc2File::read(const FileInput& source) const {
@@ -18,7 +20,7 @@ splat::Splat Lcc2File::read(const FileInput& source) const {
     if (levels < 1) {
         throw std::runtime_error("Invalid LCC2 level count");
     }
-    auto extension = lower(meta.value("splatType", ".sog"));
+    auto extension = utility::lower(meta.value("splatType", ".sog"));
     if (!extension.starts_with('.')) {
         extension.insert(extension.begin(), '.');
     }
@@ -30,7 +32,7 @@ splat::Splat Lcc2File::read(const FileInput& source) const {
     std::vector<std::pair<std::string, std::vector<Json>>> selected;
     auto add = [&](const Json& ref) {
         auto name = files.at(ref.at("name").get<size_t>()).get<std::string>();
-        if (!root.contains("splatFiles") && !lower(name).ends_with(extension)) {
+        if (!root.contains("splatFiles") && !utility::lower(std::as_const(name)).ends_with(extension)) {
             name += extension;
         }
         const auto resolved = resources.resolve(name);

@@ -174,7 +174,7 @@ void pipeline_contracts(const std::filesystem::path& directory) {
     require(task.requires_gpu(io::Json::object(), context), "Voxel default backend must remain GPU");
     require(task.requires_gpu({ { "backend", "gpu" } }, context), "Explicit GPU backend lost device initialization");
     require(!task.requires_gpu({ { "backend", "cpu" } }, context), "CPU backend requires a GPU");
-    auto path = [&](const std::string& file) { return io::path_utf8(directory / file); };
+    auto path = [&](const std::string& file) { return directory / file; };
     io::write_splat(directory / "source.ply", source, { .enable_morton_sort = false });
     const auto decoded = io::read_splat(directory / "source.ply");
     const auto equal_output = [&](const std::string& name, const voxel::Options& options) {
@@ -183,7 +183,7 @@ void pipeline_contracts(const std::filesystem::path& directory) {
         const auto expected = io::read_json(direct / "voxel-meta.json");
         require(io::read_json(directory / name / "voxel-meta.json") == expected, "Pipeline options changed voxel metadata");
         for (const auto& file : expected.at("files")) {
-            const auto filename = io::utf8_path(file.get<std::string>());
+            const auto filename = file.get<std::filesystem::path>();
             require(io::read_bytes(directory / name / filename) == io::read_bytes(direct / filename), "Pipeline options changed voxel occupancy or encoding");
         }
         require(std::filesystem::exists(directory / name / "collision.glb") == std::filesystem::exists(direct / "collision.glb"), "Pipeline changed collision mesh enablement");

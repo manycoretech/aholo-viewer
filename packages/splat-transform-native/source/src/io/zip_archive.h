@@ -1,10 +1,12 @@
 #pragma once
-#include <io/resource.h>
+#include <io/file.h>
 #include <limits>
 #include <memory>
 #include <zip.h>
 
 namespace splat_transform::io {
+bool is_archive_metadata(const std::string& entry, std::string_view format);
+
 // The input span remains alive for the duration of this archive reader.
 class ZipArchive {
 public:
@@ -35,7 +37,7 @@ public:
                 throw std::runtime_error(zip_strerror(archive_.get()));
             }
             const std::string value(name);
-            if (!value.empty() && value.back() != '/' && value.back() != '\\') {
+            if (!value.empty() && value.back() != '/') {
                 result.push_back(value);
             }
         }
@@ -44,7 +46,7 @@ public:
     Bytes read(const std::string& name) const {
         zip_stat_t stat;
         if (zip_stat(archive_.get(), name.c_str(), 0, &stat) != 0 || stat.size > std::numeric_limits<size_t>::max()) {
-            throw std::runtime_error("Cannot read ZIP entry: " + normalized(name));
+            throw std::runtime_error("Cannot read ZIP entry: " + name);
         }
         auto file = std::unique_ptr<zip_file_t, decltype(&zip_fclose)>(zip_fopen(archive_.get(), name.c_str(), 0), zip_fclose);
         if (!file) {
@@ -55,7 +57,7 @@ public:
         while (offset < output.size()) {
             const auto count = zip_fread(file.get(), output.data() + offset, output.size() - offset);
             if (count <= 0) {
-                throw std::runtime_error("Truncated ZIP entry: " + normalized(name));
+                throw std::runtime_error("Truncated ZIP entry: " + name);
             }
             offset += static_cast<size_t>(count);
         }

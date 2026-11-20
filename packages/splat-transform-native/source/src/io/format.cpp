@@ -5,11 +5,11 @@
 #include <io/lcc.h>
 #include <io/lcc2.h>
 #include <io/ply.h>
-#include <io/resource.h>
 #include <io/sog.h>
 #include <io/splat.h>
 #include <io/spz.h>
 #include <numeric>
+#include <utility/string.h>
 
 namespace splat_transform::io {
 namespace {
@@ -38,29 +38,17 @@ const std::array FORMATS {
     Format { ".lcc", false, make_file<LccFile> },
     Format { ".lcc2", false, make_file<Lcc2File> },
 };
-struct ArchiveFormat {
-    std::string_view extension;
-    std::string_view metadata_extension;
-    std::string_view metadata_name;
-};
-// Highest-priority metadata wins, independently of ZIP entry order.
-constexpr std::array ARCHIVE_FORMATS {
-    ArchiveFormat { ".lcc2", ".lcc2", "" },
-    ArchiveFormat { ".lcc", ".lcc", "" },
-    ArchiveFormat { ".sog", "", "meta.json" }
-};
 std::string input_extension(const FileInput& input) {
-    auto extension = lower(input.path.extension().string());
+    auto extension = utility::lower(input.path.extension().string());
     if (extension != ".zip") {
         return extension;
     }
     const auto entries = ZipArchive(input.bytes).entries();
-    for (const auto& format : ARCHIVE_FORMATS) {
+    // Highest-priority metadata wins, independently of ZIP entry order.
+    for (const std::string_view format : { ".lcc2", ".lcc", ".sog" }) {
         for (const auto& entry : entries) {
-            const auto path = utf8_path(entry);
-            if ((!format.metadata_extension.empty() && lower(path.extension().string()) == format.metadata_extension) ||
-                (!format.metadata_name.empty() && path.filename() == format.metadata_name)) {
-                return std::string(format.extension);
+            if (is_archive_metadata(entry, format)) {
+                return std::string(format);
             }
         }
     }
@@ -79,7 +67,7 @@ splat::Splat IFile::read(const std::filesystem::path& path, uint32_t max_sh_degr
     return read({ path, bytes, max_sh_degree });
 }
 std::unique_ptr<IFile> create_file(std::string_view extension, const FileOptions& options, FileOperation operation) {
-    const auto normalized = lower(std::string(extension));
+    const auto normalized = utility::lower(std::string(extension));
     const auto found = std::ranges::find(FORMATS, normalized, &Format::extension);
     if (found == FORMATS.end() || (operation == FileOperation::Write && !found->writable)) {
         throw std::runtime_error(std::string("Unsupported ") + (operation == FileOperation::Read ? "input" : "output") + " format: " + normalized);
@@ -93,7 +81,7 @@ splat::Splat read_splat(const FileInput& input) {
     return result;
 }
 splat::Splat read_splat(const std::filesystem::path& path, uint32_t max_sh_degree) {
-    const auto extension = lower(path.extension().string());
+    const auto extension = utility::lower(path.extension().string());
     if (extension != ".zip") {
         auto result = create_file(extension)->read(path, max_sh_degree);
         result.block_offsets = { 0 };
