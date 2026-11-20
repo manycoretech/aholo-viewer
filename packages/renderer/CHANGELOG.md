@@ -1,5 +1,22 @@
 # ChangeLOG
 
+## 1.15.0
+
+1. Features
+    - sort decoded splats by Morton order by default. Set `mortonSort: false` to preserve file indices and receive sampler chunks in file order. Native `SplatPackType.Sog` keeps its image layout.
+    - let `SplatUtils.createSplat(data)` collect streaming data on the CPU. Passing an initialized renderer uploads streaming data to WebGL2 or WebGPU and releases the CPU sampler buffers.
+2. Changes
+    - stream chunk LOD resources in file order with the default loader and share source textures across nodes that reference the same file. After a renderer reset, reload resources whose only copy was on the previous GPU.
+    - reuse WebGL sorting centers across overlapping ranges from the same source and read back only the rows needed for changed ranges.
+    - cull fully offscreen Gaussians on WebGL2 before fetching covariance data and projecting the Gaussian.
+    - default `Splat.autoFreeResourceOnGpuPacked` to `true` for CPU-backed splats. Direct GPU uploads and LOD nodes set it to `false` to keep their source textures available for repacking.
+3. Breaking Changes
+    - `SplatLoader.parseSplatData()` now defaults to `stream: true`. Replace `retainData: true` with `stream: false` for editing, serialization, or caching. Rename `chunkBytes` to `streamChunkBytes` (default 16 MiB).
+    - `SplatData.collect()` populates the same object and returns `Promise<void>`. Migrate `readChunks()` and `cancel()` to the optional `data.stream.chunks` readable stream. Pass an abort signal to `fetch()` when cancelling a download.
+    - remove the parser's `signal` option, `Splat.stream`, and `Splat.readback()`. Retain CPU data before a direct GPU upload or reparse the original asset when CPU access is needed later.
+    - direct `Uint8Array` input transfers its backing buffer to the parsing worker. Pass `bytes.slice()` if the caller needs to reuse the original bytes or another view of that buffer.
+    - when decoding multiple files in a ZIP, the merged data uses the lowest input spherical-harmonic degree. Load the files separately to preserve each file's higher-order coefficients.
+
 ## 1.14.0
 
 1. Features

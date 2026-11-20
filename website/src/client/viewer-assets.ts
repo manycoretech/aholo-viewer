@@ -10,6 +10,7 @@ import {
     type Object3D,
     type Viewer,
 } from '@manycore/aholo-viewer';
+import { abortable } from './rendering.js';
 import type { ViewerLabels } from './viewer-labels.js';
 
 export const SPLAT_EXTENSIONS = ['.ply', '.spz', '.splat', '.ksplat', '.zip', '.sog', '.esz', '.json'];
@@ -132,7 +133,27 @@ export async function inspectSplatSource(source: AssetSource, signal: AbortSigna
     if (type === undefined) {
         throw new Error(`Unsupported file type: ${source.name}`);
     }
-    return { type, input: content ?? (source.kind === 'file' ? source.file : source.url) };
+    if (content) {
+        return { type, input: content };
+    }
+    if (source.kind === 'file') {
+        const stream = source.file.stream().pipeThrough(new TransformStream<Uint8Array, Uint8Array>(), { signal });
+        return { type, input: { stream, contentLength: source.file.size } };
+    }
+    return { type, input: await fetchSplatInput(source.url, type, signal) };
+}
+
+export async function fetchSplatInput(url: string, type: SplatLoader.SplatFileType, signal: AbortSignal) {
+    const response = await fetch(url, { signal });
+    if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}: ${url}`);
+    }
+    const contentLength = Number(response.headers.get('Content-Length'));
+    // Headerless SPLAT files derive their point count from the decoded byte length.
+    if (type === SplatLoader.SplatFileType.SPLAT && (!contentLength || response.headers.get('Content-Encoding'))) {
+        return new Uint8Array(await response.arrayBuffer());
+    }
+    return { stream: response.body, contentLength };
 }
 
 function isLodMeta(value: unknown): value is SplatUtils.LodMeta {
@@ -170,63 +191,50 @@ export function splatBounds(data: SplatLoader.SplatData) {
     return bounds;
 }
 
-export async function createStreamedSplat(data: SplatLoader.SplatData, viewer: Viewer) {
+export async function createStreamedSplat(data: SplatLoader.SplatData, viewer: Viewer, signal: AbortSignal) {
     type Renderer = NonNullable<Parameters<typeof SplatUtils.createSplat>[1]> & {
         rendererStatus: { initialized: Promise<void> };
     };
     // gs-viewer uses this host hook; the bundled Viewer strips it from public declarations.
     const renderer = (viewer as Viewer & { _getEngine(): { renderer: Renderer } })._getEngine().renderer;
-    const readChunks = data.readChunks;
-    let bounds: Box3;
     try {
-        await renderer.rendererStatus.initialized;
-        data.signal?.throwIfAborted();
-        if (data instanceof SplatLoader.SogSplatData) {
-            bounds = splatBounds(data);
-        } else {
-            bounds = new Box3();
+        await abortable(renderer.rendererStatus.initialized, signal, 'Splat upload was aborted.');
+        const stream = data.stream;
+        const bounds = stream?.chunks ? new Box3() : splatBounds(data);
+        if (stream?.chunks) {
             const header = data.serialize();
             const decoder =
                 data instanceof SplatLoader.CompressedSplatData
                     ? new SplatLoader.CompressedSplatData()
                     : new SplatLoader.SuperCompressedSplatData();
-            // Observe each center chunk before the uploader releases its buffer; never collect the full stream.
-            data.readChunks = (consume, release) =>
-                readChunks.call(
-                    data,
-                    async chunk => {
-                        const centers = chunk.samplers.find(sampler => sampler.index === 0);
-                        if (centers) {
-                            const counts = Math.min(centers.source.byteLength / 16, data.counts - centers.offset / 16);
-                            decoder.deserialize({
-                                ...header,
-                                counts,
-                                samplers: header.samplers.map((sampler, index) =>
-                                    index === 0
-                                        ? {
-                                              ...sampler,
-                                              // SDK decoders address the underlying buffer from byte zero.
-                                              source: centers.source.byteOffset
-                                                  ? centers.source.slice()
-                                                  : centers.source,
-                                          }
-                                        : sampler,
-                                ),
-                            });
+            const centerSampler = { ...header.samplers[0] };
+            const samplers = [centerSampler, ...header.samplers.slice(1)];
+            // Both packed formats store one center per 16 bytes in sampler zero.
+            stream.chunks = stream.chunks.pipeThrough(
+                new TransformStream({
+                    transform(chunk, controller) {
+                        if (chunk.index === 0) {
+                            const { source, offset } = chunk;
+                            const counts = Math.min(source.byteLength / 16, data.counts - offset / 16);
+                            // SDK center decoders start at byte zero of the underlying buffer.
+                            centerSampler.source = source.byteOffset ? source.slice() : source;
+                            decoder.deserialize({ ...header, counts, samplers });
                             bounds.union(splatBounds(decoder));
                         }
-                        await consume(chunk);
+                        controller.enqueue(chunk);
                     },
-                    release,
-                );
+                }),
+                { signal },
+            );
         }
         const object = await SplatUtils.createSplat(data, renderer);
         return { object, bounds };
     } catch (error) {
-        data.cancel(error);
+        const chunks = data.stream?.chunks;
+        if (chunks && !chunks.locked) {
+            await chunks.cancel(error).catch(() => {});
+        }
         throw error;
-    } finally {
-        data.readChunks = readChunks;
     }
 }
 

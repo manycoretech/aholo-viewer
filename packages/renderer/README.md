@@ -14,6 +14,14 @@ The package is ESM-only and ships TypeScript declarations through `dist/index.d.
 
 Follow the [Getting Started guide](https://aholojs.dev/en-US/manual/getting-started/) to create a Vite app, initialize a viewer, load a 3DGS splat, and render the first frame.
 
+## Splat Loading
+
+From 1.15.0, `SplatLoader.parseSplatData()` defaults to `stream: true`. Calling `await SplatUtils.createSplat(data)` collects the samplers on the CPU. To edit or cache the parsed data directly, pass `{ stream: false }` as the fourth argument or call `await data.collect()` before `data.serialize()`.
+
+Decoded splats use Morton order by default. Set `mortonSort: false` when file indices matter, including in custom chunk LOD loaders. With `stream: true`, passing the streaming result to `await SplatUtils.createSplat(data, renderer)` uploads it to an initialized backend renderer and releases its CPU buffers. If you subsequently enable `splat.autoFreeResourceOnGpuPacked` and the GPU source textures are freed, reloading the original asset is necessary to pack it again. See [Getting Started](https://aholojs.dev/en-US/manual/getting-started/) for the 1.15.0 migration.
+
+For CPU-backed splats, `splat.autoFreeResourceOnGpuPacked` defaults to `true`. With camera-relative packing off, WebGL can free source textures after packing to reduce GPU memory use. Set packing precision and SH precalculation with `setViewerConfig()` before loading the splat. Changing either later requires the source textures again. Direct GPU uploads and the demo Viewer keep automatic release disabled. See [GPU source texture lifetime](https://aholojs.dev/en-US/manual/config/#releasing-gpu-source-textures-after-packing).
+
 ## Splatting Configuration
 
 Configure offscreen composition and tone mapping through `pipeline.Splatting.composite`:
@@ -58,7 +66,7 @@ setViewerConfig(viewer, {
 
 From 1.14, WebGL always uses stable sorting on the upper 24 bits of float32 depth keys, matching WebGPU. Remove `sort.highPrecisionEnabled` from configuration and presets; it no longer has any effect.
 
-The WebGL sorting worker uses WebAssembly SIMD and falls back to JavaScript if initialization fails. It reuses splat center data when only the camera changes and the centers remain unchanged, reducing GPU readbacks, and overlaps sorting with sorted-index texture uploads. Compare radial sorting and texture repacking in the [Splatting Basic example](https://aholojs.dev/en-US/examples/splatting-basic/).
+The WebGL sorting worker uses WebAssembly SIMD and falls back to JavaScript if initialization fails. It reuses cached centers when the camera moves or LOD nodes share a source range, reads back changed rows, and overlaps sorting with sorted-index texture uploads. Compare radial sorting and texture repacking in the [Splatting Basic example](https://aholojs.dev/en-US/examples/splatting-basic/).
 
 Custom source textures supplied to `CompressedSplat` or `SuperCompressedSplat`, including deserialized sampler data, must have power-of-two widths. Invalid widths now throw during construction. `pack.repackEnabled` is a new option; remove the former `pack.sortedLayoutEnabled` setting when upgrading.
 

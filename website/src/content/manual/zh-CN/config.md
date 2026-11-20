@@ -54,9 +54,27 @@ setViewerConfig(viewer, {
 
 1.14 起，WebGL 统一按 float32 深度键的高 24 位稳定排序，与 WebGPU 一致。Worker 优先使用 WebAssembly SIMD，初始化失败时自动回退 JavaScript，无需手动选择实现。
 
-仅相机变化且点中心数据未变时，WebGL 会复用点中心数据以减少 GPU 回读，并将排序与索引纹理上传并行处理。
+WebGL 在相机移动时复用已缓存的点中心，并将排序与索引纹理上传并行处理。从 1.15.0 起，来自同一源文件的 LOD 节点也可复用重叠区间的点中心，仅从 GPU 回读有变化的纹理行。WebGL2 还会在读取协方差数据和计算投影前剔除完全位于屏幕外的高斯。
 
 径向距离与视线深度会产生不同的透明混合顺序，应结合实际场景评估。纹理重排的收益取决于场景和设备，可在 [Splatting 基础样例](/zh-CN/examples/splatting-basic/) 和 [LOD 流式加载样例](/zh-CN/examples/splatting-lod-stream/) 中切换对比。通过 `setViewerConfig()` 动态切换 `pack.precalculateEnabled` 或 `pack.repackEnabled` 时，会自动更新相关着色器。
+
+## 打包后释放 GPU 源纹理
+
+`splat.autoFreeResourceOnGpuPacked` 是每个 `Splat` 对象的属性。设为 `true` 且 `pipeline.Splatting.pack.cameraRelativeEnabled` 为 `false` 时，WebGL 在打包后释放已打包的高斯属性源纹理和已有的逐点状态纹理，后续绘制使用已打包的数据，从而节省显存。开启相机相对打包时，相机移动可能触发重新打包，渲染器会保留源纹理。
+
+切换 `pack.highPrecisionEnabled`（打包精度）、`pack.precalculateEnabled`（SH 颜色预计算）或 `pack.cameraRelativeEnabled`（相机相对坐标）会重新读取源数据。更新已挂载的 `SplatModifier` 也会触发重新打包。`pack.repackEnabled` 的纹理重排步骤读取的是已打包的渲染纹理。
+
+`stream: true`（1.15.0 默认值）是解析选项。即使使用同一组选项，`splat.autoFreeResourceOnGpuPacked` 的初始值也取决于如何创建对象。
+
+| 创建方式                                                           | 创建后属性值 | 源数据                                                     |
+| ------------------------------------------------------------------ | ------------ | ---------------------------------------------------------- |
+| `SplatUtils.createSplat(data)`                                     | `true`       | 自动收齐 CPU 数据。需要重新打包时可从 CPU 再次上传。       |
+| 将尚未收集的流式结果传给 `SplatUtils.createSplat(data, renderer)`  | `false`      | 直接上传到 GPU，随后释放 CPU 采样器缓冲。                  |
+| 先 `await data.collect()`，或以 `stream: false` 解析，再创建 splat | `true`       | 保留 CPU 副本，包括向 `createSplat` 传入 renderer 的情况。 |
+
+在流式加载并直接上传 GPU 的情况下，如果随后手动设为 `true` 并在打包后释放了 GPU 源纹理，下次重新打包就需要重载原文件。保留 CPU 副本时，代价是重新上传数据。
+
+**建议先配置管线，再加载数据。** 使用 `setViewerConfig()` 确定上述打包选项，解析数据并创建 splat，然后在加入场景、首次渲染之前设置 `splat.autoFreeResourceOnGpuPacked = true`。需要频繁切换打包设置或更新修改器时，可设为 `false` 以保留源纹理。演示 Viewer 在所有档位中都采用 `false`。完整调用顺序见[效果优先 SDK 示例](./3dgs-preset-config.md#在-sdk-中使用效果优先)。
 
 ## Splatting 合成与色调映射
 

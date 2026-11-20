@@ -27,6 +27,7 @@ export default async function runner({ renderer, control, loading, indexedDB, si
     const envData = await loadResource(
         'https://holo-cos.aholo3d.cn/aholo-opensource/gs_file/misc/home-interaction-env.73524ff2.sog',
         indexedDB,
+        signal,
     );
     const env = await SplatUtils.createSplat(envData);
     scene.add(env);
@@ -44,7 +45,8 @@ export default async function runner({ renderer, control, loading, indexedDB, si
             schedulerParallelCounts: 99999,
         },
         createViewerContext(viewer),
-        url => loadResource(url, indexedDB),
+        (url, resourceSignal) =>
+            loadResource(url, indexedDB, resourceSignal ? AbortSignal.any([signal, resourceSignal]) : signal),
     );
     scene.add(splat.container);
 
@@ -128,8 +130,9 @@ async function loadLodMeta(url: string, signal: AbortSignal) {
 }
 
 type ISplatData = ReturnType<SplatLoader.SplatData['serialize']>;
-async function loadResource(url: string, db: RuntimeIndexedDBStorage) {
+async function loadResource(url: string, db: RuntimeIndexedDBStorage, signal: AbortSignal) {
     const cached = await db.get<ISplatData>(url, { version: 0 });
+    throwIfAborted(signal);
     if (cached) {
         const data = new SplatLoader.CompressedSplatData();
         data.deserialize(cached);
@@ -141,8 +144,19 @@ async function loadResource(url: string, db: RuntimeIndexedDBStorage) {
         throw new Error(`Unsupported LOD splat resource: ${url}`);
     }
 
-    const data = await SplatLoader.parseSplatData(fileType, url, SplatLoader.SplatPackType.Compressed);
+    const response = await fetch(url, { signal });
+    if (!response.ok || !response.body) {
+        throw new Error(`Splat resource: HTTP ${response.status}`);
+    }
+    const data = await SplatLoader.parseSplatData(
+        fileType,
+        { stream: response.body, contentLength: Number(response.headers.get('Content-Length')) },
+        SplatLoader.SplatPackType.Compressed,
+        { stream: false, mortonSort: false },
+    );
+    throwIfAborted(signal);
     await db.set(url, data.serialize(), { version: 0 });
+    throwIfAborted(signal);
     return data;
 }
 

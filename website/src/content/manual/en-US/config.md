@@ -54,9 +54,27 @@ setViewerConfig(viewer, {
 
 From 1.14, WebGL always uses stable sorting on the upper 24 bits of float32 depth keys, matching WebGPU. The worker uses WebAssembly SIMD and falls back to JavaScript if initialization fails; no manual implementation selection is required.
 
-When only the camera changes and splat center data remains unchanged, WebGL reuses that data to reduce GPU readbacks and overlaps sorting with sorted-index texture uploads.
+WebGL reuses cached centers when the camera moves and overlaps sorting with sorted-index texture uploads. From 1.15.0, LOD nodes from the same source can also reuse centers in overlapping ranges. WebGL reads back only the changed texture rows. WebGL2 also culls fully offscreen Gaussians before fetching covariance data and calculating their projection.
 
 Radial distance and view-direction depth can produce different transparency blending orders; evaluate them with the target scene. Repacking performance depends on the scene and device. Toggle the settings in the [Splatting Basic example](/en-US/examples/splatting-basic/) and [LOD streaming example](/en-US/examples/splatting-lod-stream/) to compare them. Changing `pack.precalculateEnabled` or `pack.repackEnabled` through `setViewerConfig()` automatically updates the affected shaders.
+
+## Releasing GPU Source Textures After Packing
+
+`splat.autoFreeResourceOnGpuPacked` is a per-`Splat` property. When it is `true` and `pipeline.Splatting.pack.cameraRelativeEnabled` is `false`, WebGL frees the source textures for the packed Gaussian attributes and any per-point state texture after packing. Subsequent draws use the packed data, reducing GPU memory use. With camera-relative packing enabled, camera movement can trigger another packing pass, so the renderer keeps the source textures.
+
+Changing `pack.highPrecisionEnabled` (packing precision), `pack.precalculateEnabled` (SH color precalculation), or `pack.cameraRelativeEnabled` (camera-relative coordinates) requires the source data again. Updating an attached `SplatModifier` also triggers a new packing pass. The texture-reordering pass controlled by `pack.repackEnabled` reads the already packed rendering textures.
+
+`stream: true` (the 1.15.0 default) is a parser option. Even with the same parser options, the initial value of `splat.autoFreeResourceOnGpuPacked` depends on how you create the object.
+
+| Creation path                                                                           | Property on return | Source data                                                                                 |
+| --------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------- |
+| `SplatUtils.createSplat(data)`                                                          | `true`             | Collects CPU data automatically. The renderer can upload it again for a later packing pass. |
+| Pass an uncollected streaming result to `SplatUtils.createSplat(data, renderer)`        | `false`            | Uploads directly to the GPU and releases the CPU sampler buffers.                           |
+| Call `await data.collect()` first, or parse with `stream: false`, then create the splat | `true`             | Retains a CPU copy, including when a renderer is passed to `createSplat`.                   |
+
+After a direct streaming upload, if you set the property to `true` and the packing pass frees the GPU source textures, the next packing pass requires reloading the original asset. With a CPU copy, the cost is another upload.
+
+**Configure the pipeline before loading the data.** Set the packing options with `setViewerConfig()`, parse the data, and create the splat. Then set `splat.autoFreeResourceOnGpuPacked = true` before adding it to the scene and rendering the first frame. If your application frequently changes packing options or updates modifiers, use `false` to retain the source textures. The demo Viewer uses `false` in every preset. See the [Quality First SDK example](./3dgs-preset-config.md#use-quality-first-in-the-sdk) for the call order.
 
 ## Splatting Composition and Tone Mapping
 

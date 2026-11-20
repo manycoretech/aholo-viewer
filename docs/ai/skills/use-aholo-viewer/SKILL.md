@@ -31,9 +31,9 @@ Prefer these Markdown docs over scraping rendered HTML pages.
 
 3. Create a real DOM container with stable dimensions before calling `createViewer`. Attach application DOM event listeners to this container, not to the engine canvas.
 
-4. Create a camera, position it, call `lookAt`, add objects to `viewer.getScene()`, then call `viewer.setCamera(camera)`.
+4. Create a camera, position it, call `lookAt`, and set it with `viewer.setCamera(camera)`. Configure the rendering pipeline with `setViewerConfig(viewer, { pipeline: ... })`.
 
-5. Configure rendering with `setViewerConfig(viewer, { pipeline: ... })`.
+5. Load the assets and add their objects to `viewer.getScene()`. For splats that use `autoFreeResourceOnGpuPacked`, choose packing precision, SH precalculation, and camera-relative packing before loading. Changing these options later requires the source data again.
 
 6. Render explicitly with `viewer.render()`. If the app relies on viewer-triggered invalidation, set `viewer.requestRenderHandler` to schedule another render with `requestAnimationFrame`.
 
@@ -66,20 +66,10 @@ async function main() {
     const viewer = createViewer('example-viewer', container, {});
     const camera = new PerspectiveCamera(60, 1, 0.1, 2000);
 
-    const response = await fetch(SPLAT_URL);
-    const buffer = await response.arrayBuffer();
-    const data = await SplatLoader.parseSplatData(
-        SplatLoader.SplatFileType.SOG,
-        new Uint8Array(buffer),
-        SplatLoader.SplatPackType.Compressed,
-    );
-    const splat = await SplatUtils.createSplat(data);
-
     camera.up.set(0, -1, 0);
     camera.position.set(-1.5, -0.5, 0);
     camera.lookAt(new Vector3(0, 0, 0));
 
-    viewer.getScene().add(splat);
     viewer.setCamera(camera);
     setViewerConfig(viewer, {
         pipeline: {
@@ -94,6 +84,16 @@ async function main() {
             TAA: { enabled: false },
         },
     });
+
+    const response = await fetch(SPLAT_URL);
+    const buffer = await response.arrayBuffer();
+    const data = await SplatLoader.parseSplatData(
+        SplatLoader.SplatFileType.SOG,
+        new Uint8Array(buffer),
+        SplatLoader.SplatPackType.Compressed,
+    );
+    const splat = await SplatUtils.createSplat(data);
+    viewer.getScene().add(splat);
 
     const render = () => viewer.render();
     viewer.requestRenderHandler = () => requestAnimationFrame(render);
@@ -118,8 +118,8 @@ Confirm exact symbols in `/llm/api/index.md` when using less common APIs.
 
 For 3DGS content:
 
-- Use `SplatLoader.parseSplatData(...)` to parse supported splat formats.
-- Use `SplatUtils.createSplat(data)` to create a renderable splat.
+- `SplatLoader.parseSplatData(...)` defaults to streaming and Morton order for decoded splats. Pass `{ mortonSort: false }` when indices refer to file order, including in custom chunk LOD loaders.
+- `await SplatUtils.createSplat(data)` collects CPU data automatically. To serialize or edit parsed data before creating the splat, pass `{ stream: false }` during parsing or call `await data.collect()` first.
 - Enable `pipeline.Splatting`.
 - Set camera up vectors deliberately. OpenCV-style 3DGS data commonly uses `camera.up.set(0, -1, 0)`.
 
@@ -150,7 +150,7 @@ Treat the container as the stable application boundary:
 
 Use the lightest cleanup method that matches ownership and lifecycle:
 
-- Use `freeGPU()` when the goal is to release GPU memory while keeping the object instance logically reusable. The object may upload GPU resources again if it is rendered or updated later.
+- Use `freeGPU()` to release GPU memory for an object whose source data the application can restore. CPU-backed splats can upload their samplers again. For a splat created by direct GPU upload, reparse the original asset after releasing its source textures.
 - Use `freeAllGpuResourceOwned()` when the object owns related GPU resources that should also be released. For example, `geometry.freeAllGpuResourceOwned()` releases the geometry GPU resource plus its attribute and index GPU resources; `drawable.freeAllGpuResourceOwned()` releases its materials, geometry, and drawable GPU resources.
 - Use `destroy()` only when the object is permanently retired. Before calling `destroy()`, ensure the object is removed from the scene, no frame callback, async load, event listener, control, viewport, material, geometry, or app state will use it again, and it is not currently participating in a render/update pass.
 - Prefer `freeGPU()` or `freeAllGpuResourceOwned()` for memory-pressure cleanup. Prefer `destroy()` for final teardown after references are severed.

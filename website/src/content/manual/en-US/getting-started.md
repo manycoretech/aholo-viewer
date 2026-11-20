@@ -55,19 +55,11 @@ npm install --save-dev vite typescript # TypeScript is recommended.
         const viewer = createViewer('example-viewer', container, {});
         const camera = new PerspectiveCamera(60, 1, 0.1, 2000);
 
-        const data = await SplatLoader.parseSplatData(
-            SplatLoader.SplatFileType.SOG,
-            SPLAT_URL,
-            SplatLoader.SplatPackType.Compressed,
-        );
-        const splat = await SplatUtils.createSplat(data);
-
         // The splat uses -Y up in OpenCV coordinates.
         camera.up.set(0, -1, 0);
         camera.position.set(-1.5, -0.5, 0);
         camera.lookAt(new Vector3(0, 0, 0));
 
-        viewer.getScene().add(splat);
         viewer.setCamera(camera);
         setViewerConfig(viewer, {
             pipeline: {
@@ -90,6 +82,14 @@ npm install --save-dev vite typescript # TypeScript is recommended.
                 },
             },
         });
+
+        const data = await SplatLoader.parseSplatData(
+            SplatLoader.SplatFileType.SOG,
+            SPLAT_URL,
+            SplatLoader.SplatPackType.Compressed,
+        );
+        const splat = await SplatUtils.createSplat(data);
+        viewer.getScene().add(splat);
 
         function render() {
             viewer.render();
@@ -124,54 +124,42 @@ press h + enter to show help
 
 ![Example](../assets/getting-started/example.png)
 
-## Loading, Stream Consumption, and Cancellation
+## Loading and Streaming Uploads
 
-[`SplatLoader.parseSplatData()`](api:SplatLoader.parseSplatData) accepts a URL, `File`, `Uint8Array`, or `{ stream, contentLength }`. URLs and files are read in a worker. Pass an existing URL directly to avoid downloading the entire file on the main thread first. Complete encoded CPU data is retained by default for `serialize()` caching and existing editing APIs.
+Starting in 1.15.0, [`SplatLoader.parseSplatData()`](api:SplatLoader.parseSplatData) enables streaming by default. It accepts a URL, `File`, `Uint8Array`, or `{ stream, contentLength }`. The first three arguments specify the file format, input, and pack type. The fourth argument controls parsing.
 
-The fourth argument supports these options:
+| Option             | Default            | Purpose                                                                                                                                                             |
+| ------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stream`           | `true`             | Allows a direct GPU upload. Set to `false` to collect the CPU sampler data before the parser returns.                                                               |
+| `mortonSort`       | `true`             | Reorders decoded points by the Morton order of their centers. Set to `false` to keep file order and emit chunks. Native `SplatPackType.Sog` keeps its image layout. |
+| `streamChunkBytes` | `16 * 1024 * 1024` | Target byte size for encoded chunks in file order. Chunks align to texture rows.                                                                                    |
 
-| Option       | Default            | Description                                                                                                                     |
-| ------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `retainData` | `true`             | Retains complete encoded CPU data. Set to `false` to receive metadata and a single-consumer stream.                             |
-| `chunkBytes` | `16 * 1024 * 1024` | Encoded chunk byte budget. Must be a positive safe integer. It does not affect rendering precision or cap total parsing memory. |
-| `signal`     | None               | An `AbortSignal` that cancels parsing and stream consumption, releasing related worker tasks and readers.                       |
+The default Morton sort reads the full point set before returning. Set `mortonSort: false` to upload chunks as they are parsed or to address Gaussians by their original file indices.
+
+The example above uses the default `stream: true`. Its call to `createSplat(data)` collects CPU data and returns a splat with `autoFreeResourceOnGpuPacked` set to `true`. Passing an uncollected streaming result to `createSplat(data, renderer)` uploads it directly to an initialized WebGL2 or WebGPU renderer. After upload, the SDK sets the property to `false` and releases the CPU copy. If the GPU source textures are subsequently freed, a later packing pass requires reloading the original asset. See [Releasing GPU Source Textures After Packing](./config.md#releasing-gpu-source-textures-after-packing).
+
+### Retain CPU Data for Editing, Caching, or Export
+
+The quick start above calls `await SplatUtils.createSplat(data)`, which collects CPU data automatically. To cache the data before creating a splat, request CPU samplers and original file indices during parsing.
 
 ```typescript
-const controller = new AbortController();
 const data = await SplatLoader.parseSplatData(
     SplatLoader.SplatFileType.SOG,
     SPLAT_URL,
     SplatLoader.SplatPackType.Compressed,
-    { signal: controller.signal },
+    { stream: false, mortonSort: false },
 );
+const snapshot = data.serialize();
 const splat = await SplatUtils.createSplat(data);
-if (controller.signal.aborted) {
-    splat.destroy();
-    controller.signal.throwIfAborted();
-}
-viewer.getScene().add(splat);
-viewer.render();
+const operator = new SplatUtils.SplatOperator(splat, data);
 ```
 
-Call `controller.abort()` when switching assets or disposing the loading UI. With `retainData: false`, choose one consumption path:
+For an existing streaming result, call `await data.collect()` before upload and read from the same `data` object. The method returns `Promise<void>`. A direct GPU upload consumes the result. Reparse the original asset for later editing or to rebuild these resources after context loss.
 
-- `await data.collect()`: collect complete CPU data, then call `createSplat(data)` or `serialize()`.
-- `await data.readChunks(async chunk => { ... })`: process encoded chunks directly. `chunk.samplers` contains sampler indices, byte offsets, and chunk data. The caller owns the chunk buffers by default.
-- `await SplatUtils.createSplat(data, renderer)`: provide the backend renderer from the host integration to upload chunks to WebGL2 or WebGPU. Native SOG is decoded and uploaded one image at a time.
+### Migrate from 1.14
 
-A stream can only be consumed once. Call `data.cancel()` if it will not be consumed. After GPU upload or `readChunks()` consumption, `collect()` cannot collect the same stream again. `createSplat()` resolves after the upload finishes; this does not provide progressive display of partially downloaded Gaussians. The current public Viewer interface has no backend renderer accessor, so ordinary integrations can use the default CPU path or call `collect()` first.
-
-### Restore CPU Data on Demand
-
-[`Splat.stream`](api:Splat) is `true` while encoded source data is retained only on the GPU. Read it back before editing, export, or GPU resource recreation:
-
-```typescript
-await splat.readback();
-// Applies to Compressed and SuperCompressed splats.
-const cpuData = SplatUtils.createSplatData(splat);
-const operator = new SplatUtils.SplatOperator(splat, cpuData);
-```
-
-After readback, `splat.stream` becomes `false` and the splat retains its encoded CPU data. Use the newly retrieved `cpuData` for CPU operations instead of the consumed stream object. `createSplatData()` supports `Compressed` and `SuperCompressed`, but not native SOG.
-
-GPU-only sources depend on their original graphics context. If resources are released or the context/device is lost before readback, reload the original asset. `autoFreeResourceOnGpuPacked` preserves encoded source textures while they remain GPU-only.
+- Replace `retainData: true` with `stream: false` and `retainData: false` with `stream: true`. Rename `chunkBytes` to `streamChunkBytes`.
+- Migrate `data.readChunks()` and `data.cancel()` to `data.stream?.chunks`. In file-order chunk mode, this single-consumer `ReadableStream` emits `{ index, offset, source }` for one sampler at a time. Offsets are in bytes. Copy `source` before the next read if you need to retain it. Call `chunks.cancel()` to discard an unlocked stream or `reader.cancel()` if you hold its reader.
+- To cancel a URL download, pass the `AbortSignal` to `fetch(url, { signal })` and pass the response body and byte length to the parser. Version 1.15.0 removes the `signal` option from `parseSplatData()`.
+- Passing a `Uint8Array` transfers its backing buffer to the worker. Pass `bytes.slice()` if you need the original bytes or another view of that buffer.
+- Migrate code that uses `splat.stream` or `splat.readback()` to retain CPU data before creating the splat. `SplatUtils.createSplatData(splat)` can retrieve samplers from CPU-backed `Compressed` and `SuperCompressed` instances.

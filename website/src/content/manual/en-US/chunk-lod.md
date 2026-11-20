@@ -86,6 +86,8 @@ interface LodMeta {
 
 `@manycore/aholo-viewer` provides streaming scheduling through [`SplatUtils.LodSplat`](api:SplatUtils.LodSplat). See [Splatting LOD Stream](../../examples/splatting-lod-stream/) for a complete example.
 
+From 1.15.0, the default loader uploads chunks in file order. Nodes from the same file share source textures and use the `offset` and `count` in `lod-meta.json` to select their points. Pass `{ mortonSort: false }` to `parseSplatData()` in custom loaders. To cache parsed data, use `{ stream: false, mortonSort: false }` before saving `data.serialize()`.
+
 The scheduler establishes coarse coverage for visible chunks, then allocates detail according to projected screen area, position relative to the screen center, and the remaining point budget. `Level 0` is the finest level; larger values represent coarser levels. Camera motion limits new refinement, and refinement resumes after the view settles. Already displayed fine detail is not downgraded solely because of the motion limit.
 
 ### Configuration

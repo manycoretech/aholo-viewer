@@ -39,7 +39,7 @@ Use the Markdown docs instead of scraping rendered HTML.
 ## Cleanup Rules
 
 - Stop render loops, event listeners, controls, and pending async work before releasing resources.
-- Use `freeGPU()` to release an object's own GPU resources while keeping the object reusable.
+- Use `freeGPU()` to release an object's own GPU resources. CPU-backed splats can upload again. A splat whose source was uploaded directly to the GPU must be reloaded after its source textures are freed.
 - Use `freeAllGpuResourceOwned()` when owned child resources should also release GPU state. For example, `geometry.freeAllGpuResourceOwned()` also releases attribute and index GPU resources.
 - Use `destroy()` only for final teardown after the object is detached from the scene and no callback, async task, viewport, material, geometry, or app state can use it again.
 

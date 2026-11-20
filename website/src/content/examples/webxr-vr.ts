@@ -211,29 +211,33 @@ export default async function runner({ renderer, loading, configPanel, indexedDB
         }
     }
 
-    async function loadResource(path: string) {
+    async function loadResource(path: string, resourceSignal?: AbortSignal) {
+        const loadSignal = resourceSignal ? AbortSignal.any([signal, resourceSignal]) : signal;
         const url = new URL(path, LOD_URL).href;
         const cached = await indexedDB.get<SplatData>(url, { version: 0 });
-        throwIfAborted();
+        loadSignal.throwIfAborted();
         if (cached) {
             const data = new SplatLoader.CompressedSplatData();
             data.deserialize(cached);
             return data;
         }
-        const response = await fetch(url, { signal });
+        const response = await fetch(url, { signal: loadSignal });
         if (!response.ok) {
             throw new Error(`Splat resource: HTTP ${response.status}`);
         }
         const bytes = new Uint8Array(await response.arrayBuffer());
-        throwIfAborted();
+        loadSignal.throwIfAborted();
         const type = SplatLoader.detectSplatFileType(url, bytes);
         if (type === undefined) {
             throw new Error(`Unsupported splat: ${url}`);
         }
-        const data = await SplatLoader.parseSplatData(type, bytes, SplatLoader.SplatPackType.Compressed);
-        throwIfAborted();
+        const data = await SplatLoader.parseSplatData(type, bytes, SplatLoader.SplatPackType.Compressed, {
+            stream: false,
+            mortonSort: false,
+        });
+        loadSignal.throwIfAborted();
         await indexedDB.set(url, data.serialize(), { version: 0 });
-        throwIfAborted();
+        loadSignal.throwIfAborted();
         return data;
     }
 }

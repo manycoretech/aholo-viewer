@@ -18,7 +18,7 @@ order: 4
 
 ## Preset Parameters
 
-Switching presets changes only these **12 parameters**. `packType` and `maxShDegree` are parsing options; `splat.autoFreeResourceOnGpuPacked` is an object property. `pack`, `raster`, `sort`, and `composite` belong to `pipeline.Splatting`. Group prefixes distinguish repeated panel labels such as `enabled` and `highPrecisionEnabled`.
+Each preset defines **12 parameters**. `packType` and `maxShDegree` control parsing. `splat.autoFreeResourceOnGpuPacked` is a property of the `Splat` object. The other fields belong to `pipeline.Splatting`.
 
 | Parameter                           | Max Quality | Quality First | Balanced        | Performance First | Extreme Performance |
 | ----------------------------------- | ----------- | ------------- | --------------- | ----------------- | ------------------- |
@@ -34,6 +34,8 @@ Switching presets changes only these **12 parameters**. `packType` and `maxShDeg
 | `sort.minIntervalMs`                | 0           | 0             | 0               | 0                 | 160                 |
 | `composite.enabled`                 | true        | false         | false           | false             | false               |
 | `composite.highPrecisionEnabled`    | true        | false         | false           | false             | false               |
+
+**The demo Viewer disables automatic release in all five presets** (`autoFreeResourceOnGpuPacked = false`) to keep GPU source textures available for repacking. The panel hides this control. SDK integrations can use the values in the table. Configure the packing pipeline before enabling automatic release. See [Releasing GPU Source Textures After Packing](./config.md#releasing-gpu-source-textures-after-packing).
 
 The `raster.maxStdDev` row uses **Viewer panel values**: 8 and 5 are passed to the SDK as `Math.sqrt(8)` and `Math.sqrt(5)`. `sort.minIntervalMs` is in milliseconds. Max Quality and Quality First both use `detailCullingThreshold = 1`. Performance First and Extreme Performance both enable `detailCullingAlphaEnabled`.
 
@@ -74,7 +76,7 @@ These are **Viewer defaults**, not SDK-wide defaults. Viewer enables `pack.repac
 ## Application Timing and Cache
 
 - **At import**: `packType` and `maxShDegree` affect subsequent parsing. Loaded assets are not repacked automatically. For comparisons, choose each view's preset before importing the same resources into all views.
-- **At render time**: Other render settings apply to the active view. `autoFreeResourceOnGpuPacked` applies to regular Splat objects; LOD options configure the LOD scheduler. If a loaded asset has SH 0, applying a preset or restoring defaults keeps `precalculateEnabled = false`.
+- **At render time**, pipeline settings apply to the active view and LOD options configure the scheduler. If a loaded asset has SH 0, applying a preset or restoring defaults keeps `precalculateEnabled = false`.
 - **On restore**: Each view caches its parameters in the current browser with version `v1`. Missing or mismatched versions use defaults. Switching presets preserves shared parameters; restoring defaults resets both. Model files are not included in the configuration cache.
 
 These parsing options apply to regular GS files. The current Viewer LOD path parses chunks as Compressed, with SH determined by the generated LOD data. The panel's `packType` and `maxShDegree` do not re-encode LOD data.
@@ -105,24 +107,15 @@ Custom Compressed / SuperCompressed sampler data and `maxTextureSize` must use a
 
 ## Use Quality First in the SDK
 
-This example applies the 12 Quality First parameters. `viewer` is an existing Viewer with a scene and camera; `modelUrl` is a PLY URL. The application manages shared parameters separately. Only preset fields are updated here, preserving existing shared settings. The example uses the public regular parsing API; the Viewer page handles GPU chunk uploads through its host integration.
+This example applies the 12 Quality First preset parameters. `viewer` has a scene and camera, and `modelUrl` is a PLY URL. The call to `createSplat(data)` retains CPU data, so the example allows GPU source textures to be freed after packing.
 
 ```typescript
 import { SplatLoader, SplatUtils, setViewerConfig } from '@manycore/aholo-viewer';
 
-const data = await SplatLoader.parseSplatData(
-    SplatLoader.SplatFileType.PLY,
-    modelUrl,
-    SplatLoader.SplatPackType.Compressed,
-    { maxShDegree: 3 },
-);
-const splat = await SplatUtils.createSplat(data);
-splat.autoFreeResourceOnGpuPacked = true;
-viewer.getScene().add(splat);
-
 setViewerConfig(viewer, {
     pipeline: {
         Splatting: {
+            enabled: true,
             pack: {
                 highPrecisionEnabled: true,
                 precalculateEnabled: true,
@@ -141,16 +134,26 @@ setViewerConfig(viewer, {
         },
     },
 });
+
+const data = await SplatLoader.parseSplatData(
+    SplatLoader.SplatFileType.PLY,
+    modelUrl,
+    SplatLoader.SplatPackType.Compressed,
+    { maxShDegree: 3 },
+);
+const splat = await SplatUtils.createSplat(data);
+splat.autoFreeResourceOnGpuPacked = true;
+viewer.getScene().add(splat);
 viewer.render();
 ```
 
-`maxShDegree: 3` is an upper limit; it does not create SH for sources without it. For another preset, replace the parsing options, object property, and pipeline fields using the table above. See [Configuration](./config.md) for the complete `setViewerConfig` structure.
+`maxShDegree: 3` caps the SH degree at the bands available in the source. For another preset, replace the parsing options and pipeline fields using the table above. See [Configuration](./config.md) for the complete `setViewerConfig` structure.
 
 ## Parameter Relationships
 
 | Parameters                                                    | Considerations                                                                                                         |
 | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `pack.cameraRelativeEnabled` / `autoFreeResourceOnGpuPacked`  | Camera-relative coordinates require repacking as the camera moves; Balanced therefore retains source resources         |
+| `pack.cameraRelativeEnabled`                                  | Balanced uses camera-relative coordinates and needs the source textures for repacking when the camera moves            |
 | `pack.repackEnabled`                                          | Reorders WebGL textures by sort order, adding GPU memory and processing costs; measure the benefit on the target scene |
 | `raster.detailCullingThreshold` / `detailCullingAlphaEnabled` | Together control detail culling; alpha-aware culling more readily removes low-opacity Gaussians                        |
 | `raster.preBlurAmount` / `blurAmount`                         | Evaluate against the training antialiasing configuration; common pairs are 0.3 / 0 and 0 / 0.3                         |
@@ -172,4 +175,4 @@ operator.setState([0], SplatState.DisableSH);
 viewer.render();
 ```
 
-`[0]` identifies the first Gaussian. Call `operator.setState([0], SplatState.DisableSH, true)` to remove the state bit, then render again. This does not delete loaded SH data or affect other Gaussians. `pack.precalculateEnabled` still controls global SH precalculation.
+`[0]` identifies the first Gaussian in the parsed data. If indices come from the source file, set `mortonSort: false` during parsing to preserve file order. Call `operator.setState([0], SplatState.DisableSH, true)` to remove the state bit, then render again. Other Gaussians retain their state and the loaded SH data stays available. `pack.precalculateEnabled` still controls global SH precalculation.

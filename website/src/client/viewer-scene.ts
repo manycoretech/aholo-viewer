@@ -6,7 +6,6 @@ import {
     Scene3D,
     SplatLoader,
     SplatUtils,
-    TypeAssert,
     Vector3,
     createViewer,
     createViewerContext,
@@ -19,6 +18,7 @@ import {
     createStreamedSplat,
     disposeObject,
     extension,
+    fetchSplatInput,
     inspectSplatSource,
     loadGltfAsset,
     lodBounds,
@@ -78,13 +78,8 @@ export class ViewerScene {
 
     applySettings() {
         applyViewerConfig(this.viewer, this.params);
-        for (const record of this.records) {
-            const asset = record.asset;
-            if (asset?.lod) {
-                asset.lod.setConfig(getLodConfig(this.params));
-            } else if (asset && TypeAssert.isSplat(asset.object)) {
-                asset.object.autoFreeResourceOnGpuPacked = this.params.autoFreeResourceOnGpuPacked;
-            }
+        for (const { asset } of this.records) {
+            asset?.lod?.setConfig(getLodConfig(this.params));
         }
         this.scene.notifySceneChange();
     }
@@ -177,8 +172,9 @@ export class ViewerScene {
                     if (type === undefined) {
                         throw new Error(`Unsupported LOD resource: ${resourceUrl}`);
                     }
-                    return SplatLoader.parseSplatData(type, resourceUrl, SplatLoader.SplatPackType.Compressed, {
-                        signal: combined,
+                    const input = await fetchSplatInput(resourceUrl, type, combined);
+                    return SplatLoader.parseSplatData(type, input, SplatLoader.SplatPackType.Compressed, {
+                        mortonSort: false,
                     });
                 },
             );
@@ -213,13 +209,12 @@ export class ViewerScene {
             }
         }
         const data = await SplatLoader.parseSplatData(input.type, input.input, this.params.splatPackType, {
-            retainData: false,
+            mortonSort: false,
             maxShDegree: this.params.maxSh,
             maxTextureSize: 8192,
-            signal,
         });
-        signal.throwIfAborted();
-        const { object: splat, bounds } = await createStreamedSplat(data, this.viewer);
+        const { object: splat, bounds } = await createStreamedSplat(data, this.viewer, signal);
+        splat.autoFreeResourceOnGpuPacked = false;
         return {
             object: splat,
             bounds,

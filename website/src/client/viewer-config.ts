@@ -32,7 +32,6 @@ export interface ViewerParams {
     repackEnabled: boolean;
     radial: boolean;
     cameraRelativeEnabled: boolean;
-    autoFreeResourceOnGpuPacked: boolean;
     renderAttachHighPrecisionEnabled: boolean;
     detailCullingAlphaEnabled: boolean;
     preBlurAmount: number;
@@ -100,7 +99,6 @@ const VIEWER_SPLATTING_PRESETS: Record<Exclude<SplattingPresetId, 'custom'>, Spl
         packHighPrecisionEnabled: true,
         precalculateEnabled: true,
         cameraRelativeEnabled: false,
-        autoFreeResourceOnGpuPacked: true,
         compositeEnabled: true,
         renderAttachHighPrecisionEnabled: true,
         detailCullingAlphaEnabled: false,
@@ -114,7 +112,6 @@ const VIEWER_SPLATTING_PRESETS: Record<Exclude<SplattingPresetId, 'custom'>, Spl
         packHighPrecisionEnabled: true,
         precalculateEnabled: true,
         cameraRelativeEnabled: false,
-        autoFreeResourceOnGpuPacked: true,
         compositeEnabled: false,
         renderAttachHighPrecisionEnabled: false,
         detailCullingAlphaEnabled: false,
@@ -128,7 +125,6 @@ const VIEWER_SPLATTING_PRESETS: Record<Exclude<SplattingPresetId, 'custom'>, Spl
         packHighPrecisionEnabled: false,
         precalculateEnabled: true,
         cameraRelativeEnabled: true,
-        autoFreeResourceOnGpuPacked: false,
         compositeEnabled: false,
         renderAttachHighPrecisionEnabled: false,
         detailCullingAlphaEnabled: false,
@@ -142,7 +138,6 @@ const VIEWER_SPLATTING_PRESETS: Record<Exclude<SplattingPresetId, 'custom'>, Spl
         packHighPrecisionEnabled: false,
         precalculateEnabled: true,
         cameraRelativeEnabled: false,
-        autoFreeResourceOnGpuPacked: true,
         compositeEnabled: false,
         renderAttachHighPrecisionEnabled: false,
         detailCullingAlphaEnabled: true,
@@ -156,7 +151,6 @@ const VIEWER_SPLATTING_PRESETS: Record<Exclude<SplattingPresetId, 'custom'>, Spl
         packHighPrecisionEnabled: false,
         precalculateEnabled: false,
         cameraRelativeEnabled: false,
-        autoFreeResourceOnGpuPacked: true,
         compositeEnabled: false,
         renderAttachHighPrecisionEnabled: false,
         detailCullingAlphaEnabled: true,
@@ -278,7 +272,6 @@ export function setupConfigPanel(
     radial.element.title = labels.radialTip;
     bind(pack, 'precalculateEnabled', { label: 'precalculateEnabled' });
     bind(pack, 'cameraRelativeEnabled', { label: 'cameraRelativeEnabled' });
-    bind(pack, 'autoFreeResourceOnGpuPacked', { label: 'autoFreeResourceOnGpuPacked' });
     bind(raster, 'preBlurAmount', { label: 'preBlurAmount', min: 0, max: 1, step: 0.1 });
     bind(raster, 'blurAmount', { label: 'blurAmount', min: 0, max: 1, step: 0.1 });
     bind(raster, 'focalAdjustment', { label: 'focalAdjustment', min: 0.5, max: 2, step: 0.1 });

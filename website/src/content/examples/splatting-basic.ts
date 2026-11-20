@@ -141,7 +141,7 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel, reques
 type ISplatData = ReturnType<SplatLoader.SplatData['serialize']>;
 
 const CACHE_KEY = 'splatting-basic:bear';
-const CACHE_VERSION = 0;
+const CACHE_VERSION = 1;
 async function loadSplatData(url: string, db: RuntimeIndexedDBStorage, signal: AbortSignal) {
     const cached = await db.get<ISplatData>(CACHE_KEY, { version: CACHE_VERSION });
     throwIfAborted(signal);
@@ -151,12 +151,17 @@ async function loadSplatData(url: string, db: RuntimeIndexedDBStorage, signal: A
         return data;
     }
 
+    const response = await fetch(url, { signal });
+    if (!response.ok || !response.body) {
+        throw new Error(`Splat resource: HTTP ${response.status}`);
+    }
     const data = await SplatLoader.parseSplatData(
         SplatLoader.SplatFileType.SOG,
-        url,
+        { stream: response.body, contentLength: Number(response.headers.get('Content-Length')) },
         SplatLoader.SplatPackType.SuperCompressed,
-        { signal },
+        { stream: false },
     );
+    throwIfAborted(signal);
     await db.set(CACHE_KEY, data.serialize(), { version: CACHE_VERSION });
     return data;
 }

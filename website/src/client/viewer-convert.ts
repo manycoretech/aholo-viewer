@@ -21,7 +21,10 @@ export async function convertSplatSources(
             throw new Error('LOD manifests cannot be converted as a single file.');
         }
         parsed.push(
-            await SplatLoader.parseSplatData(input.type, input.input, SplatLoader.SplatPackType.Raw, { signal }),
+            await SplatLoader.parseSplatData(input.type, input.input, SplatLoader.SplatPackType.Raw, {
+                stream: false,
+                mortonSort: false,
+            }),
         );
     }
     signal.throwIfAborted();

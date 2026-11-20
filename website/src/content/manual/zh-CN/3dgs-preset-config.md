@@ -18,7 +18,7 @@ order: 4
 
 ## 档位参数
 
-切换预设只更新以下 **12 项**。`packType`、`maxShDegree` 是解析选项，`splat.autoFreeResourceOnGpuPacked` 是对象属性；`pack`、`raster`、`sort`、`composite` 均位于 `pipeline.Splatting`。表内名称补充分组前缀，以区分面板中重复的 `enabled`、`highPrecisionEnabled`。
+每档预设包含以下 **12 项**。`packType`、`maxShDegree` 是解析选项，`splat.autoFreeResourceOnGpuPacked` 是 `Splat` 对象属性，其余字段位于 `pipeline.Splatting`。
 
 | 参数                                | 极限效果   | 效果优先   | 均衡模式        | 性能优先        | 极限性能        |
 | ----------------------------------- | ---------- | ---------- | --------------- | --------------- | --------------- |
@@ -34,6 +34,8 @@ order: 4
 | `sort.minIntervalMs`                | 0          | 0          | 0               | 0               | 160             |
 | `composite.enabled`                 | true       | false      | false           | false           | false           |
 | `composite.highPrecisionEnabled`    | true       | false      | false           | false           | false           |
+
+**演示 Viewer 在五个档位中统一关闭自动释放**（`autoFreeResourceOnGpuPacked = false`），以保留重新打包需要的 GPU 源纹理。面板隐藏此开关。SDK 接入可采用表中各档的值，启用前请先配置打包管线。见[打包后释放 GPU 源纹理](./config.md#打包后释放-gpu-源纹理)。
 
 表中的 `raster.maxStdDev` 使用 **Viewer 面板值**：8 和 5 传入 SDK 时分别为 `Math.sqrt(8)` 和 `Math.sqrt(5)`。`sort.minIntervalMs` 的单位为毫秒。极限效果与效果优先的 `detailCullingThreshold` 都是 1；性能优先和极限性能都开启 `detailCullingAlphaEnabled`。
 
@@ -74,7 +76,7 @@ order: 4
 ## 生效时机与缓存
 
 - **导入时**：`packType` 和 `maxShDegree` 只影响后续解析，已加载资源不会自动重新打包。对比档位时，先给各视图选择预设，再统一导入相同资源。
-- **渲染时**：其余渲染设置应用到当前视图；`autoFreeResourceOnGpuPacked` 应用于普通 Splat 对象，LOD 配置交给 LOD 调度器。已有资源包含 SH 0 时，应用预设或恢复默认会保持 `precalculateEnabled = false`。
+- **渲染时**，管线设置应用到当前视图，LOD 配置交给调度器。已有资源包含 SH 0 时，应用预设或恢复默认会保持 `precalculateEnabled = false`。
 - **恢复时**：各视图的参数按 `v1` 缓存到当前浏览器；版本缺失或不匹配时直接采用默认值。切预设保留统一参数，恢复默认则重置两者。文件本身不进入配置缓存。
 
 上述解析选项用于普通 GS 文件。当前 Viewer 的分块 LOD 路径固定使用 Compressed 解析分块，SH 内容由生成的 LOD 数据决定；面板中的 `packType`、`maxShDegree` 不会重新编码 LOD 数据。
@@ -105,24 +107,15 @@ order: 4
 
 ## 在 SDK 中使用效果优先
 
-以下示例对应效果优先的 12 项专属参数。`viewer` 是已创建并设置场景、相机的 Viewer，`modelUrl` 是 PLY URL。统一参数由应用单独管理；这里只更新档位相关字段，不覆盖已有统一设置。示例使用公开的常规解析接口，Viewer 页面中的 GPU 分块上传由页面宿主负责。
+以下示例应用效果优先的 12 项预设参数。`viewer` 已设置场景与相机，`modelUrl` 为 PLY URL。`createSplat(data)` 保留 CPU 数据，因此示例允许在打包后释放 GPU 源纹理。
 
 ```typescript
 import { SplatLoader, SplatUtils, setViewerConfig } from '@manycore/aholo-viewer';
 
-const data = await SplatLoader.parseSplatData(
-    SplatLoader.SplatFileType.PLY,
-    modelUrl,
-    SplatLoader.SplatPackType.Compressed,
-    { maxShDegree: 3 },
-);
-const splat = await SplatUtils.createSplat(data);
-splat.autoFreeResourceOnGpuPacked = true;
-viewer.getScene().add(splat);
-
 setViewerConfig(viewer, {
     pipeline: {
         Splatting: {
+            enabled: true,
             pack: {
                 highPrecisionEnabled: true,
                 precalculateEnabled: true,
@@ -141,22 +134,32 @@ setViewerConfig(viewer, {
         },
     },
 });
+
+const data = await SplatLoader.parseSplatData(
+    SplatLoader.SplatFileType.PLY,
+    modelUrl,
+    SplatLoader.SplatPackType.Compressed,
+    { maxShDegree: 3 },
+);
+const splat = await SplatUtils.createSplat(data);
+splat.autoFreeResourceOnGpuPacked = true;
+viewer.getScene().add(splat);
 viewer.render();
 ```
 
-`maxShDegree: 3` 是上限，不会为原本没有 SH 的资源生成 SH。其他档位按上表替换解析选项、对象属性和对应管线字段即可。`setViewerConfig` 的完整结构见[配置](./config.md)。
+`maxShDegree: 3` 是上限，不会为原本没有 SH 的资源生成 SH。其他档位按上表替换解析选项和对应管线字段即可。`setViewerConfig` 的完整结构见[配置](./config.md)。
 
 ## 调整时关注的关系
 
-| 参数                                                          | 关注点                                                                 |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `pack.cameraRelativeEnabled` / `autoFreeResourceOnGpuPacked`  | 相机相对坐标需要随相机变化重新合并数据；均衡模式因此关闭自动释放源资源 |
-| `pack.repackEnabled`                                          | 按排序结果重排 WebGL 纹理，需要额外显存和处理；应在目标场景上测量收益  |
-| `raster.detailCullingThreshold` / `detailCullingAlphaEnabled` | 共同控制细节剔除，开启透明度参与后低透明度高斯更容易被剔除             |
-| `raster.preBlurAmount` / `blurAmount`                         | 根据训练是否采用抗锯齿配置评估；常见组合为 0.3 / 0 或 0 / 0.3          |
-| `sort.minIntervalMs`                                          | 增大可减少排序频率，但相机快速移动时更新更滞后                         |
-| `sort.radial`                                                 | 改为相机距离排序，会改变透明混合顺序                                   |
-| `composite.enabled` / `toneMapping` / `exposure`              | 色调映射和曝光需要先开启离屏合成；切换档位保留曲线与曝光值             |
+| 参数                                                          | 关注点                                                                |
+| ------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `pack.cameraRelativeEnabled`                                  | 均衡模式使用相机相对坐标，相机移动时需要读取源纹理重新打包            |
+| `pack.repackEnabled`                                          | 按排序结果重排 WebGL 纹理，需要额外显存和处理；应在目标场景上测量收益 |
+| `raster.detailCullingThreshold` / `detailCullingAlphaEnabled` | 共同控制细节剔除，开启透明度参与后低透明度高斯更容易被剔除            |
+| `raster.preBlurAmount` / `blurAmount`                         | 根据训练是否采用抗锯齿配置评估；常见组合为 0.3 / 0 或 0 / 0.3         |
+| `sort.minIntervalMs`                                          | 增大可减少排序频率，但相机快速移动时更新更滞后                        |
+| `sort.radial`                                                 | 改为相机距离排序，会改变透明混合顺序                                  |
+| `composite.enabled` / `toneMapping` / `exposure`              | 色调映射和曝光需要先开启离屏合成；切换档位保留曲线与曝光值            |
 
 旧的 `sortedLayoutEnabled`、`normalizedFalloff`、`sort.highPrecisionEnabled` 不应再放入预设，迁移说明见[配置](./config.md)。
 
@@ -172,4 +175,4 @@ operator.setState([0], SplatState.DisableSH);
 viewer.render();
 ```
 
-`[0]` 是第一个高斯的索引。调用 `operator.setState([0], SplatState.DisableSH, true)` 可移除此状态位，随后重新渲染。操作不删除已加载的 SH 数据，不改变其他高斯的状态；`pack.precalculateEnabled` 仍控制整体 SH 预计算。
+`[0]` 指解析结果中的第一个高斯。索引来自原文件时，解析时设置 `mortonSort: false` 以保留文件点序。调用 `operator.setState([0], SplatState.DisableSH, true)` 可移除此状态位，随后重新渲染。操作不删除已加载的 SH 数据，不改变其他高斯的状态；`pack.precalculateEnabled` 仍控制整体 SH 预计算。

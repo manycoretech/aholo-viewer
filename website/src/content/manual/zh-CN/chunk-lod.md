@@ -86,6 +86,8 @@ interface LodMeta {
 
 `@manycore/aholo-viewer` 通过 [`SplatUtils.LodSplat`](api:SplatUtils.LodSplat) 提供流式调度。完整示例见 [Splatting LOD 流式加载](../../examples/splatting-lod-stream/)。
 
+从 1.15.0 起，默认加载器按文件点序上传分块。同一文件的节点共享源纹理，按 `lod-meta.json` 的 `offset` 和 `count` 取点。自定义加载器调用 `parseSplatData()` 时也要传入 `{ mortonSort: false }`。如需缓存解析结果，使用 `{ stream: false, mortonSort: false }`，再将 `data.serialize()` 写入缓存。
+
 调度器先保证可见分块的粗粒度覆盖，再依据屏幕投影面积、与画面中心的关系和剩余点数预算分配细节。`level 0` 最精细，数值越大越粗。相机移动时限制新的细化，停稳后继续提升细节；已经显示的精细层级不会仅因移动限制而被降级。
 
 ### 配置

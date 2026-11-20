@@ -90,7 +90,7 @@ URL 输入后按 Enter 确认，也可以粘贴多个以空格、换行或逗号
 
 五档预设为**极限效果、效果优先、均衡模式、性能优先、极限性能**。无有效缓存时默认使用效果优先：Compressed、SH 3；统一默认值包括 `pixelRatio = 1`、`repackEnabled = true`、`radial = false`，LOD 预算为 600 万、并行任务数为 8。
 
-切换预设只更新 **12 项档位参数**，保留 **25 项统一参数**，包括 pixelRatio、Repack、Radial、模糊、排序阈值、色调映射、曝光、HighlightKernel 和 LOD。修改档位参数会显示“自定义”；修改统一参数不会改变档位。完整数值与 SDK 对应关系见 [3DGS 预设配置](./3dgs-preset-config.md)。
+每档预设包含 **12 项参数**。演示 Viewer 统一关闭 `autoFreeResourceOnGpuPacked`，切换预设时应用其余 **11 项**。**25 项统一参数**沿用当前值，包括 pixelRatio、Repack、Radial、模糊、排序阈值、色调映射、曝光、HighlightKernel 和 LOD。修改面板中的档位参数会显示“自定义”。完整数值见 [3DGS 预设配置](./3dgs-preset-config.md)。
 
 参数名使用 SDK 字段名。数值可直接输入或拖动调整，`maxShDegree` 的范围为 0–3。`packType` 和 `maxShDegree` 在下次导入时生效，不会重新解析已加载资源；其他渲染配置会应用到当前视图。面板 `maxStdDev` 显示 5–8，传入 SDK 时取平方根。
 

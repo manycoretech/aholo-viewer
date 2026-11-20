@@ -90,7 +90,7 @@ Enabling Orbit preserves the current position, orientation, and framing. The fir
 
 The five presets are **Max Quality, Quality First, Balanced, Performance First, and Extreme Performance**. Without a valid cache, Quality First is selected with Compressed packing and SH 3. Shared defaults include `pixelRatio = 1`, `repackEnabled = true`, `radial = false`, a 6-million LOD budget, and 8 parallel tasks.
 
-Switching presets updates **12 preset parameters** and preserves **25 shared parameters**, including pixelRatio, Repack, Radial, blur, sorting thresholds, tone mapping, exposure, HighlightKernel, and LOD. Editing a preset parameter selects Custom; editing a shared parameter retains the preset. See [3DGS preset configuration](./3dgs-preset-config.md) for values and SDK mappings.
+Each preset defines **12 parameters**. The demo Viewer keeps `autoFreeResourceOnGpuPacked` disabled and applies the other **11 parameters** when switching presets. The **25 shared parameters** retain their current values, including pixelRatio, Repack, Radial, blur, sorting thresholds, tone mapping, exposure, HighlightKernel, and LOD. Editing a preset parameter in the panel selects Custom. See [3DGS preset configuration](./3dgs-preset-config.md) for the complete values.
 
 Labels use SDK field names. Numeric controls support typing and dragging; `maxShDegree` is limited to 0–3. `packType` and `maxShDegree` take effect on the next import and do not reparse loaded resources. Other render settings apply to the current view. The panel displays `maxStdDev` as 5–8; Viewer passes its square root to the SDK.
 

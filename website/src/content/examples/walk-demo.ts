@@ -1635,7 +1635,7 @@ class WalkDemoScene {
     async loadLodStream(
         metaUrl: string,
         signal: AbortSignal,
-        loadResource: (url: string) => ReturnType<typeof parseSplatData>,
+        loadResource: (url: string, signal?: AbortSignal) => ReturnType<typeof parseSplatData>,
     ): Promise<void> {
         this.clearSplats();
         const meta = await loadWalkLodMeta(metaUrl, signal);
@@ -1860,9 +1860,10 @@ const WALK_OUTDOOR_LOD_CONFIG = {
 function createWalkOutdoorLodResourceLoader(
     indexedDB: RuntimeIndexedDBStorage,
     metaBaseUrl: string,
-    signal: AbortSignal,
+    sceneSignal: AbortSignal,
 ) {
-    return async (url: string) => {
+    return async (url: string, resourceSignal?: AbortSignal) => {
+        const signal = resourceSignal ? AbortSignal.any([sceneSignal, resourceSignal]) : sceneSignal;
         throwIfAborted(signal);
         const resourceUrl = new URL(url, metaBaseUrl).toString();
         const cached = await indexedDB.get<SerializedCompressedSplatData>(resourceUrl, { version: 0 });
@@ -1877,9 +1878,19 @@ function createWalkOutdoorLodResourceLoader(
         if (fileType === undefined) {
             throw new Error(`[walk] Unsupported LOD resource: ${resourceUrl}`);
         }
-        const splatData = await parseSplatData(fileType, resourceUrl, SplatPackType.Compressed);
+        const response = await fetch(resourceUrl, { signal });
+        if (!response.ok || !response.body) {
+            throw new Error(`[walk] LOD resource: HTTP ${response.status}`);
+        }
+        const splatData = await parseSplatData(
+            fileType,
+            { stream: response.body, contentLength: Number(response.headers.get('Content-Length')) },
+            SplatPackType.Compressed,
+            { stream: false, mortonSort: false },
+        );
         throwIfAborted(signal);
         await indexedDB.set(resourceUrl, splatData.serialize(), { version: 0 });
+        throwIfAborted(signal);
         return splatData;
     };
 }
