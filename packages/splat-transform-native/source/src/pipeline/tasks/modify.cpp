@@ -7,7 +7,7 @@ void ModifyTask::exec(const Json& config, TaskContext& context) const {
     auto data = context.splat_ptr(config);
     auto& logger = utility::logger();
     logger.info("loaded -> \"", config.at("input").get<std::string>(), '"');
-    if (modify(*data, config)) {
+    if (modify(*data, config, context.paths)) {
         context.geometry_changed(config);
     }
     context.set(config, std::move(data));

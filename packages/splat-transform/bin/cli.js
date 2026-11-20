@@ -60,7 +60,7 @@ const cli = yargs(hideBin(process.argv))
         },
         async handler(argv) {
             await run({
-                version: 1,
+                version: 2,
                 tasks: [
                     { id: '0', type: 'Read', config: { inputs: [argv.input], output: 'cache0' } },
                     { id: '1', type: 'Modify', config: { input: 'cache0', output: 'cache0' } },
@@ -78,7 +78,7 @@ const cli = yargs(hideBin(process.argv))
         },
         async handler(argv) {
             await run({
-                version: 1,
+                version: 2,
                 tasks: [
                     { id: '0', type: 'Read', config: { inputs: [argv.input], output: 'cache0' } },
                     { id: '1', type: 'SkeletonLod', config: { input: 'cache0', output: 'cache0', ratio: argv.ratio } },
@@ -97,7 +97,7 @@ const cli = yargs(hideBin(process.argv))
         },
         async handler(argv) {
             await run({
-                version: 1,
+                version: 2,
                 tasks: [
                     { id: '0', type: 'Read', config: { inputs: [argv.input], output: 'cache0' } },
                     {
@@ -120,7 +120,7 @@ const cli = yargs(hideBin(process.argv))
         },
         async handler(argv) {
             await run({
-                version: 1,
+                version: 2,
                 tasks: [
                     { id: '0', type: 'Read', config: { inputs: [argv.input], output: 'cache0' } },
                     {
@@ -150,7 +150,7 @@ const cli = yargs(hideBin(process.argv))
         },
         async handler(argv) {
             await run({
-                version: 1,
+                version: 2,
                 tasks: [
                     { id: '0', type: 'Read', config: { inputs: [argv.input], output: 'cache0' } },
                     {
@@ -186,7 +186,7 @@ const cli = yargs(hideBin(process.argv))
         },
         async handler(argv) {
             await run({
-                version: 1,
+                version: 2,
                 tasks: [
                     { id: '0', type: 'Read', config: { inputs: [argv.input], output: 'cache0' } },
                     {

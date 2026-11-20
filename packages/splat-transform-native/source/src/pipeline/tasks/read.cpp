@@ -10,7 +10,7 @@ void ReadTask::exec(const Json& config, TaskContext& context) const {
     const auto max_sh = config.value("maxShDegree", 3u);
     uintmax_t total_bytes = 0;
     for (const auto& input : inputs) {
-        const auto path = io::utf8_path(input.get<std::string>());
+        const auto path = context.paths.resolve(input.get<std::string>());
         total_bytes += std::filesystem::file_size(path);
         parts.push_back(io::read_splat(path, max_sh));
     }
@@ -18,7 +18,7 @@ void ReadTask::exec(const Json& config, TaskContext& context) const {
     auto& logger = utility::logger();
     logger.info("load: ", inputs.size(), " files | sizes=", utility::fixed(static_cast<float>(total_bytes) / (1024 * 1024)), "MB");
     for (const auto& input : inputs) {
-        logger.info("  - ", io::path_utf8(io::utf8_path(input.get<std::string>())));
+        logger.info("  - ", io::path_utf8(context.paths.resolve(input.get<std::string>())));
     }
     logger.info("counts: ", data->size(), ", SH: ", data->sh_degree);
     context.set(config, std::move(data));

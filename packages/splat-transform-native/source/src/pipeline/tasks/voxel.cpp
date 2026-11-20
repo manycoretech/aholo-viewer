@@ -87,7 +87,7 @@ bool VoxelTask::requires_gpu(const Json& config, const TaskContext&) const {
 }
 void VoxelTask::exec(const Json& config, TaskContext& context) const {
     const auto& data = *context.splat_ptr(config);
-    const auto output = io::utf8_path(config.at("output").get<std::string>());
+    const auto output = context.paths.resolve(config.at("output").get<std::string>());
     auto& logger = utility::logger();
     logger.info("writing voxel -> dir=\"", io::path_utf8(output), "\" count=", data.size(), " SH=", data.sh_degree);
     voxel::write(data, output, voxel_options(config), [&](voxel::Occupancy&& grid) {

@@ -40,7 +40,7 @@ export class PipelineError extends Error {
 }
 
 export interface RunOptions {
-    /** Working directory used to resolve paths in the pipeline. */
+    /** Child working directory. run() supplies the pipeline on stdin, so this also sets its pipelineDir. */
     cwd?: string;
     /** Cancel the child process. */
     signal?: AbortSignal;

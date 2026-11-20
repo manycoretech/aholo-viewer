@@ -5,10 +5,11 @@
 #include <utility/thread_pool.h>
 
 namespace splat_transform::pipeline {
-void run(const io::Json& pipeline) {
-    if (!pipeline.is_object() || pipeline.value("version", 1) != 1 || !pipeline.contains("tasks") || !pipeline.at("tasks").is_array()) {
-        throw std::runtime_error("Expected a version 1 pipeline with a tasks array");
+void run(const io::Json& pipeline, const std::filesystem::path& pipeline_file) {
+    if (!pipeline.contains("tasks") || !pipeline.at("tasks").is_array()) {
+        throw std::runtime_error("Expected a pipeline with a tasks array");
     }
+    PathResolver paths(pipeline, pipeline_file);
     if (pipeline.contains("cpuWorkers")) {
         const auto& workers = pipeline.at("cpuWorkers");
         if (!workers.is_number_integer() ||
@@ -30,7 +31,7 @@ void run(const io::Json& pipeline) {
         auto cpu_log = logger.scope("[Task:CPU]");
         logger.info("CPU workers: ", threading::default_thread_count());
     }
-    TaskContext context;
+    TaskContext context(std::move(paths));
     bool gpu_selected = false;
     for (size_t i = 0; i < tasks.size(); ++i) {
         const auto& spec = pipeline.at("tasks")[i];

@@ -3,6 +3,7 @@
 #include <io/file.h>
 #include <io/json.h>
 #include <memory>
+#include <pipeline/path_resolver.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
@@ -20,8 +21,9 @@ using Resource = std::variant<SplatPtr, std::vector<SingleFile>>;
 
 class TaskContext {
 public:
-    TaskContext();
+    explicit TaskContext(PathResolver paths = PathResolver());
     ~TaskContext();
+    const PathResolver paths;
     const Resource& input(const io::Json& config) const;
     const SplatPtr& splat_ptr(const io::Json& config) const;
     splat::Splat take_splat(const io::Json& config);

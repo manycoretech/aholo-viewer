@@ -20,7 +20,7 @@ struct SplatWrite {
     io::FileOptions options;
     void operator()() const { io::write_splat(path, *data, options); }
 };
-void write_resource(const Resource& resource, const std::filesystem::path& path, const io::FileOptions& options) {
+void write_resource(const Resource& resource, const std::filesystem::path& path, const io::FileOptions& options, const PathResolver& paths) {
     const auto output = io::path_utf8(path);
     auto& logger = utility::logger();
     if (const auto* data = std::get_if<SplatPtr>(&resource)) {
@@ -29,11 +29,11 @@ void write_resource(const Resource& resource, const std::filesystem::path& path,
         logger.info("writing done");
         return;
     }
-    const auto absolute = std::filesystem::absolute(path).lexically_normal();
-    if (absolute == absolute.root_path() || absolute == std::filesystem::current_path()) {
-        throw std::runtime_error("Refusing to replace the root or current directory");
-    }
     if (std::filesystem::exists(path)) {
+        const auto directory = std::filesystem::canonical(path);
+        if (directory == directory.root_path() || std::filesystem::equivalent(directory, paths.work_dir()) || std::filesystem::equivalent(directory, paths.pipeline_dir())) {
+            throw std::runtime_error("Refusing to replace the root, working directory, or pipeline directory");
+        }
         std::filesystem::remove_all(path);
         logger.info("exist dir ", output, ", removed");
     }
@@ -85,11 +85,12 @@ void write_resource(const Resource& resource, const std::filesystem::path& path,
 } // namespace
 void WriteTask::exec(const Json& config, TaskContext& context) const {
     const auto& resource = context.input(config);
-    write_resource(resource, io::utf8_path(config.at("output").get<std::string>()), file_options(config));
+    const auto output = context.paths.resolve(config.at("output").get<std::string>());
+    write_resource(resource, output, file_options(config), context.paths);
     if (const auto* files = std::get_if<std::vector<SingleFile>>(&resource)) {
         for (const auto& file : *files) {
             if (file.name == "lod-meta.json" && std::holds_alternative<std::string>(file.content)) {
-                context.record_lod_metadata(config, io::utf8_path(config.at("output").get<std::string>()) / io::utf8_path(file.name));
+                context.record_lod_metadata(config, output / io::utf8_path(file.name));
             }
         }
     }
@@ -97,7 +98,7 @@ void WriteTask::exec(const Json& config, TaskContext& context) const {
 bool WriteTask::requires_gpu(const Json& config, const TaskContext& context) const {
     const auto& resource = context.input(config);
     if (std::holds_alternative<SplatPtr>(resource)) {
-        return io::create_file(io::utf8_path(config.at("output").get<std::string>()).extension().string(), {}, io::FileOperation::Write)->requires_gpu();
+        return io::create_file(context.paths.resolve(config.at("output").get<std::string>()).extension().string(), {}, io::FileOperation::Write)->requires_gpu();
     }
     for (const auto& file : std::get<std::vector<SingleFile>>(resource)) {
         if (std::holds_alternative<SplatPtr>(file.content) && io::create_file(io::utf8_path(file.name).extension().string(), {}, io::FileOperation::Write)->requires_gpu()) {

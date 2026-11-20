@@ -37,19 +37,32 @@ GPU indices start at zero and increase across all graphics APIs in enumeration o
 
 Use ESZ for chunk LOD output. `lod:auto`, `lod:auto-chunk`, and `split` accept `--split-normal None|X|Y|Z` or `0|1|2|3`; a reference axis keeps blocks unsplit along that axis. `lod:flex --score` reads little-endian float32 scores in input-point order. Use individual command help, such as `splat-transform lod:flex --help`, or the [complete task and CLI reference](https://aholojs.dev/en-US/manual/splat-transform/) ([中文](https://aholojs.dev/zh-CN/manual/splat-transform/)).
 
-Both the npm CLI and the native executable accept a pipeline file or a single dash for JSON on stdin. The npm CLI forwards the file path or stdin directly to the native process, which reads and validates the JSON. Paths inside a pipeline remain relative to the process working directory. Referenced SOG/LCC/LCC2 assets resolve relative to their metadata files.
+Both the npm CLI and the native executable accept a pipeline file or a single dash for JSON on stdin. The npm CLI forwards the file path or stdin directly to the native process, which reads and validates the JSON. V2 files resolve relative paths from the directory containing the config (`pipelineDir`). Set the top-level `"base": "workDir"` to use the process working directory. On stdin, including JavaScript `run()`, both names refer to the child working directory. Referenced SOG/LCC/LCC2 assets resolve relative to their metadata files.
 
 ```json
 {
-    "version": 1,
+    "version": 2,
     "tasks": [
         { "id": "read", "type": "Read", "config": { "inputs": ["input.ply"], "output": "data" } },
-        { "id": "write", "type": "Write", "config": { "input": "data", "output": "output.spz" }, "release": ["data"] }
+        {
+            "id": "write",
+            "type": "Write",
+            "config": { "input": "data", "output": "${workDir}/output.spz" },
+            "release": ["data"]
+        }
     ]
 }
 ```
 
-Supported tasks are Read, Write, Modify, Filter, Select, ReplaceAppend, ExtractLodLevel, SkeletonLod, FlexLod, AutoLod, AutoChunkLod, Split, and Voxel. JavaScript and TypeScript use `Split`; the native C++ pipeline loader also accepts the legacy name `SplitSplatTask`. Version 1 pipeline structure remains supported; see the task reference for current fields and defaults. GPU enumeration uses the native executable's standalone `--list-gpu` command through `enumerateAdapters()` and does not enter the pipeline. Task logs keep the 1.x prefixes, counts, LOD summaries, file progress, and timing labels. Information, progress, and timing logs go to stdout; warnings and errors go to stderr.
+Supported tasks are Read, Write, Modify, Filter, Select, ReplaceAppend, ExtractLodLevel, SkeletonLod, FlexLod, AutoLod, AutoChunkLod, Split, and Voxel. JavaScript and TypeScript use `Split`; the native C++ pipeline loader also accepts the legacy name `SplitSplatTask`. GPU enumeration uses the native executable's standalone `--list-gpu` command through `enumerateAdapters()` and does not enter the pipeline. Task logs keep the 1.x prefixes, counts, LOD summaries, file progress, and timing labels. Information, progress, and timing logs go to stdout; warnings and errors go to stderr.
+
+The `${pipelineDir}` and `${workDir}` placeholders are supported only in V2. Use them in task filesystem paths, including output paths, modify patches, selection indices, FlexLod scores, and original-index output. In-memory resource names match literally.
+
+### Migrate a V1 pipeline file
+
+Set `"version": 2` and `"base": "workDir"` to preserve paths that depend on the launch directory. To make the file portable, omit `base` and express relative paths from the config directory. For example, when migrating `jobs/pipeline.json` launched from the project root, `data/input.ply` becomes `../data/input.ply`. V1 files default to `workDir`. An unrecognized integer version produces one warning on stderr and uses V2. With stdin or `run()`, changing the version alone preserves the default directory.
+
+### Task execution
 
 Tasks run sequentially. Top-level `gpu` defaults to device index `0`. Task `input` and processing `output` fields are in-memory resource keys; `Write.output` and `Voxel.output` are filesystem destinations. Task-level `release: string[]` removes resource keys after the task succeeds, so release shared resources only after their final consumer. Failures stop subsequent tasks without rolling back completed output.
 
@@ -83,14 +96,14 @@ LOD output metadata includes optional `voxels: string[]` when the same pipeline 
 ```js
 import { run, enumerateAdapters, ApiType } from '@manycore/aholo-splat-transform';
 
-await run({ version: 1, tasks: [] });
+await run({ version: 2, tasks: [] });
 const adapters = await enumerateAdapters();
 const vulkan = adapters.filter(adapter => adapter.api === ApiType.Vulkan);
 ```
 
 `run` accepts optional `cwd` and `AbortSignal` options. Nonzero child exits reject with `PipelineError`, which exposes `exitCode` and `signal`; process-start failures and cancellation can reject with a regular Error or AbortError. SIGINT and SIGTERM are forwarded to the child process. `enumerateAdapters` accepts the same options and returns `DeviceInfo[]` with global `index`, `name`, numeric `api`, raw numeric `apiVersion`, `vendorId`, `deviceId`, and `uuid`. `ApiType.Vulkan = 0` matches the native enum. `apiVersion` is the device-supported version in that API's encoding; JavaScript callers decode it according to `api`. `list:gpu` displays the API name and decoded version. The former `backend` string is replaced by `api`; `apiVersion` retains its raw numeric encoding. Use `resolveExecutable()` to locate the platform executable, or set `SPLAT_TRANSFORM_EXECUTABLE` to an absolute local CMake build path. If no platform executable is installed, enable npm optional dependencies.
 
-Version 2 removes injectCustomTask, SplatData and other in-memory processing APIs, and deep module imports. Pipeline data stays inside the native process. CLI commands and version 1 pipeline files remain the supported processing interface.
+Version 2.0 of the npm package removed `injectCustomTask`, `SplatData`, other in-memory processing APIs, and deep module imports. Use the CLI or `run()` to execute V2 pipelines in the native process.
 
 The package exports the runtime `ApiType` and `FilterMode` enums and `DeviceInfo` type, plus `FilterConfig`, `ModifyConfig`, `SelectConfig`, `ReplaceAppendConfig`, `ExtractLodLevelConfig`, and `VoxelConfig` for typed task construction, alongside `PipelineConfig`, `PipelineTask`, `TaskType`, and `RunOptions`. `PipelineTask.config` remains `Record<string, unknown>`; the manual lists complete task parameters and cancellation examples.
 

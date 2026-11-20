@@ -103,7 +103,7 @@ packages/renderer/src/index.ts
 
 `external/egs-core` is an upstream dependency submodule. Scripts may read external sources and generate dependency outputs needed for local builds, but repository changes should not hand-edit upstream code unless a task explicitly targets that package.
 
-The processing CLI sends version 1 pipeline JSON to the native executable over stdin. Task resources remain in the native process. Vulkan-Hpp RAII and VMA manage GPU objects and allocations; the loader and driver are supplied by the user. Linux native builds run in Ubuntu 22.04 with Clang 21 and a static C++ runtime. Default native tests do not require Vulkan; GPU contracts are enabled separately on a machine with a working driver.
+The processing CLI forwards pipeline filenames to the native executable. Command aliases and JavaScript `run()` send V2 pipeline JSON on stdin. The native `PathResolver` anchors V2 file paths at `pipelineDir` and stdin or legacy V1 paths at `workDir` by default. Task resources remain in the native process. Vulkan-Hpp RAII and VMA manage GPU objects and allocations; the loader and driver are supplied by the user. Linux native builds run in Ubuntu 22.04 with Clang 21 and a static C++ runtime. Default native tests do not require Vulkan; GPU contracts are enabled separately on a machine with a working driver.
 
 ## Root Command Graph
 

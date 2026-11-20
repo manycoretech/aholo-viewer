@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.0
+
+- Add V2 pipeline paths with `pipelineDir` and `workDir` bases and V2-only `${pipelineDir}` / `${workDir}` placeholders. To migrate a V1 file while preserving its working-directory paths, set `"version": 2` and `"base": "workDir"`. An unrecognized integer version logs one warning and uses V2.
+
 ## 2.3.0
 
 - Add the `Filter` pipeline task. `box` and `sphere` select Gaussian centers, `cluster` keeps Gaussians supported by the occupied component nearest the origin, and `floaters` removes Gaussians unsupported by occupied voxels. Retained Gaussians keep their input order and attributes, including spherical harmonic coefficients

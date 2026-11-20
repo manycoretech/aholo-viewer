@@ -34,7 +34,7 @@ Run `splat-transform list:gpu` to list Vulkan devices. Enumeration does not chec
 | `lcc`, `lcc2`           | Pass the metadata file; LCC2 reads LOD0 and environment splats.                                    |
 | `zip`                   | A ZIP containing LCC, LCC2, or SOG resources; not a generic batch input for arbitrary splat files. |
 
-Unpacked SOG/LCC/LCC2 companion resources resolve relative to their metadata file. ZIP resources resolve relative to the metadata path inside the archive, including nested directories. Other pipeline paths resolve relative to the process working directory.
+Unpacked SOG/LCC/LCC2 companion resources resolve relative to their metadata file. ZIP resources resolve relative to the metadata path inside the archive, including nested directories. Pipeline tasks resolve filesystem paths using the top-level `base` field.
 
 ### Output Formats
 
@@ -83,7 +83,8 @@ Get-Content -Raw pipeline.json | splat-transform -
 
 ```json
 {
-    "version": 1,
+    "version": 2,
+    "base": "pipelineDir",
     "gpu": 0,
     "tasks": [
         { "id": "read", "type": "Read", "config": { "inputs": ["input.ply"], "output": "source" } },
@@ -98,22 +99,25 @@ Get-Content -Raw pipeline.json | splat-transform -
 }
 ```
 
-| Field             | Type / default               | Description                                                                                    |
-| ----------------- | ---------------------------- | ---------------------------------------------------------------------------------------------- |
-| `version`         | `1`                          | Pipeline version, independent of the SPZ output version.                                       |
-| `gpu`             | `number` / `0`               | Device index from `list:gpu` or `enumerateAdapters()`, used when GPU work starts.              |
-| `cpuWorkers`      | positive integer / automatic | Global CPU pool worker count; capped at hardware concurrency minus one, with a minimum of one. |
-| `tasks`           | `PipelineTask[]`             | Executed in array order. A failed task stops subsequent execution.                             |
-| `tasks[].id`      | `string`                     | Task log identifier, required by the TypeScript interface.                                     |
-| `tasks[].type`    | `string`                     | A case-sensitive task name listed below.                                                       |
-| `tasks[].config`  | `object`                     | Parameters for that task.                                                                      |
-| `tasks[].release` | `string[]` / `[]`            | Resource keys removed after the current task succeeds.                                         |
+| Field             | Type / default                 | Description                                                                                                                                                |
+| ----------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`         | `1` or `2`                     | Required. Use `2` for new configurations.                                                                                                                  |
+| `base`            | `"pipelineDir"` or `"workDir"` | Base for relative paths. Defaults to `pipelineDir` for V2 files and `workDir` for stdin. Other strings produce one warning and fall back to `pipelineDir`. |
+| `gpu`             | `number` / `0`                 | Device index from `list:gpu` or `enumerateAdapters()`, used when GPU work starts.                                                                          |
+| `cpuWorkers`      | positive integer / automatic   | Global CPU pool worker count; capped at hardware concurrency minus one, with a minimum of one.                                                             |
+| `tasks`           | `PipelineTask[]`               | Executed in array order. A failed task stops subsequent execution.                                                                                         |
+| `tasks[].id`      | `string`                       | Task log identifier, required by the TypeScript interface.                                                                                                 |
+| `tasks[].type`    | `string`                       | A case-sensitive task name listed below.                                                                                                                   |
+| `tasks[].config`  | `object`                       | Parameters for that task.                                                                                                                                  |
+| `tasks[].release` | `string[]` / `[]`              | Resource keys removed after the current task succeeds.                                                                                                     |
 
 `cpuWorkers` is optional and configured before tasks run. The pool is still created on first use and shared by LOD, clustering updates, file output, CPU voxel jobs, and gzip. Explicit values are capped at `max(1, std::thread::hardware_concurrency() - 1)`, using logical hardware threads; a reported concurrency of 28 allows at most 27 workers. Omitting the field preserves the existing default: half the next power of two of hardware concurrency, clamped to 1–16. The startup log reports the effective count. Zero, negative, fractional, and non-integer values report an error. zstd uses a separate pool initialized with the same worker count.
 
 GPU tasks in one pipeline reuse the selected device context. It is initialized when GPU computation is first needed and released when the pipeline ends. SOG clustering and Voxel reuse working buffers during their respective computations and release them afterward. Each `run()` starts a separate native process; device contexts and working caches are not shared across calls.
 
-`Read.output` and processing-task `input` / `output` fields refer to in-memory resource keys for the current run. `Read.inputs`, `Write.output`, and `Voxel.output` are filesystem paths. Relative paths use the process working directory, not the directory containing the pipeline file.
+`Read.inputs`, `Write.output`, `Voxel.output`, `Modify.modifyPaths`, `Select.indicesPath`, and the `FlexLod` fields `scorePath` and `originalIndices` all use `base` to resolve relative paths. Absolute paths are used directly. `Read.output`, processing-task inputs and outputs, and `release` refer to in-memory resource keys and match literally.
+
+The `${pipelineDir}` and `${workDir}` path placeholders are supported only in V2. They refer to the directory containing the pipeline file and the process working directory, respectively. For example, `"inputs": ["${pipelineDir}/data/input.ply"]` reads from beside the config and `"output": "${workDir}/out/result.ply"` writes under the working directory. When the config arrives on stdin through `-` or JavaScript `run()`, both variables refer to the child process working directory. Pass `run(config, { cwd })` to set it.
 
 Reusing an output key replaces that resource. `Modify` mutates its input; a different output key remains an alias. Use `Select` or `ExtractLodLevel` to create an independent copy before modifying shared data. `Write` reads the in-memory resource but writes or replaces files on disk. Release a resource only after its final consumer, and do not release an output key needed by subsequent tasks.
 
@@ -153,7 +157,7 @@ SOG input supports v1/v2/v3. Output defaults to v2; set `version: 3` to enable v
 
 Concurrent CPU bundle file writes are limited by top-level pipeline `cpuWorkers`; the former `parallelCounts` option is no longer used. Files requiring GPU processing are written sequentially. CPU texture encoding within a SOG file still uses the shared pool.
 
-**Directory replacement: writing a bundle recursively removes an existing output directory before recreating it. Use a dedicated output directory.** Filesystem roots and the current working directory are rejected. Single-file output overwrites an existing file.
+**Directory replacement: writing a bundle recursively removes an existing output directory before recreating it. Use a dedicated output directory.** The writer rejects filesystem roots, the working directory, and the directory containing the pipeline file. Single-file output overwrites an existing file.
 
 Write the same LOD bundle to two directories with `highPrecision: false` and `true`. Writes do not consume or modify the in-memory resource and preserve LOD file/offset/count intervals.
 
@@ -383,7 +387,7 @@ When grid or octree indices exceed capacity, generation may retry with a larger 
 
 ```json
 {
-    "version": 1,
+    "version": 2,
     "tasks": [
         { "id": "read", "type": "Read", "config": { "inputs": ["a.ply", "b.ply"], "output": "source" } },
         {
@@ -407,7 +411,7 @@ Retain the source while creating a LOD bundle. Extract level 3 and modify only t
 
 ```json
 {
-    "version": 1,
+    "version": 2,
     "tasks": [
         { "id": "read", "type": "Read", "config": { "inputs": ["input.ply"], "output": "source" } },
         { "id": "lod", "type": "AutoChunkLod", "config": { "input": "source", "output": "lod", "type": "esz" } },
@@ -456,7 +460,7 @@ Retain the source while creating a LOD bundle. Extract level 3 and modify only t
 
 ```json
 {
-    "version": 1,
+    "version": 2,
     "tasks": [
         { "id": "read", "type": "Read", "config": { "inputs": ["input.ply"], "output": "source" } },
         { "id": "select", "type": "Select", "config": { "input": "source", "output": "patch", "indices": [0] } },
@@ -489,7 +493,7 @@ const controller = new AbortController();
 try {
     await run(
         {
-            version: 1,
+            version: 2,
             tasks: [
                 { id: 'read', type: 'Read', config: { inputs: ['input.ply'], output: 'source' } },
                 { id: 'write', type: 'Write', config: { input: 'source', output: 'output.esz' }, release: ['source'] },
@@ -515,7 +519,17 @@ The package exports the runtime `ApiType` and `FilterMode` enums and the types `
 
 ## Migration and Resource Guidance
 
-Version 2.0 removes in-memory APIs such as `SplatData`, `injectCustomTask`, and deep module imports. Data remains in the native child process and is processed through the CLI, version 1 pipelines, and `run()`.
+### Migrate a V1 pipeline to V2
+
+1. Set the top-level `version` to `2`. If an existing script relies on its working directory, also set `"base": "workDir"` to keep its relative paths pointing to the same files.
+2. To run the file from any directory, omit `base` or set `"base": "pipelineDir"` and express relative paths from the config directory. For example, if you ran `jobs/pipeline.json` from the project root and read `data/a.ply`, use `../data/a.ply` in the V2 file. To keep a single output under the launch directory, use `${workDir}/out/a.ply`.
+3. For stdin or `run()`, changing the version alone preserves the working directory as the default. To choose a directory, launch the process there or pass `run(config, { cwd })`.
+
+An integer version other than `1` or `2` produces one warning on stderr, then processing continues as V2.
+
+### JavaScript API and resources
+
+Version 2.0 of the npm package removed in-memory APIs such as `SplatData`, `injectCustomTask`, and deep module imports. The CLI and `run()` execute V2 pipelines in the native child process.
 
 - Use `esz` for chunk LOD: set `type: "esz"` in a pipeline or pass `--type esz` to the CLI.
 - SOG clustering batches work according to the available Vulkan memory budget and device limits. It caches input that fits, reuses working buffers across iterations, and streams the remaining input. There is no universal 10 GB requirement; transfer staging and driver allocations consume additional resources, and insufficient working-buffer memory still causes an error. Random clustering can produce different results across repeated SOG exports.

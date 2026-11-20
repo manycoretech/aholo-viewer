@@ -68,7 +68,7 @@ std::pair<bool, bool> transform(splat::Splat& data, std::span<const uint32_t> in
     return { resize, rotate };
 }
 } // namespace
-bool modify(splat::Splat& data, const io::Json& config) {
+bool modify(splat::Splat& data, const io::Json& config, const PathResolver& resolver) {
     std::array<std::optional<float>, 4> rgba;
     std::optional<uint32_t> max_sh_degree;
     if (config.contains("rgba")) {
@@ -117,7 +117,7 @@ bool modify(splat::Splat& data, const io::Json& config) {
             logger.info("modify[", block, "] is null, skip");
             continue;
         }
-        const auto spec = io::read_json(io::utf8_path(paths[block]));
+        const auto spec = io::read_json(resolver.resolve(paths[block]));
         const bool row_major = spec.value("isRowMatrix", true);
         const auto model = matrix(spec.value("transform", io::Json()), row_major);
         geometry_changed |= !model.isIdentity(0);

@@ -61,7 +61,8 @@ void write_gpu_requirements() {
 }
 static_assert(voxel::ValidBrickSize<4> && voxel::ValidBrickSize<12> && voxel::ValidBrickSize<32>);
 static_assert(!voxel::ValidBrickSize<0> && !voxel::ValidBrickSize<6>);
-template<uint32_t Side> requires voxel::ValidBrickSize<Side>
+template<uint32_t Side>
+    requires voxel::ValidBrickSize<Side>
 void brick_size_contract() {
     using Map = voxel::BrickMap<Side>;
     constexpr int32_t edge = Map::block_side;
@@ -73,8 +74,7 @@ void brick_size_contract() {
             source[i][j] = i == 7 ? voxel::FULL_BLOCK : uint64_t { 1 } << ((i + j) % 64);
         }
     }
-    map.assign_bricks(source.size(), [](size_t i) { return static_cast<uint32_t>(i); },
-        [&](size_t i) -> const typename Map::Masks& { return source[i]; });
+    map.assign_bricks(source.size(), [](size_t i) { return static_cast<uint32_t>(i); }, [&](size_t i) -> const typename Map::Masks& { return source[i]; });
     uint64_t voxels = 0;
     size_t visited = 0;
     map.for_each_block(0, [&](Eigen::Vector3i p, uint64_t bits) {
@@ -106,8 +106,7 @@ void brick_storage() {
     // The last brick has just one valid block. Its padding must not affect
     // uniform compression, traversal, or counting.
     bricks[7][0] = voxel::FULL_BLOCK;
-    grid.masks.assign_bricks(ids.size(), [&](size_t i) { return ids[i]; },
-        [&](size_t i) -> const voxel::Grid::Storage::Masks& { return bricks[ids[i]]; });
+    grid.masks.assign_bricks(ids.size(), [&](size_t i) { return ids[i]; }, [&](size_t i) -> const voxel::Grid::Storage::Masks& { return bricks[ids[i]]; });
     std::array<uint64_t, 125> expected;
     for (uint32_t i = 0; i < expected.size(); ++i) {
         const auto p = grid.block_point(i);
@@ -204,6 +203,7 @@ int main() {
         }
     } cleanup { directory };
     try {
+        require(pipeline::PathResolver().resolve("").empty(), "Resolving an empty path must preserve it");
         brick_storage();
         filter_neighborhoods();
         splat::Splat points(16, 3);
@@ -318,13 +318,6 @@ int main() {
             require(batched.batch_rows == 8192 && batched_bytes <= budget, "Callback batching exceeded the row or memory budget");
             require((budget == 32 * 1024 * 1024) == (batched.streaming_slots != 0), "Callback batching changed cached/streaming budget selection");
         }
-        bool rejected = false;
-        try {
-            pipeline::run({ { "version", 2 }, { "tasks", io::Json::array() } });
-        } catch (const std::exception&) {
-            rejected = true;
-        }
-        require(rejected, "Unsupported pipeline version accepted");
         std::cout << "Pipeline, formats, short scores, and voxel topology contracts passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

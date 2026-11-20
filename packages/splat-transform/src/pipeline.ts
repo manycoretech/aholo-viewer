@@ -104,7 +104,9 @@ export interface PipelineTask {
 }
 
 export interface PipelineConfig {
-    version: 1;
+    version: 1 | 2;
+    /** Base for relative filesystem paths. V2 files default to pipelineDir. V1 and stdin default to workDir. */
+    base?: 'pipelineDir' | 'workDir';
     /** Global index from enumerateAdapters(), shared across graphics APIs. */
     gpu?: number;
     /** Positive worker count; capped at max(1, hardware_concurrency() - 1). Omit for automatic sizing. */

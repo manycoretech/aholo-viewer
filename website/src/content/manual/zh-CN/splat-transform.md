@@ -34,7 +34,7 @@ order: 5
 | `lcc`、`lcc2`           | 传入元数据文件；LCC2 读取 LOD0 和环境高斯。                        |
 | `zip`                   | 包含 LCC、LCC2 或 SOG 资源的 ZIP，不是任意高斯文件的通用批量输入。 |
 
-未打包 SOG/LCC/LCC2 的伴随资源相对于元数据文件解析；ZIP 内的资源相对于包内元数据路径解析，支持嵌套目录。普通 pipeline 输入输出路径相对于进程工作目录。
+未打包 SOG/LCC/LCC2 的伴随资源相对于元数据文件解析。ZIP 内的资源相对于包内元数据路径解析，支持嵌套目录。Pipeline 任务的文件路径由顶层 `base` 决定。
 
 ### 输出格式
 
@@ -83,7 +83,8 @@ Get-Content -Raw pipeline.json | splat-transform -
 
 ```json
 {
-    "version": 1,
+    "version": 2,
+    "base": "pipelineDir",
     "gpu": 0,
     "tasks": [
         { "id": "read", "type": "Read", "config": { "inputs": ["input.ply"], "output": "source" } },
@@ -98,22 +99,25 @@ Get-Content -Raw pipeline.json | splat-transform -
 }
 ```
 
-| 字段              | 类型 / 默认值     | 说明                                                                          |
-| ----------------- | ----------------- | ----------------------------------------------------------------------------- |
-| `version`         | `1`               | pipeline 版本，与 SPZ 输出版本无关。                                          |
-| `gpu`             | `number` / `0`    | `list:gpu` 或 `enumerateAdapters()` 返回的设备下标；实际 GPU 工作开始时使用。 |
-| `cpuWorkers`      | 正整数 / 自动选择 | 全局 CPU 线程池的工作线程数；超过硬件线程数减一时自动截断，至少为 1。         |
-| `tasks`           | `PipelineTask[]`  | 按数组顺序执行；任务失败时终止后续任务。                                      |
-| `tasks[].id`      | `string`          | 任务日志标识，TypeScript 接口要求提供。                                       |
-| `tasks[].type`    | `string`          | 下文列出的任务名称，区分大小写。                                              |
-| `tasks[].config`  | `object`          | 对应任务的参数。                                                              |
-| `tasks[].release` | `string[]` / `[]` | 当前任务成功完成后删除这些内存资源键。                                        |
+| 字段              | 类型 / 默认值                  | 说明                                                                                                                |
+| ----------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `version`         | `1` 或 `2`                     | 必填。新配置使用 `2`。                                                                                              |
+| `base`            | `"pipelineDir"` 或 `"workDir"` | 相对路径的基准。V2 文件默认 `pipelineDir`，标准输入默认 `workDir`。其他字符串会触发一行警告并回退到 `pipelineDir`。 |
+| `gpu`             | `number` / `0`                 | `list:gpu` 或 `enumerateAdapters()` 返回的设备下标；实际 GPU 工作开始时使用。                                       |
+| `cpuWorkers`      | 正整数 / 自动选择              | 全局 CPU 线程池的工作线程数；超过硬件线程数减一时自动截断，至少为 1。                                               |
+| `tasks`           | `PipelineTask[]`               | 按数组顺序执行；任务失败时终止后续任务。                                                                            |
+| `tasks[].id`      | `string`                       | 任务日志标识，TypeScript 接口要求提供。                                                                             |
+| `tasks[].type`    | `string`                       | 下文列出的任务名称，区分大小写。                                                                                    |
+| `tasks[].config`  | `object`                       | 对应任务的参数。                                                                                                    |
+| `tasks[].release` | `string[]` / `[]`              | 当前任务成功完成后删除这些内存资源键。                                                                              |
 
 `cpuWorkers` 为可选字段，在执行任务前配置，线程池仍在首次使用时创建，供 LOD、聚类更新、文件写出、CPU 体素和 gzip 等任务共享。显式配置的上限为 `max(1, std::thread::hardware_concurrency() - 1)`；例如硬件线程数返回 28 时最多使用 27 个工作线程。省略时保持原有默认行为：硬件线程数向上取 2 的幂后除以 2，再限制到 1–16。启动日志会显示生效的线程数；0、负数、小数及非整数类型会报错。zstd 使用独立线程池，并以相同线程数初始化。
 
 同一 pipeline 的 GPU 任务复用所选设备上下文，首次需要 GPU 计算时才初始化，pipeline 结束时释放。SOG 聚类和 Voxel 的工作缓冲在各自计算过程中复用，完成后由任务释放。每次 `run()` 启动独立原生进程，设备上下文和工作缓存不跨调用共享。
 
-`Read.output` 和处理任务的 `input` / `output` 是本次运行的内存资源键；`Read.inputs`、`Write.output`、`Voxel.output` 才是磁盘路径。相对路径以进程工作目录为基准，不以 pipeline 文件所在目录为基准。
+`Read.inputs`、`Write.output`、`Voxel.output`、`Modify.modifyPaths`、`Select.indicesPath` 和 `FlexLod` 的 `scorePath`、`originalIndices` 都使用 `base` 解析。绝对路径直接使用。`Read.output`、处理任务的输入输出和 `release` 引用内存资源键，按原字符串匹配。
+
+`${pipelineDir}` 和 `${workDir}` 是 V2 专用的路径占位符，分别表示配置文件所在目录和进程工作目录。例如，`"inputs": ["${pipelineDir}/data/input.ply"]` 从配置旁读取，`"output": "${workDir}/out/result.ply"` 写到启动目录。通过 `-` 或 JavaScript `run()` 从标准输入传入配置时，两个变量均指向子进程的工作目录。`run(config, { cwd })` 可以指定该目录。
 
 同名 `output` 会替换原资源键。`Modify` 原地修改输入，即使使用不同的 `output`，两者仍指向同一资源。需要保留原数据时，先用 `Select` 或 `ExtractLodLevel` 创建独立副本。`Write` 只读内存资源，但会写入或替换磁盘文件；多次写出应在最后一次使用后再 `release`。不要在任务的 `release` 中删除后续仍要使用的输出键。
 
@@ -153,7 +157,7 @@ SOG 输入支持 v1/v2/v3；输出默认保持 v2，通过 `version: 3` 启用 v
 
 bundle 的 CPU 文件写出并发上限由 pipeline 根级 `cpuWorkers` 统一设置，旧 `parallelCounts` 不再生效。需要 GPU 的文件按顺序写出；单个 SOG 文件的 CPU 纹理编码仍使用共享线程池。
 
-**目录覆盖：写出 bundle 时，已有输出目录会先被递归删除，再重新创建。请使用专用输出目录。** 根目录和当前工作目录会被拒绝。单文件输出会覆盖同名文件。
+**目录覆盖：写出 bundle 时，已有输出目录会先被递归删除，再重新创建。请使用专用输出目录。** 程序会拒绝替换文件系统根目录、工作目录和配置文件所在目录。单文件输出会覆盖同名文件。
 
 同一 LOD bundle 可以分别以 `highPrecision: false` 和 `true` 写到两个目录。写出不会消费或修改内存数据，也不会破坏 LOD 的 file/offset/count 区间。
 
@@ -383,7 +387,7 @@ JavaScript / TypeScript 接口使用 `Split`；原生 C++ pipeline 解析层兼�
 
 ```json
 {
-    "version": 1,
+    "version": 2,
     "tasks": [
         { "id": "read", "type": "Read", "config": { "inputs": ["a.ply", "b.ply"], "output": "source" } },
         {
@@ -407,7 +411,7 @@ JavaScript / TypeScript 接口使用 `Split`；原生 C++ pipeline 解析层兼�
 
 ```json
 {
-    "version": 1,
+    "version": 2,
     "tasks": [
         { "id": "read", "type": "Read", "config": { "inputs": ["input.ply"], "output": "source" } },
         { "id": "lod", "type": "AutoChunkLod", "config": { "input": "source", "output": "lod", "type": "esz" } },
@@ -456,7 +460,7 @@ JavaScript / TypeScript 接口使用 `Split`；原生 C++ pipeline 解析层兼�
 
 ```json
 {
-    "version": 1,
+    "version": 2,
     "tasks": [
         { "id": "read", "type": "Read", "config": { "inputs": ["input.ply"], "output": "source" } },
         { "id": "select", "type": "Select", "config": { "input": "source", "output": "patch", "indices": [0] } },
@@ -489,7 +493,7 @@ const controller = new AbortController();
 try {
     await run(
         {
-            version: 1,
+            version: 2,
             tasks: [
                 { id: 'read', type: 'Read', config: { inputs: ['input.ply'], output: 'source' } },
                 { id: 'write', type: 'Write', config: { input: 'source', output: 'output.esz' }, release: ['source'] },
@@ -515,7 +519,17 @@ try {
 
 ## 迁移与资源建议
 
-2.0 移除了 `SplatData`、`injectCustomTask`、深层模块导入等内存处理接口。数据保留在原生子进程中，通过 CLI、version 1 pipeline 和 `run()` 使用。
+### 从 pipeline V1 迁移到 V2
+
+1. 将顶层 `version` 改为 `2`。如果旧脚本依赖启动目录，同时设置 `"base": "workDir"`，现有相对路径会继续指向原来的文件。
+2. 要让配置可以从任意目录启动，省略 `base` 或设置 `"base": "pipelineDir"`，并将相对路径改为从配置文件所在目录出发。例如，原先从项目根目录启动 `jobs/pipeline.json`，读取 `data/a.ply`。迁移后应写成 `../data/a.ply`。需要继续写到启动目录的单个输出可写成 `${workDir}/out/a.ply`。
+3. 使用标准输入或 `run()` 的调用者可以只改版本号。需要按某个目录处理时，在那里启动进程，或传入 `run(config, { cwd })`。
+
+遇到 `1`、`2` 以外的整数版本号时，程序向 stderr 输出一行警告，然后按 V2 继续。
+
+### JavaScript API 与资源
+
+npm 包 2.0 移除了 `SplatData`、`injectCustomTask` 和深层模块导入等内存处理接口。数据保留在原生子进程中，通过 CLI 或 `run()` 执行 V2 pipeline。
 
 - 生成 `chunk-lod` 推荐使用 `esz`：pipeline 设置 `type: "esz"`，CLI 使用 `--type esz`。
 - SOG 聚类按可用 Vulkan 显存和设备限制自动分批，在一次聚类中缓存可容纳的输入并跨迭代复用工作缓冲，其余输入分批传输。不存在统一的 10 GB 显存门槛；传输暂存和驱动分配还会占用额外资源，不足以容纳工作缓冲时仍会报错。相同数据多次 SOG 导出可能因随机聚类而不同。

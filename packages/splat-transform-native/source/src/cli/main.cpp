@@ -40,13 +40,14 @@ int main(int argc, char** argv) {
             std::cout << devices.dump() << '\n';
             return 0;
         }
-        splat_transform::io::Json config;
         if (pipeline_file == "-") {
+            splat_transform::io::Json config;
             std::cin >> config;
+            splat_transform::pipeline::run(config);
         } else {
-            config = splat_transform::io::read_json(splat_transform::io::utf8_path(pipeline_file));
+            const auto path = splat_transform::io::utf8_path(pipeline_file);
+            splat_transform::pipeline::run(splat_transform::io::read_json(path), path);
         }
-        splat_transform::pipeline::run(config);
         return 0;
     } catch (const std::filesystem::filesystem_error& error) {
         splat_transform::utility::logger().error("splat-transform: ", splat_transform::io::filesystem_error_message(error));

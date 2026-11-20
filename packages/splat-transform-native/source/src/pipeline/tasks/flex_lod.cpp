@@ -10,7 +10,7 @@ void FlexLodTask::exec(const Json& config, TaskContext& context) const {
     auto& logger = utility::logger();
     logger.info("loaded -> \"", config.at("input").get<std::string>(), '"');
     const auto target = target_count(data, config, 0.3f, std::numeric_limits<float>::infinity());
-    auto bytes = io::read_bytes(io::utf8_path(config.at("scorePath").get<std::string>()));
+    auto bytes = io::read_bytes(context.paths.resolve(config.at("scorePath").get<std::string>()));
     if (bytes.size() < data.size() * 4) {
         throw std::runtime_error("Score file is too short");
     }
@@ -29,7 +29,7 @@ void FlexLodTask::exec(const Json& config, TaskContext& context) const {
         for (auto index : indices) {
             io::append(output, index);
         }
-        const auto path = io::utf8_path(config.at("originalIndices").get<std::string>());
+        const auto path = context.paths.resolve(config.at("originalIndices").get<std::string>());
         io::write_bytes(path, output);
         logger.info("original indices saved -> \"", io::path_utf8(path), '"');
     }

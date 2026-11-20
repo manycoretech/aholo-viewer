@@ -13,14 +13,14 @@ namespace splat_transform::pipeline {
 namespace {
 constexpr size_t NO_LINEAGE = std::numeric_limits<size_t>::max();
 
-uint64_t ordered_input_key(const io::Json& inputs) {
+uint64_t ordered_input_key(const io::Json& inputs, const PathResolver& paths) {
     auto hash = std::unique_ptr<XXH3_state_t, decltype(&XXH3_freeState)>(XXH3_createState(), &XXH3_freeState);
     if (!hash) {
         throw std::bad_alloc();
     }
     XXH3_64bits_reset(hash.get());
     for (const auto& input : inputs) {
-        const auto path = io::path_utf8(std::filesystem::absolute(io::utf8_path(input.get<std::string>())).lexically_normal());
+        const auto path = io::path_utf8(paths.resolve(input.get<std::string>()).lexically_normal());
         XXH64_canonical_t length;
         XXH64_canonicalFromHash(&length, path.size());
         XXH3_64bits_update(hash.get(), &length, sizeof(length));
@@ -69,7 +69,7 @@ struct TaskContext::CachedVoxelGrid {
     size_t lineage;
     voxel::Occupancy occupancy;
 };
-TaskContext::TaskContext() = default;
+TaskContext::TaskContext(PathResolver resolver) : paths(std::move(resolver)) {}
 TaskContext::~TaskContext() = default;
 const Resource& TaskContext::input(const io::Json& config) const {
     return resources_.at(config.at("input").get<std::string>()).data;
@@ -131,7 +131,7 @@ void TaskContext::set(const io::Json& config, Resource resource, bool inherit_gr
         }
     } else if (config.contains("inputs")) {
         const auto signature = geometry_hash(*std::get<SplatPtr>(resource));
-        auto [entry, inserted] = read_sources_.try_emplace(ordered_input_key(config.at("inputs")), ReadSource { next_source_, NO_LINEAGE, signature });
+        auto [entry, inserted] = read_sources_.try_emplace(ordered_input_key(config.at("inputs"), paths), ReadSource { next_source_, NO_LINEAGE, signature });
         if (inserted) {
             ++next_source_;
         }
@@ -199,7 +199,7 @@ void TaskContext::finish_task() {
     releases_.clear();
 }
 void TaskContext::record_voxel(const io::Json& config) {
-    const auto path = std::filesystem::absolute(io::utf8_path(config.at("output").get<std::string>()) / "voxel-meta.json").lexically_normal();
+    const auto path = (paths.resolve(config.at("output").get<std::string>()) / "voxel-meta.json").lexically_normal();
     voxel_outputs_.insert_or_assign(path, resources_.at(config.at("input").get<std::string>()).source);
     update_lod_metadata();
 }

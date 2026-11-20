@@ -49,7 +49,8 @@ void equal_data(const splat::Splat& first, const splat::Splat& second) {
 }
 void verify(const std::filesystem::path& fixtures) {
     for (const auto name : { "read-modify", "formats", "auto-lod", "auto-chunk-defaults", "auto-chunk-business", "flex-lod", "skeleton-lod", "split-splat" }) {
-        pipeline::run(io::read_json(fixtures / (std::string(name) + ".json")));
+        const auto file = fixtures / (std::string(name) + ".json");
+        pipeline::run(io::read_json(file), file);
     }
     const auto source = io::read_splat("outputs/modify-source.ply");
     require(source.size() == 17 && source.sh_degree == 3, "Legacy Modify changed its deletion or SH behavior");

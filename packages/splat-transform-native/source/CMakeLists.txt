@@ -62,6 +62,7 @@ set(SPLAT_TRANSFORM_SOURCE_FILES
     src/gpu/compute.cpp
     src/gpu/vulkan_context.cpp
     src/pipeline/runner.cpp
+    src/pipeline/path_resolver.cpp
     src/pipeline/task.cpp
     src/pipeline/context.cpp
     src/pipeline/data_support.cpp
@@ -109,6 +110,7 @@ set(SPLAT_TRANSFORM_HEADER_FILES
     include/io/splat.h
     include/io/spz.h
     include/pipeline/context.h
+    include/pipeline/path_resolver.h
     include/pipeline/runner.h
     include/pipeline/task.h
     include/pipeline/tasks/auto_chunk_lod.h
@@ -325,6 +327,9 @@ if(BUILD_TESTING)
         add_test(NAME compute_contracts COMMAND splat_transform_compute_tests)
     endif()
     add_test(NAME pipeline_empty COMMAND splat-transform "${CMAKE_CURRENT_SOURCE_DIR}/tests/empty.json")
+    add_test(NAME pipeline_paths COMMAND "${CMAKE_COMMAND}"
+        "-DCLI=$<TARGET_FILE:splat-transform>" "-DFIXTURES=$<TARGET_FILE:splat_transform_frozen_pipeline_tests>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/pipeline_paths.cmake")
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND SPLAT_TRANSFORM_STATIC_RUNTIME)
         add_test(NAME linux_abi COMMAND "${CMAKE_COMMAND}" "-DEXECUTABLE=$<TARGET_FILE:splat-transform>" -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_linux_abi.cmake")
     endif()
