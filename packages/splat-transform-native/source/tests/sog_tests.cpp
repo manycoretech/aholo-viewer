@@ -10,6 +10,8 @@
 #include <numeric>
 #include <pipeline/tasks/write.h>
 #include <random>
+#include <spatial/clustering.h>
+#include <utility/random.h>
 
 using namespace splat_transform;
 namespace {
@@ -184,6 +186,11 @@ void readers(const std::filesystem::path& directory) {
         const auto data = io::read_splat({ "wide.sog", bytes });
         require(data.gaussians[0].attribute(splat::ShOffset) == 1.0f / 16, "SOG v3 ignored the third label byte");
     }
+    auto partial = fixture(3, 3);
+    partial.meta["shN"]["count"] = 65;
+    const auto partial_bytes = partial.bundle();
+    const auto decoded = io::read_splat({ "partial.sog", partial_bytes });
+    require(decoded.gaussians[0].attribute(splat::ShOffset) == 1.0f / 16, "SOG reader failed to decode a referenced palette entry");
     const auto source = fixture(3);
     for (const auto& [name, bytes] : source.files) {
         io::write_bytes(directory / name, bytes);
@@ -282,9 +289,11 @@ void wide_palette_writer() {
         point.sh[5] = static_cast<float>(i >> 12);
     }
     constexpr std::array<uint32_t, 2> indices { 65536, 0 };
-    const auto bytes = io::SogFile(3, COUNT).write(source, indices);
+    const auto bytes = io::SogFile(3, 262145).write(source, indices);
     io::Resources resources("wide-output.sog", bytes, ".sog");
     require(resources.meta.at("shN").at("count") == COUNT, "SOG v3 palette was truncated to 65536");
+    const auto capped = io::SogFile(2, 262145).write(source, indices);
+    require(io::Resources("capped.sog", capped, ".sog").meta.at("shN").at("count") == 65536, "Fixed palette was not clamped to the v2 format limit");
     const auto labels = codec::decode_webp(resources.read("shN_labels.webp"));
     require(labels.rgba[0] == std::byte { 0 } && labels.rgba[1] == std::byte { 0 } && labels.rgba[2] == std::byte { 1 }, "SOG writer discarded the high SH label byte");
     const auto data = io::read_splat({ "wide-output.sog", bytes });
@@ -306,7 +315,7 @@ void invalid_inputs() {
              [](Fixture& f) { f.meta["quats"]["files"] = io::Json::array(); },
              [](Fixture& f) { f.files["quats.webp"] = codec::encode_webp(io::Bytes(8 * 4 * 4), 8, 4); },
              [](Fixture& f) { f.meta["shN"]["count"] = 0; },
-             [](Fixture& f) { f.meta["shN"]["count"] = 65; },
+             [](Fixture& f) { f.files["shN_centroids.webp"] = codec::encode_webp(io::Bytes(4), 1, 1); },
              [](Fixture& f) { f.files["scales.webp"] = codec::encode_webp(io::Bytes(8 * 4 * 4), 8, 4); } }) {
         auto broken = source;
         modify(broken);
@@ -318,6 +327,101 @@ void invalid_inputs() {
     const auto bytes = nullable.bundle();
     require(io::read_splat({ "nullable.sog", bytes }).size() == 4, "Null optional SH palette should be absent");
 }
+void palette_weights() {
+    auto source = cloud(1);
+    for (auto& point : source.gaussians) {
+        point.scale = { 1, 2, 8 };
+        point.opacity = 2;
+    }
+    source.gaussians[1].scale = { 8, 0, 2 };
+    source.gaussians[2].opacity = 0.5f;
+    source.gaussians[3].opacity = 0;
+    const auto weights = spatial::sh_palette_weights(source);
+    require(weights[0] == weights[1] && weights[0] == 2 * weights[2] && weights[3] == 0, "SH visibility weights did not preserve flat splats or clamp opacity");
+    source.gaussians[2].scale *= 4;
+    const auto scaled = spatial::sh_palette_weights(source);
+    require(scaled[0] == scaled[2], "The two largest axes must contribute their area to the quarter power");
+    for (auto& point : source.gaussians) {
+        point.opacity = 0;
+    }
+    require(spatial::sh_palette_weights(source) == std::vector<float>(4, 1.0f), "Invisible inputs must use uniform fallback weights");
+}
+
+void automatic_palettes(const std::filesystem::path& directory) {
+    constexpr size_t rows = 321;
+    auto source = std::make_shared<splat::Splat>(rows, 1);
+    std::mt19937 random(383);
+    std::uniform_real_distribution<float> coefficient(-0.065f, 0.065f);
+    for (auto& point : source->gaussians) {
+        point.scale.setOnes();
+        point.opacity = 0.75f;
+        for (size_t column = 0; column < source->sh_count(); ++column) {
+            point.sh[3 + column] = coefficient(random);
+        }
+    }
+    pipeline::TaskContext context;
+    context.set({ { "output", "source" } }, source);
+    const auto path = directory / "auto.sog";
+    const io::Json base { { "input", "source" }, { "output", path }, { "enableMortonSort", false } };
+    auto write = [&](io::Json config) {
+        utility::default_random().seed(383);
+        pipeline::WriteTask().exec(config, context);
+        const auto bytes = io::read_bytes(path);
+        return io::Resources(path, bytes, ".sog").meta.at("shN").at("count").get<size_t>();
+    };
+    const auto automatic = write(base);
+    require(automatic < rows && automatic % 64 == 0, "Default e-means search did not shrink the palette");
+    auto config = base;
+    config["paletteSize"] = 0;
+    config["colorError"] = 5.0;
+    require(write(config) == automatic, "Zero and omitted paletteSize or default colorError disagree");
+    for (const double invalid : { 0.0, -1.0, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN() }) {
+        config["colorError"] = invalid;
+        require(write(config) == automatic, "Invalid colorError did not use 5");
+    }
+    config["colorError"] = 1e-9;
+    require(write(config) == rows, "Tight target should store each point when no smaller palette meets it");
+    config["paletteSize"] = 7;
+    require(write(config) == 7, "Fixed paletteSize must override colorError");
+    const auto data = io::read_splat(path);
+    require(data.size() == rows && data.sh_degree == 1, "SOG palette mode broke readback");
+}
+
+void weighted_palette_growth() {
+    splat::Splat source(4800, 1);
+    std::mt19937 random(383);
+    std::uniform_real_distribution<float> coefficient(-1, 1);
+    for (size_t row = 0; row < source.size(); ++row) {
+        auto& point = source.gaussians[row];
+        point.scale.setOnes();
+        point.opacity = row % 2 ? 1.0f : 0.1f;
+        for (size_t column = 0; column < source.sh_count(); ++column) {
+            point.sh[3 + column] = coefficient(random);
+        }
+    }
+    utility::default_random().seed(383);
+    constexpr size_t limit = 4224;
+    const auto trained = spatial::cluster_sh_to_color_error(source, limit, 1e-9);
+    require(trained.centroids.rows() == limit && trained.labels.size() == source.size(), "e-means did not grow past 4096 to the palette limit");
+    const spatial::FeatureView features(source);
+    Eigen::MatrixXd sums = Eigen::MatrixXd::Zero(limit, features.dimensions());
+    std::vector<double> mass(limit);
+    for (size_t row = 0; row < source.size(); ++row) {
+        const auto label = trained.labels[row];
+        require(label < limit, "e-means returned an invalid label");
+        const double weight = source.gaussians[row].opacity;
+        mass[label] += weight;
+        for (size_t column = 0; column < features.dimensions(); ++column) {
+            sums(label, column) += weight * features(row, column);
+        }
+    }
+    for (size_t entry = 0; entry < limit; ++entry) {
+        if (mass[entry] > 0) {
+            require((trained.centroids.row(entry).cast<double>() - sums.row(entry) / mass[entry]).cwiseAbs().maxCoeff() < 1e-5, "Closing centroids do not match their weighted members");
+        }
+    }
+}
+
 void gpu_writers(const std::filesystem::path& directory) {
     gpu::select_device(0);
     for (uint32_t degree : { 1u, 2u, 3u }) {
@@ -357,8 +461,11 @@ int main(int argc, char** argv) {
     try {
         if (argc == 2 && std::string_view(argv[1]) == "--gpu") {
             gpu_writers(directory);
+            automatic_palettes(directory);
+            weighted_palette_growth();
             wide_palette_writer();
         } else {
+            palette_weights();
             rotation_and_opacity();
             readers(directory);
             writers();

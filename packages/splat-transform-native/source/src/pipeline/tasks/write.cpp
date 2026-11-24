@@ -10,6 +10,7 @@ io::FileOptions file_options(const Json& config) {
     options.version = config.value("version", options.version);
     options.compress_level = config.value("compressLevel", options.compress_level);
     options.palette_size = config.value("paletteSize", options.palette_size);
+    options.color_error = config.value("colorError", options.color_error);
     options.high_precision = config.value("highPrecision", options.high_precision);
     options.enable_morton_sort = config.value("enableMortonSort", options.enable_morton_sort);
     return options;

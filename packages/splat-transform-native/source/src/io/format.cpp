@@ -30,7 +30,7 @@ const std::array FORMATS {
     Format { ".uspz", true, [](const FileOptions&) -> std::unique_ptr<IFile> { return std::make_unique<SpzFile>(3, -1); } },
     Format { ".splat", true, make_file<SplatFile> },
     Format { ".sog", true, [](const FileOptions& options) -> std::unique_ptr<IFile> {
-                return std::make_unique<SogFile>(options.version, options.palette_size);
+                return std::make_unique<SogFile>(options.version, options.palette_size, options.color_error);
             } },
     Format { ".json", false, make_file<SogFile> },
     Format { ".esz", true, [](const FileOptions& options) -> std::unique_ptr<IFile> { return std::make_unique<EszFile>(options.high_precision); } },

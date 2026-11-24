@@ -1,4 +1,4 @@
-#include <bit>
+#include <cmath>
 #include <codec/codec.h>
 #include <codec/quantization.h>
 #include <cstdint>
@@ -9,11 +9,9 @@
 #include <utility/thread_pool.h>
 
 namespace splat_transform::io {
-SogFile::SogFile(int32_t version, size_t palette_size) : version_(version == 3 ? 3 : 2), palette_size_(palette_size) {
-    if (palette_size > (version_ == 3 ? 262144u : 65536u)) {
-        throw std::runtime_error("SH palette size exceeds the SOG version's limit");
-    }
-}
+SogFile::SogFile(int32_t version, size_t palette_size, double color_error)
+    : version_(version == 3 ? 3 : 2), palette_size_(std::min(palette_size, palette_limit(version))),
+      color_error_(std::isfinite(color_error) && color_error > 0 ? color_error : FileOptions::default_color_error) {}
 splat::Splat SogFile::read(const FileInput& source) const {
     const auto bytes = source.bytes;
     const auto& path = source.path;
@@ -110,11 +108,6 @@ splat::Splat SogFile::read(const FileInput& source) const {
         const auto& sh = meta.at("shN");
         const size_t coefficients = splat::SH_COUNTS.at(degree) / 3;
         const size_t palette_count = version == 1 ? images[5].rgba.size() / (15 * 4) : sh.at("count").get<size_t>();
-        if (!coefficients || images[5].width != 64 * (version == 1 ? 15 : coefficients) ||
-            palette_count > images[5].rgba.size() / ((version == 1 ? 15 : coefficients) * 4) ||
-            (version != 1 && palette_count > (version == 3 ? 262144u : 65536u))) {
-            throw std::runtime_error("Invalid SOG SH palette dimensions");
-        }
         for (size_t i = 0; i < count; ++i) {
             const size_t label = std::to_integer<uint32_t>(images[6].rgba[i * 4]) | (std::to_integer<uint32_t>(images[6].rgba[i * 4 + 1]) << 8) |
                                  (version == 3 ? std::to_integer<uint32_t>(images[6].rgba[i * 4 + 2]) << 16 : 0);
@@ -134,16 +127,10 @@ splat::Splat SogFile::read(const FileInput& source) const {
 }
 Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices) const {
     std::byte maximum_opacity {};
-    bool opacity_above_one = false;
-    for (const auto index : indices) {
-        const auto& point = data.gaussians.at(index);
-        if (version_ == 3) {
-            maximum_opacity = std::max(maximum_opacity, codec::encode_sog_opacity(point.opacity));
+    if (version_ == 3) {
+        for (const auto index : indices) {
+            maximum_opacity = std::max(maximum_opacity, codec::encode_sog_opacity(data.gaussians.at(index).opacity));
         }
-        opacity_above_one |= point.opacity > 1;
-    }
-    if (version_ == 2 && opacity_above_one) {
-        utility::logger().warn("SOG v2 clamps opacity above 1; use version: 3 to preserve it");
     }
     const auto [width, height] = codec::texture_size(indices.size());
     const size_t image_size = static_cast<size_t>(width) * height * 4;
@@ -240,13 +227,11 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         const auto sh_name = "SH" + std::to_string(data.sh_degree);
         auto elapsed = logger.time("SOG encoding " + sh_name);
         const size_t coefficients = data.sh_count() / 3;
-        const size_t palette_size = palette_size_ ? std::min(palette_size_, data.size()) : std::clamp(std::bit_floor(data.size()), size_t { 1 }, size_t { 65536 });
-        constexpr size_t ITERATIONS = 10;
-        logger.info("SOG ", sh_name, " k-means with clusters=", palette_size, " iterations=", ITERATIONS);
         // Coordinate Vulkan work on the caller while CPU texture jobs use the
         // shared pool; no extra coordinator thread or per-SOG pool is needed.
-        auto clustering_time = logger.time("SOG " + sh_name + " k-means");
-        auto clustering = spatial::k_means(spatial::FeatureView(data), palette_size, ITERATIONS);
+        auto clustering_time = logger.time("SOG " + sh_name + " clustering");
+        auto clustering = palette_size_ ? spatial::k_means(spatial::FeatureView(data), std::min(palette_size_, data.size()))
+                                        : spatial::cluster_sh_to_color_error(data, palette_limit(version_), color_error_);
         clustering_time.finish();
         auto quantized = spatial::quantize_1d(clustering.centroids);
         const size_t centroid_count = static_cast<size_t>(clustering.centroids.rows());

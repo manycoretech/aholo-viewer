@@ -1,13 +1,8 @@
-#include "cluster_gpu.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <numeric>
 #include <spatial/clustering.h>
-#include <unordered_set>
-#include <utility/logger.h>
-#include <utility/random.h>
-#include <utility/thread_pool.h>
 
 namespace splat_transform::spatial {
 Quantization detail::quantize_values(std::vector<float> values, size_t rows, size_t columns) {
@@ -99,109 +94,14 @@ Quantization detail::quantize_values(std::vector<float> values, size_t rows, siz
     }
     return result;
 }
-Clustering k_means(FeatureView points, size_t count, size_t iterations) {
-    const auto rows = points.rows();
-    if (!rows || !count || rows < count) {
-        Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> centroids(rows, points.dimensions());
-        for (size_t row = 0; row < rows; ++row) {
-            for (size_t c = 0; c < points.dimensions(); ++c) {
-                centroids(row, c) = points(row, c);
-            }
-        }
-        std::vector<uint32_t> labels(rows);
-        std::iota(labels.begin(), labels.end(), 0);
-        return { std::move(centroids), std::move(labels) };
-    }
-    Clustering result { Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>::Zero(count, points.dimensions()), {} };
-    auto& rng = utility::default_random();
-    auto random_index = [&](size_t upper) { return static_cast<size_t>((static_cast<uint64_t>(rng()) * upper) >> 32); };
-    std::unordered_set<size_t> selected;
-    size_t centroid = 0;
-    for (size_t j = rows - count; j < rows; ++j) {
-        size_t row = random_index(j + 1);
-        if (selected.contains(row)) {
-            row = j;
-        }
-        selected.insert(row);
-        for (size_t c = 0; c < points.dimensions(); ++c) {
-            result.centroids(centroid, c) = points(row, c);
-        }
-        ++centroid;
-    }
-    auto& pool = threading::default_pool();
-    struct PartialAverage {
-        std::vector<float> sums;
-        std::vector<size_t> counts;
-    };
-    const size_t threads = std::min(rows, pool.thread_count());
-    const size_t per_thread = (rows + threads - 1) / threads;
-    std::vector<PartialAverage> partials(threads);
-    for (auto& partial : partials) {
-        partial.sums.resize(count * points.dimensions());
-        partial.counts.resize(count);
-    }
-    auto setup_time = utility::logger().time("kmeans setup");
-    // Match dispatches to the existing CPU partitions so completed labels can
-    // be reduced while later batches are still on the GPU. Keep each partition's
-    // row order and the final merge order unchanged for identical centroids.
-    ClusterSession session(points, count, (per_thread + 127) / 128 * 128);
-    setup_time.finish();
-    for (size_t step = 0; step < iterations; ++step) {
-        result.labels.resize(rows);
-        utility::logger().info("kmeans iteration ", step + 1);
-        auto assign_time = utility::logger().time("kmeans assign");
-        threading::TaskGroup<void> tasks(pool, threads);
-        size_t next_thread = 0;
-        session.assign(result.centroids, result.labels, [&](size_t ready) {
-            while (next_thread < threads) {
-                const size_t begin = std::min(rows, next_thread * per_thread), end = std::min(rows, begin + per_thread);
-                if (end > ready) {
-                    break;
-                }
-                const size_t thread = next_thread++;
-                tasks.submit([&, begin, end, thread] {
-                    auto& part = partials[thread];
-                    std::fill(part.sums.begin(), part.sums.end(), 0.0f);
-                    std::fill(part.counts.begin(), part.counts.end(), 0);
-                    for (size_t row = begin; row < end; ++row) {
-                        const auto label = result.labels[row];
-                        ++part.counts[label];
-                        for (size_t c = 0; c < points.dimensions(); ++c) {
-                            part.sums[static_cast<size_t>(label) * points.dimensions() + c] += points(row, c);
-                        }
-                    }
-                });
-            }
-        });
-        assign_time.finish();
-        auto update_time = utility::logger().time("kmeans update tail");
-        for (size_t i = 0; i < tasks.size(); ++i) {
-            tasks.get(i);
-        }
-        for (size_t k = 0; k < count; ++k) {
-            size_t n = 0;
-            for (size_t c = 0; c < points.dimensions(); ++c) {
-                result.centroids(k, c) = 0;
-            }
-            for (const auto& part : partials) {
-                n += part.counts[k];
-                for (size_t c = 0; c < points.dimensions(); ++c) {
-                    result.centroids(k, c) += part.sums[k * points.dimensions() + c];
-                }
-            }
-            if (n) {
-                const float inverse = 1.0f / static_cast<float>(n);
-                for (size_t c = 0; c < points.dimensions(); ++c) {
-                    result.centroids(k, c) *= inverse;
-                }
-            } else {
-                const size_t row = random_index(rows);
-                for (size_t c = 0; c < points.dimensions(); ++c) {
-                    result.centroids(k, c) = points(row, c);
-                }
-            }
+Clustering detail::point_palette(FeatureView points) {
+    Clustering result { decltype(Clustering::centroids)(points.rows(), points.dimensions()), std::vector<uint32_t>(points.rows()) };
+    for (size_t row = 0; row < points.rows(); ++row) {
+        for (size_t column = 0; column < points.dimensions(); ++column) {
+            result.centroids(row, column) = points(row, column);
         }
     }
+    std::iota(result.labels.begin(), result.labels.end(), 0);
     return result;
 }
 } // namespace splat_transform::spatial

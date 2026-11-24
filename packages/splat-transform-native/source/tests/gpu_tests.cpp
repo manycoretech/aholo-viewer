@@ -1,4 +1,5 @@
 #include "spatial/cluster_gpu.h"
+#include "spatial/emeans_gpu.h"
 #include "voxel/grid.h"
 #include "voxel/voxelize.h"
 #include <algorithm>
@@ -47,6 +48,84 @@ voxel::Grid reference_dilation(const voxel::Grid& grid, Eigen::Vector3i radius) 
     }
     return result;
 }
+void emeans_device_updates(uint32_t degree) {
+    constexpr size_t rows = 271;
+    splat::Splat source(rows, degree);
+    const auto columns = source.sh_count();
+    std::vector<uint32_t> order(rows);
+    std::iota(order.rbegin(), order.rend(), 0);
+    std::vector<float> weights(rows);
+    auto pattern = [](size_t column) { return (column % 7 + 1) * 0.125f; };
+    auto signal = [](size_t index) {
+        if (index < 96) {
+            return 3;
+        }
+        if (index < 192) {
+            return 11;
+        }
+        return index < 259 ? 6 : 0;
+    };
+    for (size_t index = 0; index < rows; ++index) {
+        auto row = order[index];
+        weights[row] = index % 5 ? (index % 3 + 1) * 0.25f : 0;
+        for (size_t column = 0; column < columns; ++column) {
+            source.gaussians[row].sh[3 + (column % (columns / 3)) * 3 + column / (columns / 3)] = signal(index) * pattern(column);
+        }
+    }
+    decltype(spatial::Clustering::centroids) seeds(3, columns);
+    for (size_t column = 0; column < columns; ++column) {
+        seeds.col(column) << 0, 8 * pattern(column), 100 * pattern(column);
+    }
+    spatial::EmeansGpu session(spatial::FeatureView(source), weights, order, 3, 97);
+    session.begin(seeds);
+    session.batch(0, 192, 1, false);
+    session.batch(192, 81, 0.25f, false);
+    std::array<double, 2> initial_mass {};
+    double second_mass = 0, second_sum = 0, total_mass = 0, total_sum = 0;
+    for (size_t index = 0; index < rows; ++index) {
+        const auto weight = weights[order[index]];
+        total_mass += weight;
+        total_sum += weight * signal(index);
+        if (index < 192) {
+            initial_mass[index < 96 ? 0 : 1] += weight;
+        }
+        if (index >= 192 || index < 2) {
+            second_mass += weight;
+            second_sum += weight * signal(index);
+        }
+    }
+    std::array<float, 3> usage {};
+    session.revive(usage, [](std::span<const float>) { return std::vector<spatial::EmeansGpu::Split> { { 1, 2 } }; });
+    const double retained = 0.75 * initial_mass[0];
+    if (std::abs(usage[0] - (retained + 0.25 * second_mass)) > 1e-5 || std::abs(usage[1] - 0.75 * initial_mass[1]) > 1e-5 ||
+        usage[2] != 0.75f / 65536) {
+        throw std::runtime_error("GPU EMA did not preserve weighted mass across chunks and wraparound");
+    }
+    const auto result = session.finish();
+    for (size_t index = 0; index < rows; ++index) {
+        if (result.labels[order[index]] != (signal(index) == 11 ? 1u : 0u)) {
+            throw std::runtime_error("GPU labels do not follow the preceding EMA centers in the original row order");
+        }
+    }
+    const double center = (retained * 3 + 0.25 * second_sum) / usage[0];
+    for (size_t column = 0; column < columns; ++column) {
+        const auto offset = column % 2 ? -1e-4 : 1e-4;
+        if (std::abs(result.centroids(0, column) - center * pattern(column)) > 1e-5 ||
+            std::abs(result.centroids(1, column) - 11 * pattern(column) * (1 - offset)) > 1e-5 ||
+            std::abs(result.centroids(2, column) - 11 * pattern(column) * (1 + offset)) > 1e-5) {
+            throw std::runtime_error("GPU EMA or split differs from the weighted CPU reference");
+        }
+    }
+    session.begin(seeds.topRows(1));
+    session.batch(137, rows, 1, true);
+    const auto closed = session.finish();
+    for (size_t column = 0; column < columns; ++column) {
+        if (std::abs(closed.centroids(0, column) - total_sum / total_mass * pattern(column)) > 1e-5) {
+            throw std::runtime_error("Reused GPU workspace lost the closing weighted sums");
+        }
+    }
+}
+
 void voxel_session_lifetimes(const voxel::Gaussian& gaussian) {
     const gpu::ComputeDevice device;
     const auto initial = device.allocation_bytes();
@@ -135,6 +214,9 @@ int main(int argc, char** argv) {
             }
         }
         gpu::select_device(selected);
+        for (uint32_t degree : { 1u, 2u, 3u }) {
+            emeans_device_updates(degree);
+        }
         const auto devices = gpu::enumerate_devices();
         if (devices.empty()) {
             throw std::runtime_error("GPU tests require a Vulkan compute device");
@@ -267,14 +349,36 @@ int main(int argc, char** argv) {
             if (labels != actual || previous != labels.size() || callbacks != 3) {
                 throw std::runtime_error("Clustering callbacks lost a partial final batch");
             }
+            std::vector<uint32_t> reversed(actual.size());
+            std::iota(reversed.rbegin(), reversed.rend(), 0);
+            spatial::ClusterSession shared(spatial::FeatureView(input), 192, 128, reversed);
+            std::vector<uint32_t> partial(140);
+            std::vector<size_t> partial_ready;
+            shared.assign(centroids, partial, [&](size_t ready) { partial_ready.push_back(ready); }, 79);
+            if (partial_ready != std::vector<size_t> { 49, 140 }) {
+                throw std::runtime_error("Clustering callback reported an incorrect prefix of the output slice");
+            }
+            for (size_t offset = 0; offset < partial.size(); ++offset) {
+                if (partial[offset] != actual[reversed[79 + offset]]) {
+                    throw std::runtime_error("Shared GPU assignment misread a shuffled batch across buffer boundaries");
+                }
+            }
+            shared.assign(centroids.topRows(1), partial, {}, 79);
+            if (!std::ranges::all_of(partial, [](auto label) { return label == 0; })) {
+                throw std::runtime_error("Shared GPU assignment used inactive centroids");
+            }
             bool rejected = false;
             try {
-                batched.assign(centroids, std::span(labels).first(labels.size() - 1), {});
+                batched.assign(centroids, labels, {}, 1);
             } catch (const std::runtime_error& error) {
                 rejected = std::string_view(error.what()) == "GPU label count differs";
             }
             if (!rejected) {
-                throw std::runtime_error("Clustering accepted an undersized caller output");
+                throw std::runtime_error("Clustering accepted a range past the last row");
+            }
+            batched.assign(centroids, partial);
+            if (!std::equal(partial.begin(), partial.end(), actual.begin())) {
+                throw std::runtime_error("Clustering misread the prefix when the start row was omitted");
             }
             bool interrupted = false;
             try {

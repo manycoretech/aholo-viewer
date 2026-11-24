@@ -13,6 +13,17 @@ export type TaskType =
     | 'Split'
     | 'Voxel';
 
+export interface WriteConfig extends Record<string, unknown> {
+    input: string;
+    output: string;
+    version?: number;
+    compressLevel?: number;
+    highPrecision?: boolean;
+    enableMortonSort?: boolean;
+    paletteSize?: number;
+    colorError?: number;
+}
+
 /** Optional extensions to Modify; output remains an alias of the modified input. */
 export interface ModifyConfig extends Record<string, unknown> {
     input: string;

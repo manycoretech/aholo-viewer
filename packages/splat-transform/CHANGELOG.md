@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.0
+
+- Size single-file SOG SH palettes with visibility-weighted e-means and `Write.colorError` (default `5`). Positive `Write.paletteSize` selects fixed-size Lloyd clustering and clamps to the format and point-count limits.
+
 ## 2.4.2
 
 - Standardize path handling across platforms.

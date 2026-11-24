@@ -4,6 +4,7 @@ import type { DeviceInfo, PipelineConfig } from './pipeline.js';
 export type {
     PipelineConfig,
     PipelineTask,
+    WriteConfig,
     TaskType,
     DeviceInfo,
     ModifyConfig,

@@ -20,8 +20,9 @@ struct Clustering {
     std::vector<uint32_t> labels;
 };
 namespace detail {
+Clustering point_palette(FeatureView points);
 Quantization quantize_values(std::vector<float> values, size_t rows, size_t columns);
-}
+} // namespace detail
 
 template<typename Transform>
 concept QuantizationTransform = std::invocable<Transform&, const float&> &&
@@ -52,4 +53,6 @@ Quantization quantize_1d(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynam
 }
 
 Clustering k_means(FeatureView points, size_t count, size_t iterations = 10);
+std::vector<float> sh_palette_weights(const splat::Splat& data);
+Clustering cluster_sh_to_color_error(const splat::Splat& data, size_t limit, double target);
 } // namespace splat_transform::spatial

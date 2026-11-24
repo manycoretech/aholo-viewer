@@ -41,6 +41,9 @@ set(SPLAT_TRANSFORM_SOURCE_FILES
     src/splat/splat_lod.cpp
     src/splat/splat_block.cpp
     src/spatial/clustering.cpp
+    src/spatial/emeans.cpp
+    src/spatial/emeans_gpu.cpp
+    src/spatial/kmeans.cpp
     src/spatial/cluster_gpu.cpp
     src/codec/compression.cpp
     src/codec/image.cpp
@@ -146,6 +149,7 @@ set(SPLAT_TRANSFORM_PRIVATE_HEADER_FILES
     src/gpu/backend.h
     src/spatial/cluster_schedule.h
     src/spatial/cluster_gpu.h
+    src/spatial/emeans_gpu.h
     src/io/zip_archive.h
     src/io/file_stream.h
     src/io/stream_reader.h

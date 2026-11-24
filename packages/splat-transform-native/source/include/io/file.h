@@ -73,12 +73,14 @@ uint16_t to_half(float value);
 
 splat::Splat read_splat(const std::filesystem::path& path, uint32_t max_sh_degree = 3);
 struct FileOptions {
+    static constexpr double default_color_error = 5.0;
     // Unsupported versions use the target format's default (SPZ 3, SOG 2).
     int32_t version = 0;
     int32_t compress_level = 6;
     size_t palette_size = 0;
     bool high_precision = false;
     bool enable_morton_sort = true;
+    double color_error = default_color_error;
 };
 void write_splat(const std::filesystem::path& path, const splat::Splat& data, const FileOptions& options = {});
 

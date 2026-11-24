@@ -3,6 +3,11 @@
 #include "cluster.h"
 #include "compact.h"
 #include "dilate.h"
+#include "emeans_bin.h"
+#include "emeans_offsets.h"
+#include "emeans_reduce.h"
+#include "emeans_split.h"
+#include "emeans_update.h"
 #include "expand.h"
 #include "voxel/compute.h"
 #include "voxel/gpu_workspace.h"
@@ -199,8 +204,13 @@ int main() {
     try {
         pipeline_keys();
         for (const auto& shader : cluster_variants) {
-            check(shader.code.bytes, std::array { 16u, 16u, 4u, 4u }, 8, 128, shader.tile * (shader.columns * 16 + 4));
+            check(shader.code.bytes, std::array { 16u, 16u, 4u, 4u }, 16, 128, shader.tile * (shader.columns * 16 + 4));
         }
+        check(emeans_bin.bytes, std::array { 4u, 4u, 4u }, 12, 128, 0);
+        check(emeans_offsets.bytes, std::array { 4u }, 4, 128, 8);
+        check(emeans_reduce.bytes, std::array { 4u, 4u, 4u, 4u }, 20, 64, 64 * 49 * 4);
+        check(emeans_update.bytes, std::array { 4u, 4u, 4u, 4u }, 16, 128, 0);
+        check(emeans_split.bytes, std::array { 8u, 4u, 4u }, 12, 128, 0);
         check(candidate_count.bytes, std::array { 64u, 4u }, 48, 128, 0);
         check(candidate_scatter.bytes, std::array { 64u, 4u, 4u, 4u }, 48, 128, 0);
         check(voxelize.bytes, std::array { 64u, 4u, 32u, 4u }, 20, 64, 64 * 64 + 8);
@@ -208,7 +218,7 @@ int main() {
             check(shader, std::array { 4u, 4u }, 20, 128, 0);
         }
         check(dilate.bytes, std::array { 4u, 4u }, 28, 128, 0);
-        std::cout << "Pipeline cache identities and all 30 embedded shader ABI contracts passed\n";
+        std::cout << "Pipeline cache identities and embedded shader ABI contracts passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

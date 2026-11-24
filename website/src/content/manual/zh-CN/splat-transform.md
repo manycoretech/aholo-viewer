@@ -141,19 +141,22 @@ Get-Content -Raw pipeline.json | splat-transform -
 
 将单个 splat 写入文件，或将 LOD / 分块 bundle 写入目录。格式由输出文件扩展名或 bundle 中的文件名决定。
 
-| 参数               | 类型 / 默认值       | 说明                                                                                                                    |
-| ------------------ | ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `input`            | `string`，必填      | 输入资源键。                                                                                                            |
-| `output`           | `string`，必填      | 单文件路径或 bundle 输出目录。                                                                                          |
-| `enableMortonSort` | `boolean` / `true`  | 写出前按 Morton 顺序排列；要求保留区间顺序的 bundle 文件会强制关闭。                                                    |
-| `version`          | `number` / 按格式   | SOG 支持 `2`、`3`，默认 `2`；SPZ 支持 `3`、`4`，默认 `3`。不支持的版本回退到该格式默认值；`.uspz` 固定输出未压缩的 v3。 |
-| `compressLevel`    | `number` / `6`      | 仅用于 SPZ：v3 使用 gzip（常用范围 `0–9`），v4 使用 zstd（遵循 zstd 等级范围）。                                        |
-| `paletteSize`      | `number` / `0`      | SOG 的 SH 调色板大小：v2 上限 `65536`，v3 上限 `262144`，实际条目不超过输入点数。`0` 表示沿用自动大小。                 |
-| `highPrecision`    | `boolean` / `false` | 仅用于 ESZ：`false` 为低精度，`true` 为高精度布局。                                                                     |
+| 参数               | 类型 / 默认值       | 说明                                                                                                                                                            |
+| ------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `input`            | `string`，必填      | 输入资源键。                                                                                                                                                    |
+| `output`           | `string`，必填      | 单文件路径或 bundle 输出目录。                                                                                                                                  |
+| `enableMortonSort` | `boolean` / `true`  | 写出前按 Morton 顺序排列；要求保留区间顺序的 bundle 文件会强制关闭。                                                                                            |
+| `version`          | `number` / 按格式   | SOG 支持 `2`、`3`，默认 `2`；SPZ 支持 `3`、`4`，默认 `3`。不支持的版本回退到该格式默认值；`.uspz` 固定输出未压缩的 v3。                                         |
+| `compressLevel`    | `number` / `6`      | 仅用于 SPZ：v3 使用 gzip（常用范围 `0–9`），v4 使用 zstd（遵循 zstd 等级范围）。                                                                                |
+| `paletteSize`      | `number` / `0`      | 省略或传 `0` 时，SOG 按 `colorError` 自动选取 SH 调色板容量。正整数使用固定容量的 Lloyd 聚类，并自动限制到输入点数及版本上限（v2 为 `65536`，v3 为 `262144`）。 |
+| `colorError`       | `number` / `5`      | 自动模式下，加权 e-means 的 SH 颜色均方根误差目标，单位为 8 位色阶。数值越小越严格。非有限数和非正数均使用 `5`。                                                |
+| `highPrecision`    | `boolean` / `false` | 仅用于 ESZ：`false` 为低精度，`true` 为高精度布局。                                                                                                             |
 
 自 `2.1.2` 起，SPZ v3/v4 的默认压缩等级统一为 `6`。`2.1.1` 中，v3 默认 `6`，v4 默认 `7`。需要沿用 `2.1.1` 的 SPZ v4 等级时，显式设置 `compressLevel: 7`。
 
 SOG 输入支持 v1/v2/v3；输出默认保持 v2，通过 `version: 3` 启用 v3。v3 将旋转以 exp-map 编码存入独立 `quats.webp` 的 RGB 通道，使用平方根 opacity 编码（上限 `1.5625`）和 24 位 SH 标签。SH 上限仍为 3，不保留 blind data、extras 和 comments 等可选信息。大于 1 的 opacity 写入 SOG v2 时截断到 1。
+
+在 `Write` 任务的 `config` 中设置 `"colorError": 4`，可将目标设为 4 个色阶。达到版本上限时，实际误差可能高于目标。SH 数据超过 2 GiB 搜索预算或设备标签缓冲上限时，自动模式回退到按点数向下取 2 的幂，最多 65536 项。
 
 bundle 的 CPU 文件写出并发上限由 pipeline 根级 `cpuWorkers` 统一设置，旧 `parallelCounts` 不再生效。需要 GPU 的文件按顺序写出；单个 SOG 文件的 CPU 纹理编码仍使用共享线程池。
 

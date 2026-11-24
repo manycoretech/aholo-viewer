@@ -8,6 +8,8 @@
 struct Parameters {
     uint point_count;
     uint centroid_count;
+    uint point_offset;
+    uint label_offset;
 };
 
 [[vk::push_constant]] ConstantBuffer<Parameters> parameters;
@@ -24,10 +26,10 @@ groupshared float shared_squared[TILE_SIZE];
     float4 point_values[VEC_COLUMNS];
     if (row < parameters.point_count) {
         for (uint c = 0; c < VEC_COLUMNS; ++c) {
-            point_values[c] = points[row * VEC_COLUMNS + c];
+            point_values[c] = points[(parameters.point_offset + row) * VEC_COLUMNS + c];
         }
     }
-    float minimum = 1000000.0;
+    float minimum = asfloat(0x7f800000u);
     uint label = 0;
     for (uint start = 0; start < parameters.centroid_count; start += TILE_SIZE) {
         uint count = min(uint(TILE_SIZE), parameters.centroid_count - start);
@@ -53,6 +55,6 @@ groupshared float shared_squared[TILE_SIZE];
         GroupMemoryBarrierWithGroupSync();
     }
     if (row < parameters.point_count) {
-        labels[row] = label;
+        labels[parameters.label_offset + row] = label;
     }
 }
