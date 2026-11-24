@@ -85,6 +85,9 @@
       "name": "arm64-osx",
       "inherits": "base",
       "generator": "Ninja",
+      "environment": {
+        "MACOSX_DEPLOYMENT_TARGET": "13.0"
+      },
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-osx",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/../splat-transform-darwin-arm64",
