@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <io/file.h>
 #include <io/json.h>
+#include <limits>
 #include <utility/logger.h>
 #include <voxel/voxel.h>
 
@@ -229,7 +230,7 @@ CollisionVolume generate_collision(const splat::Splat& input, const Options& opt
             for (int32_t a = 0; a < 3; ++a) {
                 count *= std::round((bounds.max()[a] - bounds.min()[a]) / (4 * resolution));
             }
-            const float target = std::floor(0x7fffffff * 0.55f);
+            const float target = static_cast<float>(std::floor(std::numeric_limits<int32_t>::max() * 0.55));
             if (count <= target) {
                 break;
             }
