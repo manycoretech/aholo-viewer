@@ -13,6 +13,7 @@ io::FileOptions file_options(const Json& config) {
     options.color_error = config.value("colorError", options.color_error);
     options.high_precision = config.value("highPrecision", options.high_precision);
     options.enable_morton_sort = config.value("enableMortonSort", options.enable_morton_sort);
+    options.sh_bits = config.value("shBits", options.sh_bits);
     return options;
 }
 struct SplatWrite {

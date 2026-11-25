@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.1
+
+- Add `Write.shBits` to set quantization bits independently for SH degrees 1, 2, and 3 in SPZ v3/v4, USPZ, and low-precision ESZ output. The array defaults to `[5, 4, 4]`, and each entry is clamped to 1–8 bits. High-precision ESZ uses fixed RGB widths of 11/10/11 bits for every degree.
+
 ## 2.5.0
 
 - Size single-file SOG SH palettes with visibility-weighted e-means and `Write.colorError` (default `5`). Positive `Write.paletteSize` selects fixed-size Lloyd clustering and clamps to the format and point-count limits.

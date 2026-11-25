@@ -13,6 +13,21 @@ namespace splat_transform::codec {
 inline float signed_log(float value) { return std::copysign(std::log1p(std::abs(value)), value); }
 inline float signed_exp(float value) { return std::copysign(std::expm1(std::abs(value)), value); }
 inline std::byte quantize_byte(float value) { return static_cast<std::byte>(std::clamp(std::floor(value + 0.5f), 0.0f, 255.0f)); }
+// Each degree l has 2l + 1 RGB coefficients. Build the steps once per output.
+inline std::array<float, 15> sh_quantization_steps(std::span<const int32_t, 3> bits) {
+    std::array<float, 15> steps;
+    auto next = steps.begin();
+    for (size_t degree = 1; degree <= bits.size(); ++degree) {
+        const auto precision = bits[degree - 1];
+        next = std::fill_n(next, 2 * degree + 1, static_cast<float>(1 << (8 - precision)));
+    }
+    return steps;
+}
+inline std::byte quantize_sh(float value, float step) {
+    const float code = std::floor(value * 128 + 0.5f) + 128;
+    const float bucket = std::floor((code + step / 2) / step) * step;
+    return static_cast<std::byte>(std::clamp(bucket, 0.0f, 255.0f));
+}
 inline std::array<uint32_t, 2> texture_size(size_t count) {
     auto width = std::max(4u, static_cast<uint32_t>(std::ceil(std::sqrt(static_cast<float>(count)) / 4) * 4));
     const auto rows = (count + width - 1) / width;

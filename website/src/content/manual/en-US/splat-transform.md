@@ -151,6 +151,7 @@ Writes a single splat to a file or a LOD / split bundle to a directory. The outp
 | `paletteSize`      | `number` / `0`            | Omit or set to `0` to size the SOG SH palette by `colorError`. A positive integer selects fixed-size Lloyd clustering, clamped to the point count and the version limit (`65536` for v2, `262144` for v3). |
 | `colorError`       | `number` / `5`            | Weighted e-means target for SH RMS colour error in 8-bit levels. Lower values are stricter. Nonfinite and nonpositive numbers use `5`.                                                                     |
 | `highPrecision`    | `boolean` / `false`       | ESZ only: `false` selects low precision, `true` selects high precision.                                                                                                                                    |
+| `shBits`           | Array / `[5, 4, 4]`       | Integer bit counts for SH degrees 1, 2 and 3. SPZ, USPZ and low-precision ESZ clamp each entry to 1–8. High-precision ESZ uses fixed 11/10/11-bit RGB for every degree.                                    |
 
 Starting with `2.1.2`, the default compression level is `6` for both SPZ v3 and v4. Version `2.1.1` uses `6` for v3 and `7` for v4. Set `compressLevel: 7` explicitly to retain the SPZ v4 level used by `2.1.1`.
 

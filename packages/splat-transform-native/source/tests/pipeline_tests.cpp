@@ -41,6 +41,44 @@ void write_options(const std::filesystem::path& directory, const splat::Splat& s
         }
     }
 }
+void sh_quantization_options(const std::filesystem::path& directory) {
+    auto source = std::make_shared<splat::Splat>(1, 3);
+    auto& point = source->gaussians.front();
+    point.scale.setOnes();
+    constexpr std::array<float, 3> rgb { 13.0f / 128, -13.0f / 128, 1.0f };
+    for (size_t c = 0; c < source->sh_count(); ++c) {
+        point.attribute(splat::ShOffset + c) = rgb[c % 3];
+    }
+    pipeline::TaskContext context;
+    context.set({ { "output", "source" } }, source);
+    pipeline::WriteTask task;
+    for (const auto& [name, version] : { std::pair { "bits-v3.spz", 3 }, { "bits-v4.spz", 4 }, { "bits.uspz", 3 }, { "bits.esz", 2 } }) {
+        const auto path = directory / name;
+        io::Json config { { "input", "source" }, { "output", path }, { "version", version }, { "shBits", { 9, 0, 6 } } };
+        task.exec(config, context);
+        const auto decoded = io::read_splat(path);
+        require(decoded.size() == 1 && decoded.sh_degree == 3, "Custom SH precision changed the splat shape");
+        for (size_t c = 0; c < decoded.sh_count(); ++c) {
+            // [9, 0, 6] clamps to [8, 1, 6]. The positive endpoint saturates at byte 255.
+            const int magnitude = c < 9 ? 13 : c < 24 ? 0 : 12;
+            const std::array<int, 3> expected { magnitude, -magnitude, 127 };
+            require(decoded.gaussians.front().attribute(splat::ShOffset + c) == expected[c % 3] / 128.0f, "Wrong quantization for SH band or channel");
+        }
+        config.erase("shBits");
+        task.exec(config, context);
+        const auto default_bytes = io::read_bytes(path);
+        config["shBits"] = { 5, 4, 4 };
+        task.exec(config, context);
+        require(io::read_bytes(path) == default_bytes, "Explicit default shBits changed output bytes");
+    }
+    const auto path = directory / "bits-high.esz";
+    io::Json config { { "input", "source" }, { "output", path }, { "highPrecision", true } };
+    task.exec(config, context);
+    const auto high_bytes = io::read_bytes(path);
+    config["shBits"] = { 1, 8, 2 };
+    task.exec(config, context);
+    require(io::read_bytes(path) == high_bytes, "High-precision ESZ must keep its fixed RGB widths");
+}
 void write_gpu_requirements() {
     pipeline::TaskContext context;
     auto source = std::make_shared<splat::Splat>(1, 0);
@@ -224,6 +262,7 @@ int main() {
         }
         write_gpu_requirements();
         write_options(directory, points);
+        sh_quantization_options(directory);
         io::write_splat(directory / "input.ply", points, { .enable_morton_sort = false });
         for (const std::string extension : { "ply", "spz", "uspz", "splat", "esz" }) {
             const auto path = directory / ("roundtrip." + extension);

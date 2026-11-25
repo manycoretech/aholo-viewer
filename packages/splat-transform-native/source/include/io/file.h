@@ -72,8 +72,16 @@ float from_half(uint16_t value);
 uint16_t to_half(float value);
 
 splat::Splat read_splat(const std::filesystem::path& path, uint32_t max_sh_degree = 3);
+using ShBits = std::array<int32_t, 3>;
+inline ShBits clamp_sh_bits(ShBits bits) {
+    for (auto& bit_count : bits) {
+        bit_count = std::clamp(bit_count, 1, 8);
+    }
+    return bits;
+}
 struct FileOptions {
     static constexpr double default_color_error = 5.0;
+    static constexpr ShBits default_sh_bits { 5, 4, 4 };
     // Unsupported versions use the target format's default (SPZ 3, SOG 2).
     int32_t version = 0;
     int32_t compress_level = 6;
@@ -81,6 +89,7 @@ struct FileOptions {
     bool high_precision = false;
     bool enable_morton_sort = true;
     double color_error = default_color_error;
+    ShBits sh_bits = default_sh_bits;
 };
 void write_splat(const std::filesystem::path& path, const splat::Splat& data, const FileOptions& options = {});
 

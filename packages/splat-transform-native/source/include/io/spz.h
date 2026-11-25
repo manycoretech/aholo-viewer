@@ -5,8 +5,8 @@
 namespace splat_transform::io {
 class SpzFile final : public IFile {
 public:
-    explicit SpzFile(int32_t version = 3, int32_t compression_level = 6)
-        : version_(version == 4 ? 4 : 3), compression_level_(compression_level) {}
+    explicit SpzFile(int32_t version = 3, int32_t compression_level = 6, ShBits sh_bits = FileOptions::default_sh_bits)
+        : version_(version == 4 ? 4 : 3), compression_level_(compression_level), sh_bits_(clamp_sh_bits(sh_bits)) {}
     std::string_view name() const noexcept override { return "SPZ"; }
     splat::Splat read(const FileInput& input) const override;
     splat::Splat read(const std::filesystem::path& path, uint32_t max_sh_degree) const override;
@@ -16,5 +16,6 @@ public:
 private:
     int32_t version_;
     int32_t compression_level_;
+    ShBits sh_bits_;
 };
 } // namespace splat_transform::io

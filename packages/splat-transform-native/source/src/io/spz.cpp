@@ -153,8 +153,8 @@ splat::Splat SpzFile::read(const std::filesystem::path& path, uint32_t max_sh_de
 namespace {
 class SpzWriter {
 public:
-    SpzWriter(const splat::Splat& data, std::span<const uint32_t> indices, int32_t version, int32_t level)
-        : data_(data), indices_(indices), version_(version), level_(level), strides_ { 9, 1, 3, 3, 4, data.sh_count() } {
+    SpzWriter(const splat::Splat& data, std::span<const uint32_t> indices, int32_t version, int32_t level, const ShBits& sh_bits)
+        : data_(data), indices_(indices), version_(version), level_(level), sh_steps_(codec::sh_quantization_steps(sh_bits)), strides_ { 9, 1, 3, 3, 4, data.sh_count() } {
         if (version != 3 && version != 4) {
             throw std::runtime_error("Unsupported SPZ output version");
         }
@@ -267,9 +267,7 @@ private:
                 }
             } else {
                 for (size_t c = 0; c < data_.sh_count(); ++c) {
-                    const float step = c < 9 ? 8 : 16;
-                    const float quantized = std::floor((std::floor(static_cast<float>(point.attribute(splat::ShOffset + c)) * 128 + 0.5f) + 128 + step / 2) / step) * step;
-                    output[c] = static_cast<std::byte>(std::clamp(quantized, 0.0f, 255.0f));
+                    output[c] = codec::quantize_sh(point.attribute(splat::ShOffset + c), sh_steps_[c / 3]);
                 }
             }
         }
@@ -313,13 +311,14 @@ private:
     const splat::Splat& data_;
     std::span<const uint32_t> indices_;
     int32_t version_, level_;
+    std::array<float, 15> sh_steps_;
     std::array<size_t, 6> strides_;
     std::array<size_t, 7> offsets_ {};
     Bytes header_;
 };
 } // namespace
 Bytes SpzFile::write(const splat::Splat& data, std::span<const uint32_t> indices) const {
-    SpzWriter writer(data, indices, version_, compression_level_);
+    SpzWriter writer(data, indices, version_, compression_level_, sh_bits_);
     Bytes output;
     size_t position = 0;
     writer.write(
@@ -332,7 +331,7 @@ Bytes SpzFile::write(const splat::Splat& data, std::span<const uint32_t> indices
     return output;
 }
 void SpzFile::write(const std::filesystem::path& path, const splat::Splat& data, std::span<const uint32_t> indices) const {
-    SpzWriter writer(data, indices, version_, compression_level_);
+    SpzWriter writer(data, indices, version_, compression_level_, sh_bits_);
     FileStream output(path, FileStream::Access::Write);
     writer.write([&](std::span<const std::byte> bytes) { output.write(bytes); }, [&](size_t offset) { output.seek(offset); });
     output.close();

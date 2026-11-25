@@ -151,6 +151,7 @@ Get-Content -Raw pipeline.json | splat-transform -
 | `paletteSize`      | `number` / `0`      | 省略或传 `0` 时，SOG 按 `colorError` 自动选取 SH 调色板容量。正整数使用固定容量的 Lloyd 聚类，并自动限制到输入点数及版本上限（v2 为 `65536`，v3 为 `262144`）。 |
 | `colorError`       | `number` / `5`      | 自动模式下，加权 e-means 的 SH 颜色均方根误差目标，单位为 8 位色阶。数值越小越严格。非有限数和非正数均使用 `5`。                                                |
 | `highPrecision`    | `boolean` / `false` | 仅用于 ESZ：`false` 为低精度，`true` 为高精度布局。                                                                                                             |
+| `shBits`           | 数组 / `[5, 4, 4]`  | 三个整数依次指定一、二、三阶 SH 的量化位数。SPZ、USPZ 和低精度 ESZ 将每项限制到 1–8 位。高精度 ESZ 每阶固定按 RGB 11/10/11 位写出。                             |
 
 自 `2.1.2` 起，SPZ v3/v4 的默认压缩等级统一为 `6`。`2.1.1` 中，v3 默认 `6`，v4 默认 `7`。需要沿用 `2.1.1` 的 SPZ v4 等级时，显式设置 `compressLevel: 7`。
 

@@ -212,6 +212,8 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             append(segment, codec::encode_oct_quaternion(data.gaussians[index].rotation));
         }
         append_segment(output, segment);
+        const auto& rgb_bits = sh_bits_;
+        const std::array<uint32_t, 3> masks { (1u << rgb_bits[0]) - 1, (1u << rgb_bits[1]) - 1, (1u << rgb_bits[2]) - 1 };
         for (size_t group = 0; group < data.sh_count() / 3; group += 4) {
             segment.clear();
             for (auto index : indices) {
@@ -219,10 +221,11 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
                     uint32_t value = 0;
                     if (group + j < data.sh_count() / 3) {
                         const auto col = splat::ShOffset + (group + j) * 3;
-                        auto quantize = [&](size_t c, uint32_t mask) {
+                        auto quantize = [&](size_t c) {
+                            const auto mask = masks[c];
                             return static_cast<uint32_t>(std::clamp((data.gaussians[index].attribute(col + c) * 0.5f + 0.5f) * mask, 0.0f, static_cast<float>(mask)));
                         };
-                        value = (quantize(0, 2047) << 21) | (quantize(1, 1023) << 11) | quantize(2, 2047);
+                        value = (quantize(0) << (rgb_bits[1] + rgb_bits[2])) | (quantize(1) << rgb_bits[2]) | quantize(2);
                     }
                     append(segment, value);
                 }
@@ -278,15 +281,14 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         colors_time.finish();
         if (data.sh_degree) {
             auto sh_time = logger.time("ESZ encoding shN");
+            const auto steps = codec::sh_quantization_steps(sh_bits_);
             const auto coefficients = data.sh_count() / 3;
             const auto [w, h] = codec::texture_size(data.size() * coefficients);
             pixels.assign(static_cast<size_t>(w) * h * 4, std::byte { 255 });
             for (size_t i = 0; i < indices.size(); ++i) {
                 for (size_t j = 0; j < coefficients; ++j) {
-                    const float step = j < 3 ? 8 : 16;
                     for (size_t c = 0; c < 3; ++c) {
-                        const float value = std::floor((std::floor(static_cast<float>(data.gaussians[indices[i]].attribute(splat::ShOffset + j * 3 + c)) * 128 + 0.5f) + 128 + step / 2) / step) * step;
-                        pixels[(i * coefficients + j) * 4 + c] = static_cast<std::byte>(std::clamp(value, 0.0f, 255.0f));
+                        pixels[(i * coefficients + j) * 4 + c] = codec::quantize_sh(data.gaussians[indices[i]].attribute(splat::ShOffset + j * 3 + c), steps[j]);
                     }
                 }
             }

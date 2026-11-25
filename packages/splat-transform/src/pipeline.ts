@@ -19,6 +19,8 @@ export interface WriteConfig extends Record<string, unknown> {
     version?: number;
     compressLevel?: number;
     highPrecision?: boolean;
+    /** SPZ, USPZ and low-precision ESZ clamp each degree to 1–8 bits. Defaults to [5, 4, 4]. */
+    shBits?: [degree1: number, degree2: number, degree3: number];
     enableMortonSort?: boolean;
     paletteSize?: number;
     colorError?: number;

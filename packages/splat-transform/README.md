@@ -73,6 +73,7 @@ Inputs: PLY, compressed PLY, SPLAT, KSPLAT, SPZ/USPZ, SOG and unpacked SOG metad
 ## Output and LOD options
 
 - `Write.version` selects SOG v2 (default) or v3, or SPZ v3 (default) or v4. Unsupported output versions fall back to the target format's default. USPZ always writes uncompressed v3. SOG reads v1/v2/v3; SH remains limited to degree 3.
+- `Write.shBits` takes three integers for SH degrees 1, 2 and 3. SPZ, USPZ and low-precision ESZ clamp each value to 1–8 bits. The default is `[5, 4, 4]`. High-precision ESZ always packs each SH coefficient at 11/10/11 bits for RGB.
 - `Write.compressLevel` applies only to SPZ. Starting with `2.1.2`, it defaults to `6` for both v3 gzip and v4 zstd. Version `2.1.1` defaults to `6` for v3 and `7` for v4. Set `compressLevel: 7` explicitly to retain the SPZ v4 level used by `2.1.1`.
 - For SOG, omit `Write.paletteSize` or set it to `0` to size the SH palette with visibility-weighted e-means. `Write.colorError` is the target RMS colour error in 8-bit levels. It defaults to `5` when omitted or when its numeric value is nonpositive or nonfinite. A positive `paletteSize` selects fixed-size Lloyd clustering and takes precedence over `colorError`. The writer clamps the count to the input size and the format limit (`65536` for v2, `262144` for v3).
 - SOG v3 stores exp-map rotations in the RGB channels of a separate `quats.webp` texture and uses square-root opacity encoding up to `1.5625`. SOG v2 clamps opacity to 1. Optional blind data, extras, and comments are not retained.

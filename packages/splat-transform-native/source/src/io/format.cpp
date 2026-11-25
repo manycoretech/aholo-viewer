@@ -25,15 +25,15 @@ std::unique_ptr<IFile> make_file(const FileOptions&) {
 const std::array FORMATS {
     Format { ".ply", true, make_file<PlyFile> },
     Format { ".spz", true, [](const FileOptions& options) -> std::unique_ptr<IFile> {
-                return std::make_unique<SpzFile>(options.version, options.compress_level);
+                return std::make_unique<SpzFile>(options.version, options.compress_level, options.sh_bits);
             } },
-    Format { ".uspz", true, [](const FileOptions&) -> std::unique_ptr<IFile> { return std::make_unique<SpzFile>(3, -1); } },
+    Format { ".uspz", true, [](const FileOptions& options) -> std::unique_ptr<IFile> { return std::make_unique<SpzFile>(3, -1, options.sh_bits); } },
     Format { ".splat", true, make_file<SplatFile> },
     Format { ".sog", true, [](const FileOptions& options) -> std::unique_ptr<IFile> {
                 return std::make_unique<SogFile>(options.version, options.palette_size, options.color_error);
             } },
     Format { ".json", false, make_file<SogFile> },
-    Format { ".esz", true, [](const FileOptions& options) -> std::unique_ptr<IFile> { return std::make_unique<EszFile>(options.high_precision); } },
+    Format { ".esz", true, [](const FileOptions& options) -> std::unique_ptr<IFile> { return std::make_unique<EszFile>(options.high_precision, options.sh_bits); } },
     Format { ".ksplat", false, make_file<KsplatFile> },
     Format { ".lcc", false, make_file<LccFile> },
     Format { ".lcc2", false, make_file<Lcc2File> },
