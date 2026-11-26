@@ -2,7 +2,7 @@
   "name": "@manycore/aholo",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@12.22.0",
+  "packageManager": "pnpm@12.23.0",
   "type": "module",
   "engines": {
     "node": ">=22.22.2"
@@ -39,9 +39,9 @@
     "@manycore/aholo-splat-dev-server": "workspace:*",
     "@manycore/aholo-splat-transform": "workspace:*",
     "husky": "^9.1.7",
-    "lint-staged": "^17.6.1",
-    "oxfmt": "^0.79.0",
-    "oxlint": "^1.94.0",
+    "lint-staged": "^17.6.2",
+    "oxfmt": "^0.80.0",
+    "oxlint": "^1.95.0",
     "semver": "7.8.6",
     "typedoc": "^0.28.20",
     "typescript": "catalog:"
