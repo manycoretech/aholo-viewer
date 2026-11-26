@@ -10,33 +10,33 @@
 namespace splat_transform::voxel {
 Grid::Grid(Eigen::Vector3i dimensions) : size(dimensions) {
     for (size_t axis = 0; axis < 3; ++axis) {
-        if (size[axis] <= 0 || size[axis] % 4) {
+        if (this->size[axis] <= 0 || this->size[axis] % 4) {
             throw std::runtime_error("Voxel grid dimensions must be positive multiples of four");
         }
-        blocks[axis] = size[axis] / 4;
+        this->blocks[axis] = this->size[axis] / 4;
     }
-    if (block_count() > 0x7fffffff) {
+    if (this->block_count() > 0x7fffffff) {
         throw std::runtime_error("Voxel grid exceeds the 31-bit block limit");
     }
-    masks = Storage(blocks);
+    this->masks = Storage(this->blocks);
 }
-uint32_t Grid::block_index(Eigen::Vector3i p) const { return p[0] + p[1] * blocks[0] + static_cast<uint64_t>(p[2]) * blocks[0] * blocks[1]; }
+uint32_t Grid::block_index(Eigen::Vector3i p) const { return p[0] + p[1] * this->blocks[0] + static_cast<uint64_t>(p[2]) * this->blocks[0] * this->blocks[1]; }
 Eigen::Vector3i Grid::block_point(uint32_t index) const {
-    return { static_cast<int32_t>(index % blocks[0]),
-        static_cast<int32_t>((index / blocks[0]) % blocks[1]),
-        static_cast<int32_t>(index / (static_cast<uint64_t>(blocks[0]) * blocks[1])) };
+    return { static_cast<int32_t>(index % this->blocks[0]),
+        static_cast<int32_t>((index / this->blocks[0]) % this->blocks[1]),
+        static_cast<int32_t>(index / (static_cast<uint64_t>(this->blocks[0]) * this->blocks[1])) };
 }
-uint64_t Grid::block_count() const { return static_cast<uint64_t>(blocks[0]) * blocks[1] * blocks[2]; }
-uint64_t Grid::mask(uint32_t index) const { return masks.get(block_point(index)); }
-void Grid::set_mask(uint32_t index, uint64_t value) { masks.set(block_point(index), value); }
+uint64_t Grid::block_count() const { return static_cast<uint64_t>(this->blocks[0]) * this->blocks[1] * this->blocks[2]; }
+uint64_t Grid::mask(uint32_t index) const { return this->masks.get(this->block_point(index)); }
+void Grid::set_mask(uint32_t index, uint64_t value) { this->masks.set(this->block_point(index), value); }
 void Grid::or_mask(Eigen::Vector3i block, uint64_t value) {
     if (value) {
-        masks.set(block, masks.get(block) | value);
+        this->masks.set(block, this->masks.get(block) | value);
     }
 }
 void Grid::set(Eigen::Vector3i p) {
-    if (contains(p)) {
-        or_mask(p / 4, uint64_t { 1 } << ((p.x() & 3) + 4 * (p.y() & 3) + 16 * (p.z() & 3)));
+    if (this->contains(p)) {
+        this->or_mask(p / 4, uint64_t { 1 } << ((p.x() & 3) + 4 * (p.y() & 3) + 16 * (p.z() & 3)));
     }
 }
 Grid Grid::inverted() const {
@@ -46,10 +46,10 @@ Grid Grid::inverted() const {
 }
 Grid Grid::crop(Eigen::Vector3i minimum, Eigen::Vector3i maximum, bool invert) const {
     Grid output((maximum - minimum) * 4);
-    if (invert != (masks.background() != 0)) {
+    if (invert != (this->masks.background() != 0)) {
         output.masks.invert();
     }
-    masks.for_each_block(masks.background(), [&](Eigen::Vector3i p, uint64_t bits) {
+    this->masks.for_each_block(this->masks.background(), [&](Eigen::Vector3i p, uint64_t bits) {
         if ((p.array() >= minimum.array()).all() && (p.array() < maximum.array()).all()) {
             output.masks.set(p - minimum, invert ? ~bits : bits);
         }
@@ -57,8 +57,8 @@ Grid Grid::crop(Eigen::Vector3i minimum, Eigen::Vector3i maximum, bool invert) c
     return output;
 }
 std::optional<std::array<Eigen::Vector3i, 2>> Grid::extent(bool navigable) const {
-    Eigen::Vector3i minimum = blocks, maximum { -1, -1, -1 };
-    masks.for_each_block(navigable ? FULL_BLOCK : 0, [&](Eigen::Vector3i p, uint64_t) {
+    Eigen::Vector3i minimum = this->blocks, maximum { -1, -1, -1 };
+    this->masks.for_each_block(navigable ? FULL_BLOCK : 0, [&](Eigen::Vector3i p, uint64_t) {
         minimum = minimum.cwiseMin(p);
         maximum = maximum.cwiseMax(p);
     });
@@ -67,11 +67,11 @@ std::optional<std::array<Eigen::Vector3i, 2>> Grid::extent(bool navigable) const
     }
     return std::array<Eigen::Vector3i, 2> { minimum, maximum };
 }
-uint64_t Grid::voxel_count() const { return masks.voxel_count(); }
+uint64_t Grid::voxel_count() const { return this->masks.voxel_count(); }
 std::vector<uint32_t> Grid::active_blocks() const {
     std::vector<uint32_t> output;
-    output.reserve(masks.occupied_blocks());
-    masks.for_each_block(0, [&](Eigen::Vector3i p, uint64_t) { output.push_back(block_index(p)); });
+    output.reserve(this->masks.occupied_blocks());
+    this->masks.for_each_block(0, [&](Eigen::Vector3i p, uint64_t) { output.push_back(this->block_index(p)); });
     std::sort(output.begin(), output.end());
     return output;
 }

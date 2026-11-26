@@ -16,12 +16,12 @@ ShCoefficients::ShCoefficients() noexcept = default;
 
 ShCoefficients::ShCoefficients(size_t size) : size_(size) {
     if (size > 3) {
-        storage_.emplace<Heap>(std::make_unique<float[]>(size));
+        this->storage_.emplace<Heap>(std::make_unique<float[]>(size));
     }
 }
 
 ShCoefficients::ShCoefficients(const ShCoefficients& other) : ShCoefficients(other.size_) {
-    std::copy_n(other.data(), size_, data());
+    std::copy_n(other.data(), this->size_, this->data());
 }
 
 ShCoefficients::ShCoefficients(ShCoefficients&& other) noexcept : size_(std::exchange(other.size_, 0)), storage_(std::move(other.storage_)) {
@@ -31,44 +31,44 @@ ShCoefficients::ShCoefficients(ShCoefficients&& other) noexcept : size_(std::exc
 ShCoefficients& ShCoefficients::operator=(const ShCoefficients& other) {
     if (this != &other) {
         ShCoefficients copy(other);
-        swap(copy);
+        this->swap(copy);
     }
     return *this;
 }
 
 ShCoefficients& ShCoefficients::operator=(ShCoefficients&& other) noexcept {
     if (this != &other) {
-        size_ = std::exchange(other.size_, 0);
-        storage_ = std::move(other.storage_);
+        this->size_ = std::exchange(other.size_, 0);
+        this->storage_ = std::move(other.storage_);
         other.storage_.emplace<Inline>();
     }
     return *this;
 }
 
 void ShCoefficients::swap(ShCoefficients& other) noexcept {
-    std::swap(size_, other.size_);
-    storage_.swap(other.storage_);
+    std::swap(this->size_, other.size_);
+    this->storage_.swap(other.storage_);
 }
 
 void ShCoefficients::resize(size_t size) {
-    if (size == size_) {
+    if (size == this->size_) {
         return;
     }
     ShCoefficients replacement(size);
-    std::copy_n(data(), std::min(size_, size), replacement.data());
-    swap(replacement);
+    std::copy_n(this->data(), std::min(this->size_, size), replacement.data());
+    this->swap(replacement);
 }
 
 ShCoefficients& ShCoefficients::set_zero() noexcept {
-    std::fill_n(data(), size_, 0.0f);
+    std::fill_n(this->data(), this->size_, 0.0f);
     return *this;
 }
 
 ShCoefficients& ShCoefficients::add_multiplied(const ShCoefficients& other, float scalar) noexcept {
-    assert(other.size_ == size_);
-    auto* values = data();
+    assert(other.size_ == this->size_);
+    auto* values = this->data();
     const auto* input = other.data();
-    for (size_t i = 0; i < size_; ++i) {
+    for (size_t i = 0; i < this->size_; ++i) {
         values[i] += input[i] * scalar;
     }
     return *this;
@@ -166,30 +166,30 @@ Splat::Splat(size_t count, uint32_t degree) : sh_degree(degree) {
     if (degree > 3 || count > std::numeric_limits<uint32_t>::max()) {
         throw std::runtime_error("Unsupported splat size or SH degree");
     }
-    gaussians.resize(count);
-    for (auto& gaussian : gaussians) {
-        gaussian.sh = ShCoefficients(sh_count() + 3);
+    this->gaussians.resize(count);
+    for (auto& gaussian : this->gaussians) {
+        gaussian.sh = ShCoefficients(this->sh_count() + 3);
     }
 }
 
 void Splat::limit_sh_degree(uint32_t maximum) {
-    const auto degree = std::min(sh_degree, std::min(maximum, 3u));
-    if (degree == sh_degree) {
+    const auto degree = std::min(this->sh_degree, std::min(maximum, 3u));
+    if (degree == this->sh_degree) {
         return;
     }
-    for (auto& gaussian : gaussians) {
+    for (auto& gaussian : this->gaussians) {
         gaussian.sh.resize(SH_COUNTS[degree] + 3);
     }
-    sh_degree = degree;
+    this->sh_degree = degree;
 }
 
 Splat Splat::select(std::span<const uint32_t> indices) const& {
     Splat output;
-    output.sh_degree = sh_degree;
+    output.sh_degree = this->sh_degree;
     output.gaussians.resize(indices.size());
     threading::parallel_chunks(indices.size(), 4096, [&](size_t begin, size_t end) {
         for (auto i = begin; i < end; ++i) {
-            output.gaussians[i] = gaussians.at(indices[i]);
+            output.gaussians[i] = this->gaussians.at(indices[i]);
         }
     });
     return output;
@@ -199,23 +199,23 @@ Splat Splat::select(std::span<const uint32_t> indices) && {
     if (std::adjacent_find(indices.begin(), indices.end(), std::greater_equal<uint32_t>()) != indices.end()) {
         return std::as_const(*this).select(indices);
     }
-    if (!indices.empty() && indices.back() >= size()) {
+    if (!indices.empty() && indices.back() >= this->size()) {
         throw std::out_of_range("Splat selection index out of range");
     }
     for (size_t i = 0; i < indices.size(); ++i) {
         if (i != indices[i]) {
-            gaussians[i] = std::move(gaussians[indices[i]]);
+            this->gaussians[i] = std::move(this->gaussians[indices[i]]);
         }
     }
-    gaussians.resize(indices.size());
-    block_offsets.clear();
-    block_counts.clear();
-    bounding_box = Eigen::AlignedBox3f();
+    this->gaussians.resize(indices.size());
+    this->block_offsets.clear();
+    this->block_counts.clear();
+    this->bounding_box = Eigen::AlignedBox3f();
     return std::move(*this);
 }
 
 void Splat::prepare_lod() {
-    for (auto& gaussian : gaussians) {
+    for (auto& gaussian : this->gaussians) {
         gaussian.make_valid();
     }
     this->compute_bounding_box();

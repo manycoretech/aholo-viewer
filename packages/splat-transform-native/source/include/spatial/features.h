@@ -8,19 +8,19 @@ namespace splat_transform::spatial {
 class FeatureView {
 public:
     explicit FeatureView(const splat::Splat& points) : gaussians_(points.gaussians), dimensions_(points.sh_count()) {
-        const auto coefficients = dimensions_ / 3;
+        const auto coefficients = this->dimensions_ / 3;
         for (size_t c = 0; c < 3; ++c) {
             for (size_t j = 0; j < coefficients; ++j) {
-                attributes_[c * coefficients + j] = static_cast<uint8_t>(3 + j * 3 + c);
+                this->attributes_[c * coefficients + j] = static_cast<uint8_t>(3 + j * 3 + c);
             }
         }
     }
     FeatureView(splat::Splat&&) = delete;
     FeatureView(const splat::Splat&&) = delete;
-    size_t rows() const noexcept { return gaussians_.size(); }
-    size_t dimensions() const noexcept { return dimensions_; }
+    size_t rows() const noexcept { return this->gaussians_.size(); }
+    size_t dimensions() const noexcept { return this->dimensions_; }
     const float& operator()(size_t row, size_t feature) const {
-        return gaussians_[row].sh[attributes_[feature]];
+        return this->gaussians_[row].sh[this->attributes_[feature]];
     }
 
 private:

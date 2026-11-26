@@ -10,13 +10,13 @@ public:
         if (!stride) {
             throw std::invalid_argument("Attribute stride must be positive");
         }
-        size_ = values.empty() ? 0 : 1 + (values.size() - 1) / stride;
+        this->size_ = values.empty() ? 0 : 1 + (values.size() - 1) / stride;
     }
     AttributeView(const Splat& splat, size_t attribute) : gaussians_(splat.gaussians), size_(splat.size()), attribute_(attribute) {}
     AttributeView(Splat&&, size_t) = delete;
-    size_t size() const noexcept { return size_; }
+    size_t size() const noexcept { return this->size_; }
     const float& operator[](size_t index) const {
-        return gaussians_.empty() ? values_[index * stride_] : gaussians_[index].attribute(attribute_);
+        return this->gaussians_.empty() ? this->values_[index * this->stride_] : this->gaussians_[index].attribute(this->attribute_);
     }
 
 private:

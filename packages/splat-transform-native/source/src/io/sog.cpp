@@ -127,7 +127,7 @@ splat::Splat SogFile::read(const FileInput& source) const {
 }
 Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices) const {
     std::byte maximum_opacity {};
-    if (version_ == 3) {
+    if (this->version_ == 3) {
         for (const auto index : indices) {
             maximum_opacity = std::max(maximum_opacity, codec::encode_sog_opacity(data.gaussians.at(index).opacity));
         }
@@ -165,7 +165,7 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         auto elapsed = utility::logger().time("SOG encoding quaternions");
         Bytes pixels(image_size);
         for (size_t i = 0; i < indices.size(); ++i) {
-            if (version_ == 3) {
+            if (this->version_ == 3) {
                 const auto q = codec::encode_exp_quaternion(data.gaussians[indices[i]].rotation);
                 std::ranges::copy(q, pixels.begin() + i * 4);
                 pixels[i * 4 + 3] = std::byte { 255 };
@@ -196,7 +196,7 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
                     pixels[i * 4 + 3] = std::byte { 255 };
                 } else {
                     const float opacity = data.gaussians[indices[i]].opacity;
-                    pixels[i * 4 + 3] = version_ == 3 ? codec::encode_sog_opacity(opacity) : static_cast<std::byte>(std::clamp(opacity * 255, 0.0f, 255.0f));
+                    pixels[i * 4 + 3] = this->version_ == 3 ? codec::encode_sog_opacity(opacity) : static_cast<std::byte>(std::clamp(opacity * 255, 0.0f, 255.0f));
                 }
             }
             const std::string name = group == 0 ? "scales" : "sh0";
@@ -215,10 +215,10 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
     };
     Archive files;
     // Preserve ordered_json's legacy key order while merging worker results.
-    Json meta { { "version", version_ }, { "count", indices.size() }, { "means", Json::object() }, { "scales", Json::object() } };
+    Json meta { { "version", this->version_ }, { "count", indices.size() }, { "means", Json::object() }, { "scales", Json::object() } };
     meta["quats"] = { { "files", { "quats.webp" } } };
     meta["sh0"] = Json::object();
-    if (version_ == 3 && codec::decode_sog_opacity(maximum_opacity) > 1) {
+    if (this->version_ == 3 && codec::decode_sog_opacity(maximum_opacity) > 1) {
         meta["opacity"] = { { "max", codec::decode_sog_opacity(maximum_opacity) } };
     }
     const auto attribute_textures = textures.size();
@@ -230,8 +230,8 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         // Coordinate Vulkan work on the caller while CPU texture jobs use the
         // shared pool; no extra coordinator thread or per-SOG pool is needed.
         auto clustering_time = logger.time("SOG " + sh_name + " clustering");
-        auto clustering = palette_size_ ? spatial::k_means(spatial::FeatureView(data), std::min(palette_size_, data.size()))
-                                        : spatial::cluster_sh_to_color_error(data, palette_limit(version_), color_error_);
+        auto clustering = this->palette_size_ ? spatial::k_means(spatial::FeatureView(data), std::min(this->palette_size_, data.size()))
+                                              : spatial::cluster_sh_to_color_error(data, palette_limit(this->version_), this->color_error_);
         clustering_time.finish();
         auto quantized = spatial::quantize_1d(clustering.centroids);
         const size_t centroid_count = static_cast<size_t>(clustering.centroids.rows());
@@ -251,7 +251,7 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             const auto label = clustering.labels[indices[i]];
             pixels[i * 4] = static_cast<std::byte>(label & 255);
             pixels[i * 4 + 1] = static_cast<std::byte>((label >> 8) & 255);
-            pixels[i * 4 + 2] = version_ == 3 ? static_cast<std::byte>((label >> 16) & 255) : std::byte { 0 };
+            pixels[i * 4 + 2] = this->version_ == 3 ? static_cast<std::byte>((label >> 16) & 255) : std::byte { 0 };
         }
         encode_image("shN_labels.webp", std::move(pixels), width, height);
         meta["shN"] = { { "count", centroid_count }, { "bands", data.sh_degree }, { "codebook", quantized.centroids }, { "files", { "shN_centroids.webp", "shN_labels.webp" } } };

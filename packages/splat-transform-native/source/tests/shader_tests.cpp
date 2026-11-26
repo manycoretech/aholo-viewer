@@ -51,26 +51,26 @@ struct Module {
     std::unordered_map<uint32_t, uint32_t> constants;
 
     explicit Module(std::span<const std::byte> bytes) : words(bytes.size() / 4) {
-        require(bytes.size() % 4 == 0 && words.size() >= 5, "Invalid SPIR-V size");
-        std::memcpy(words.data(), bytes.data(), bytes.size());
-        require(words[0] == 0x07230203 && words[1] == 0x00010500, "Expected Vulkan 1.2 / SPIR-V 1.5");
-        for (size_t offset = 5; offset < words.size();) {
-            const size_t count = words[offset] >> 16;
-            require(count != 0 && count <= words.size() - offset, "Invalid SPIR-V instruction");
-            const auto instruction = Words(words).subspan(offset, count);
+        require(bytes.size() % 4 == 0 && this->words.size() >= 5, "Invalid SPIR-V size");
+        std::memcpy(this->words.data(), bytes.data(), bytes.size());
+        require(this->words[0] == 0x07230203 && this->words[1] == 0x00010500, "Expected Vulkan 1.2 / SPIR-V 1.5");
+        for (size_t offset = 5; offset < this->words.size();) {
+            const size_t count = this->words[offset] >> 16;
+            require(count != 0 && count <= this->words.size() - offset, "Invalid SPIR-V instruction");
+            const auto instruction = Words(this->words).subspan(offset, count);
             const auto opcode = static_cast<uint16_t>(instruction[0]);
-            instructions.push_back(instruction);
+            this->instructions.push_back(instruction);
             if (opcode >= TypeInt && opcode <= TypePointer) {
-                types.emplace(instruction[1], instruction);
+                this->types.emplace(instruction[1], instruction);
             }
             if (opcode == Constant && count == 4) {
-                constants.emplace(instruction[2], instruction[3]);
+                this->constants.emplace(instruction[2], instruction[3]);
             }
             offset += count;
         }
     }
     uint32_t decoration(uint32_t id, uint32_t kind) const {
-        for (const auto instruction : instructions) {
+        for (const auto instruction : this->instructions) {
             if (static_cast<uint16_t>(instruction[0]) == Decorate && instruction[1] == id && instruction[2] == kind) {
                 return instruction[3];
             }
@@ -78,20 +78,20 @@ struct Module {
         throw std::runtime_error("Missing SPIR-V decoration");
     }
     uint32_t size(uint32_t id) const {
-        const auto type = types.at(id);
+        const auto type = this->types.at(id);
         switch (static_cast<uint16_t>(type[0])) {
         case TypeInt:
         case TypeFloat:
             require(type[2] == 32, "Shader ABI requires 32-bit scalars");
             return 4;
         case TypeVector:
-            return size(type[2]) * type[3];
+            return this->size(type[2]) * type[3];
         case TypeArray:
-            return size(type[2]) * constants.at(type[3]);
+            return this->size(type[2]) * this->constants.at(type[3]);
         case TypeStruct: {
             uint32_t bytes = 0;
             for (auto member : type.subspan(2)) {
-                bytes += size(member);
+                bytes += this->size(member);
             }
             return bytes;
         }
@@ -100,16 +100,16 @@ struct Module {
         }
     }
     void scalar_offsets(uint32_t id) const {
-        const auto type = types.at(id);
+        const auto type = this->types.at(id);
         require(static_cast<uint16_t>(type[0]) == TypeStruct, "Expected an ABI struct");
         size_t offsets = 0;
-        for (const auto instruction : instructions) {
+        for (const auto instruction : this->instructions) {
             if (static_cast<uint16_t>(instruction[0]) != MemberDecorate || instruction[1] != id || instruction[3] != 35) {
                 continue;
             }
             const auto member = instruction[2];
             require(member < type.size() - 2 && instruction[4] == member * 4, "CPU/shader member offset mismatch");
-            require(size(type[member + 2]) == 4, "CPU/shader member width mismatch");
+            require(this->size(type[member + 2]) == 4, "CPU/shader member width mismatch");
             ++offsets;
         }
         require(offsets == type.size() - 2, "Missing ABI member offsets");

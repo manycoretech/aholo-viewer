@@ -201,7 +201,7 @@ CPU candidate generation counts and scatters into one shared packed index buffer
 - include/voxel and src/voxel: CPU/GPU voxel generation, navigation topology, sparse octrees, and collision meshes.
 - include/utility and src/utility: shared thread pool and logger.
 
-Namespaces use splat_transform with module namespaces; types use PascalCase, functions and variables use snake_case, constants use UPPER_SNAKE_CASE, and private fields use a trailing underscore. Formatting follows .clang-format. The check-format CMake target is available when clang-format is installed; .clang-tidy provides naming checks.
+Namespaces use splat_transform with module namespaces; types use PascalCase, functions and variables use snake_case, constants use UPPER_SNAKE_CASE, and private fields use a trailing underscore. Use `this->` for the current object's non-static data members and member function calls. Formatting follows .clang-format. The check-format CMake target is available when clang-format is installed; .clang-tidy provides naming checks.
 
 IFile defines reading and writing against Splat. Each format owns its decoding, encoding, and format options; the registry handles extensions and aliases. ZIP metadata selects a registered reader, and LCC2 child resources use the same interface. Read.maxShDegree limits SH allocation during decoding while preserving the source format's record layout. Unsupported writes fail through the format contract.
 

@@ -35,7 +35,7 @@ std::vector<uint32_t> VoxelSession::voxelize(std::span<const Gaussian> gaussians
         uint32_t first_block;
     };
     static_assert(sizeof(Parameters) == 20);
-    auto& work = impl_->work;
+    auto& work = this->impl_->work;
     const auto& device = work.device();
     const size_t storage = device.limits().storage_buffer_bytes;
     const size_t words = batches.size() * max_blocks * 2;
@@ -167,7 +167,7 @@ CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std:
         uint32_t bin_count;
         uint32_t first_point;
     };
-    auto& work = impl_->work;
+    auto& work = this->impl_->work;
     const auto& device = work.device();
     const size_t point_limit = std::min(device.limits().storage_buffer_bytes / sizeof(Gaussian), device.linear_item_limit(128));
     const size_t index_limit = device.limits().storage_buffer_bytes / sizeof(uint32_t);
@@ -309,7 +309,7 @@ std::vector<uint32_t> VoxelSession::dilate_blocks(std::span<const uint32_t> bloc
     }
     const uint64_t cells = plane * dimensions[2], block_count = cells / 64;
     const size_t dense_bytes = static_cast<size_t>((cells + 31) / 32) * 4;
-    auto& work = impl_->work;
+    auto& work = this->impl_->work;
     const auto& device = work.device();
     for (size_t axis = 0; axis < 3; ++axis) {
         radii[axis] = std::min(radii[axis], dimensions[axis] - 1);

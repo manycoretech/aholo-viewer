@@ -108,20 +108,20 @@ struct Trainer {
     EmeansGpu& session;
 
     Centers seed(size_t count) const {
-        Centers centers(count, points.dimensions());
-        const size_t start = std::uniform_int_distribution<size_t>(0, order.size() - 1)(utility::default_random());
+        Centers centers(count, this->points.dimensions());
+        const size_t start = std::uniform_int_distribution<size_t>(0, this->order.size() - 1)(utility::default_random());
         for (size_t entry = 0; entry < count; ++entry) {
-            copy_point(points, order[(start + entry) % order.size()], centers, entry);
+            copy_point(this->points, this->order[(start + entry) % this->order.size()], centers, entry);
         }
         return centers;
     }
 
     Clustering train(const Centers& centers, size_t epochs) const {
-        const size_t count = static_cast<size_t>(centers.rows()), rows = points.rows();
-        const size_t batch = batch_size(rows, count, points.dimensions(), epochs);
+        const size_t count = static_cast<size_t>(centers.rows()), rows = this->points.rows();
+        const size_t batch = batch_size(rows, count, this->points.dimensions(), epochs);
         const size_t steps = epochs * ((rows + batch - 1) / batch);
         const double initial = std::clamp(0.8244 * std::pow(count, -0.4617) * std::pow(batch, 0.9003) * std::pow(rows, -0.4498) * std::pow(epochs, -0.1057), 1e-4, 1.0);
-        session.begin(centers);
+        this->session.begin(centers);
         std::vector<float> usage(count);
         size_t step = 0;
         for (size_t epoch = 0; epoch < epochs; ++epoch) {
@@ -131,13 +131,13 @@ struct Trainer {
                 const size_t length = std::min(batch, rows - begin);
                 const size_t first = (start + begin) % rows;
                 const float alpha = static_cast<float>(initial * (0.55 + 0.45 * std::cos(std::numbers::pi * step / steps)));
-                session.batch(first, length, alpha, closing);
+                this->session.batch(first, length, alpha, closing);
                 if (++step % 5 == 0) {
-                    session.revive(usage, choose_splits);
+                    this->session.revive(usage, choose_splits);
                 }
             }
         }
-        return session.finish();
+        return this->session.finish();
     }
 
     Centers grow(Clustering&& previous, size_t next) const {
@@ -145,13 +145,13 @@ struct Trainer {
         const size_t count = static_cast<size_t>(centers.rows());
         std::vector<double> errors(count), keys(count, -std::numeric_limits<double>::infinity());
         std::vector<size_t> samples(count), entries(count);
-        for (size_t row = 0; row < points.rows(); ++row) {
+        for (size_t row = 0; row < this->points.rows(); ++row) {
             const auto entry = previous.labels[row];
-            const auto weight = weights[row];
+            const auto weight = this->weights[row];
             if (weight <= 0) {
                 continue;
             }
-            errors[entry] += weight * squared_error(points, row, centers.row(entry).data());
+            errors[entry] += weight * squared_error(this->points, row, centers.row(entry).data());
             const double key = std::log(random_unit()) / weight;
             if (key > keys[entry]) {
                 samples[entry] = row;
@@ -161,11 +161,11 @@ struct Trainer {
         std::iota(entries.begin(), entries.end(), 0);
         std::ranges::sort(entries, std::greater {}, [&](size_t entry) { return errors[entry]; });
         centers.conservativeResize(next, Eigen::NoChange);
-        std::uniform_int_distribution<size_t> random_row(0, points.rows() - 1);
+        std::uniform_int_distribution<size_t> random_row(0, this->points.rows() - 1);
         for (size_t entry = count; entry < next; ++entry) {
             const size_t rank = entry - count;
             const size_t row = rank < count && errors[entries[rank]] > 0 ? samples[entries[rank]] : random_row(utility::default_random());
-            copy_point(points, row, centers, entry);
+            copy_point(this->points, row, centers, entry);
         }
         return centers;
     }

@@ -35,8 +35,8 @@ void dispatch(gpu::CommandList& commands, const gpu::ComputePipeline& pipeline, 
 
 struct EmeansGpu::Impl {
     gpu::ComputeDevice device;
-    gpu::Queue& queue = device.default_queue();
-    gpu::Fence fence = device.create_fence();
+    gpu::Queue& queue = this->device.default_queue();
+    gpu::Fence fence = this->device.create_fence();
     std::span<const uint32_t> order;
     size_t columns, stride, capacity, chunk_rows;
     uint32_t active = 0;
@@ -49,165 +49,164 @@ struct EmeansGpu::Impl {
         uint32_t rows;
     };
     std::vector<Chunk> chunks;
-    gpu::CommandList commands = device.create_commands();
+    gpu::CommandList commands = this->device.create_commands();
 
     Impl(FeatureView points, std::span<const float> weights, std::span<const uint32_t> permutation, size_t max_count, size_t requested_chunk)
-        : order(permutation), columns(points.dimensions()), stride((columns + 3) / 4 * 4), capacity(max_count) {
-        if (!capacity || capacity > 262144 || !columns || !points.rows() || order.size() != points.rows() || weights.size() != order.size() || !requested_chunk ||
-            std::ranges::any_of(order, [&](auto row) { return row >= points.rows(); })) {
+        : order(permutation), columns(points.dimensions()), stride((this->columns + 3) / 4 * 4), capacity(max_count), chunk_rows(std::min(points.rows(), requested_chunk)) {
+        if (!this->capacity || this->capacity > 262144 || !this->columns || !this->chunk_rows || this->order.size() != points.rows() || weights.size() != this->order.size()) {
             throw std::invalid_argument("Invalid e-means GPU input");
         }
-        const size_t row_bytes = (stride + 1) * sizeof(float);
-        const auto& limits = device.limits();
-        chunk_rows = std::min({ order.size(), requested_chunk, limits.storage_buffer_bytes / row_bytes, static_cast<size_t>(limits.workgroup_count[0]) * 128 });
-        if (!chunk_rows || capacity > limits.storage_buffer_bytes / row_bytes || order.size() > limits.storage_buffer_bytes / sizeof(uint32_t)) {
+        const size_t row_bytes = (this->stride + 1) * sizeof(float);
+        const auto& limits = this->device.limits();
+        this->chunk_rows = std::min({ this->chunk_rows, limits.storage_buffer_bytes / row_bytes, static_cast<size_t>(limits.workgroup_count[0]) * 128 });
+        if (!this->chunk_rows || this->capacity > limits.storage_buffer_bytes / row_bytes || this->order.size() > limits.storage_buffer_bytes / sizeof(uint32_t)) {
             throw gpu::AllocationFailure("e-means buffers exceed the storage binding limit");
         }
-        auto storage = [&](size_t bytes) { return device.create_buffer(bytes, Device, true); };
-        labels = storage(order.size_bytes());
-        centers = storage(capacity * stride * sizeof(float));
-        state = storage(2 * capacity * sizeof(float));
-        sums = storage(capacity * row_bytes);
-        closing = storage(sums.size());
-        bins = storage((2 * capacity + 1) * sizeof(uint32_t));
-        members = storage(chunk_rows * sizeof(uint32_t));
-        pairs = storage(std::max<size_t>(1, capacity / 2) * sizeof(Split));
-        upload = device.create_buffer(centers.size(), Upload);
-        readback = device.create_buffer(centers.size() + labels.size(), Readback);
-        assignment = device.create_pipeline({ "emeans-assign", shaders::emeans_assign, { Read, Read, Read, ReadWrite }, 16,
-            { { 0, static_cast<uint32_t>(stride / 4) } } });
-        binning = device.create_pipeline({ "emeans-bin", shaders::emeans_bin, { Read, ReadWrite, ReadWrite }, 12 });
-        offsets = device.create_pipeline({ "emeans-offsets", shaders::emeans_offsets, { ReadWrite }, 4 });
-        reduce = device.create_pipeline({ "emeans-reduce", shaders::emeans_reduce, { Read, Read, Read, ReadWrite }, 20 });
-        update = device.create_pipeline({ "emeans-update", shaders::emeans_update, { Read, ReadWrite, ReadWrite, ReadWrite }, 16 });
-        splitting = device.create_pipeline({ "emeans-split", shaders::emeans_split, { Read, ReadWrite, ReadWrite }, 12 });
-        bin_table = table(device, binning, labels, bins, members);
-        offset_table = table(device, offsets, bins);
-        update_table = table(device, update, sums, closing, centers, state);
-        split_table = table(device, splitting, pairs, centers, state);
-        auto staging = device.create_buffer(chunk_rows * row_bytes, Upload);
-        commands.begin();
-        for (size_t first = 0; first < order.size(); first += chunk_rows) {
-            const auto count = std::min(chunk_rows, order.size() - first);
-            auto& chunk = chunks.emplace_back();
+        auto storage = [&](size_t bytes) { return this->device.create_buffer(bytes, Device, true); };
+        this->labels = storage(this->order.size_bytes());
+        this->centers = storage(this->capacity * this->stride * sizeof(float));
+        this->state = storage(2 * this->capacity * sizeof(float));
+        this->sums = storage(this->capacity * row_bytes);
+        this->closing = storage(this->sums.size());
+        this->bins = storage((2 * this->capacity + 1) * sizeof(uint32_t));
+        this->members = storage(this->chunk_rows * sizeof(uint32_t));
+        this->pairs = storage(std::max<size_t>(1, this->capacity / 2) * sizeof(Split));
+        this->upload = this->device.create_buffer(this->centers.size(), Upload);
+        this->readback = this->device.create_buffer(this->centers.size() + this->labels.size(), Readback);
+        this->assignment = this->device.create_pipeline({ "emeans-assign", shaders::emeans_assign, { Read, Read, Read, ReadWrite }, 16,
+            { { 0, static_cast<uint32_t>(this->stride / 4) } } });
+        this->binning = this->device.create_pipeline({ "emeans-bin", shaders::emeans_bin, { Read, ReadWrite, ReadWrite }, 12 });
+        this->offsets = this->device.create_pipeline({ "emeans-offsets", shaders::emeans_offsets, { ReadWrite }, 4 });
+        this->reduce = this->device.create_pipeline({ "emeans-reduce", shaders::emeans_reduce, { Read, Read, Read, ReadWrite }, 20 });
+        this->update = this->device.create_pipeline({ "emeans-update", shaders::emeans_update, { Read, ReadWrite, ReadWrite, ReadWrite }, 16 });
+        this->splitting = this->device.create_pipeline({ "emeans-split", shaders::emeans_split, { Read, ReadWrite, ReadWrite }, 12 });
+        this->bin_table = table(this->device, this->binning, this->labels, this->bins, this->members);
+        this->offset_table = table(this->device, this->offsets, this->bins);
+        this->update_table = table(this->device, this->update, this->sums, this->closing, this->centers, this->state);
+        this->split_table = table(this->device, this->splitting, this->pairs, this->centers, this->state);
+        auto staging = this->device.create_buffer(this->chunk_rows * row_bytes, Upload);
+        this->commands.begin();
+        for (size_t first = 0; first < this->order.size(); first += this->chunk_rows) {
+            const auto count = std::min(this->chunk_rows, this->order.size() - first);
+            auto& chunk = this->chunks.emplace_back();
             chunk.rows = static_cast<uint32_t>(count);
             chunk.points = storage(count * row_bytes);
-            chunk.assignment = table(device, assignment, chunk.points, centers, state, labels);
-            chunk.reduce = table(device, reduce, chunk.points, bins, members, sums);
-            pack_cluster_points(staging, points, order, first, count, stride, weights);
-            commands.copy(staging, chunk.points, chunk.points.size());
-            sync();
+            chunk.assignment = table(this->device, this->assignment, chunk.points, this->centers, this->state, this->labels);
+            chunk.reduce = table(this->device, this->reduce, chunk.points, this->bins, this->members, this->sums);
+            pack_cluster_points(staging, points, this->order, first, count, this->stride, weights);
+            this->commands.copy(staging, chunk.points, chunk.points.size());
+            this->sync();
         }
     }
 
     void sync() {
-        commands.end();
-        const auto value = queue.submit(commands, fence);
+        this->commands.end();
+        const auto value = this->queue.submit(this->commands, this->fence);
         try {
-            queue.wait_cpu(fence, value);
+            this->queue.wait_cpu(this->fence, value);
         } catch (...) {
-            queue.wait_cpu();
+            this->queue.wait_cpu();
             throw;
         }
-        commands.reset();
-        commands.begin();
+        this->commands.reset();
+        this->commands.begin();
     }
 
     void update_centers(Update mode, float alpha) {
-        dispatch(commands, update, update_table, device.linear_groups(active, 128),
-            std::array { active, static_cast<uint32_t>(stride), std::bit_cast<uint32_t>(alpha), static_cast<uint32_t>(mode) });
+        dispatch(this->commands, this->update, this->update_table, this->device.linear_groups(this->active, 128),
+            std::array { this->active, static_cast<uint32_t>(this->stride), std::bit_cast<uint32_t>(alpha), static_cast<uint32_t>(mode) });
     }
 
     void begin(const Centers& seeds) {
-        if (active || seeds.cols() != static_cast<Eigen::Index>(columns) || seeds.rows() <= 0 || static_cast<size_t>(seeds.rows()) > capacity) {
+        if (this->active || seeds.cols() != static_cast<Eigen::Index>(this->columns) || seeds.rows() <= 0 || static_cast<size_t>(seeds.rows()) > this->capacity) {
             throw std::invalid_argument("Invalid e-means seeds");
         }
-        active = static_cast<uint32_t>(seeds.rows());
-        auto* packed = reinterpret_cast<float*>(upload.mapped_data());
-        for (size_t entry = 0; entry < active; ++entry) {
-            std::copy_n(seeds.row(entry).data(), columns, packed);
-            std::fill(packed + columns, packed + stride, 0.0f);
-            packed += stride;
+        this->active = static_cast<uint32_t>(seeds.rows());
+        auto* packed = reinterpret_cast<float*>(this->upload.mapped_data());
+        for (size_t entry = 0; entry < this->active; ++entry) {
+            std::copy_n(seeds.row(entry).data(), this->columns, packed);
+            std::fill(packed + this->columns, packed + this->stride, 0.0f);
+            packed += this->stride;
         }
-        upload.flush();
-        commands.copy(upload, centers, active * stride * sizeof(float));
-        commands.fill(closing, 0, active * (stride + 1) * sizeof(float));
-        update_centers(Initialize, 0);
+        this->upload.flush();
+        this->commands.copy(this->upload, this->centers, this->active * this->stride * sizeof(float));
+        this->commands.fill(this->closing, 0, this->active * (this->stride + 1) * sizeof(float));
+        this->update_centers(Initialize, 0);
     }
 
     void batch(size_t first, size_t count, float alpha, bool last) {
-        if (!active || first >= order.size() || !count || count > order.size() || !(alpha > 0 && alpha <= 1)) {
+        if (!this->active || first >= this->order.size() || !count || count > this->order.size() || !(alpha > 0 && alpha <= 1)) {
             throw std::invalid_argument("Invalid e-means batch");
         }
-        commands.fill(sums, 0, active * (stride + 1) * sizeof(float));
-        const auto groups_y = 1 + (active - 1) / device.limits().workgroup_count[0];
-        const auto groups_x = 1 + (active - 1) / groups_y;
+        this->commands.fill(this->sums, 0, this->active * (this->stride + 1) * sizeof(float));
+        const auto groups_y = 1 + (this->active - 1) / this->device.limits().workgroup_count[0];
+        const auto groups_x = 1 + (this->active - 1) / groups_y;
         const std::array reduce_groups { groups_x, groups_y, 1u };
         while (count) {
-            auto& chunk = chunks[first / chunk_rows];
-            const auto offset = static_cast<uint32_t>(first % chunk_rows);
+            auto& chunk = this->chunks[first / this->chunk_rows];
+            const auto offset = static_cast<uint32_t>(first % this->chunk_rows);
             const auto length = static_cast<uint32_t>(std::min<size_t>(count, chunk.rows - offset));
             const auto global = static_cast<uint32_t>(first);
-            dispatch_cluster(commands, assignment, chunk.assignment, length, active, offset, global);
-            commands.fill(bins, 0, (2 * active + 1) * sizeof(uint32_t));
-            const auto point_groups = device.linear_groups(length, 128);
-            dispatch(commands, binning, bin_table, point_groups, std::array { length, global, 0u });
-            dispatch(commands, offsets, offset_table, device.linear_groups(active, 128), std::array { active });
-            dispatch(commands, binning, bin_table, point_groups, std::array { length, global, 1u });
-            dispatch(commands, reduce, chunk.reduce, reduce_groups,
-                std::array { active, static_cast<uint32_t>(stride), offset, static_cast<uint32_t>(chunk.rows * stride), groups_x });
+            dispatch_cluster(this->commands, this->assignment, chunk.assignment, length, this->active, offset, global);
+            this->commands.fill(this->bins, 0, (2 * this->active + 1) * sizeof(uint32_t));
+            const auto point_groups = this->device.linear_groups(length, 128);
+            dispatch(this->commands, this->binning, this->bin_table, point_groups, std::array { length, global, 0u });
+            dispatch(this->commands, this->offsets, this->offset_table, this->device.linear_groups(this->active, 128), std::array { this->active });
+            dispatch(this->commands, this->binning, this->bin_table, point_groups, std::array { length, global, 1u });
+            dispatch(this->commands, this->reduce, chunk.reduce, reduce_groups,
+                std::array { this->active, static_cast<uint32_t>(this->stride), offset, static_cast<uint32_t>(chunk.rows * this->stride), groups_x });
             first += length;
-            if (first == order.size()) {
+            if (first == this->order.size()) {
                 first = 0;
             }
             count -= length;
         }
-        update_centers(last ? LastEpoch : Train, alpha);
+        this->update_centers(last ? LastEpoch : Train, alpha);
     }
 
     void read_usage(std::span<float> usage) {
-        if (!active || usage.size() != active) {
+        if (!this->active || usage.size() != this->active) {
             throw std::invalid_argument("Invalid e-means usage size");
         }
-        commands.copy(state, readback, usage.size_bytes(), usage.size_bytes());
-        sync();
-        readback.read_into(std::as_writable_bytes(usage));
+        this->commands.copy(this->state, this->readback, usage.size_bytes(), usage.size_bytes());
+        this->sync();
+        this->readback.read_into(std::as_writable_bytes(usage));
     }
 
     void split(std::span<const Split> splits) {
         if (splits.empty()) {
             return;
         }
-        if (splits.size() > active / 2) {
+        if (splits.size() > this->active / 2) {
             throw std::invalid_argument("Invalid e-means split count");
         }
-        upload.upload(std::as_bytes(splits));
-        commands.copy(upload, pairs, splits.size_bytes());
+        this->upload.upload(std::as_bytes(splits));
+        this->commands.copy(this->upload, this->pairs, splits.size_bytes());
         const auto count = static_cast<uint32_t>(splits.size());
-        dispatch(commands, splitting, split_table, device.linear_groups(count, 128), std::array { count, static_cast<uint32_t>(stride), active });
+        dispatch(this->commands, this->splitting, this->split_table, this->device.linear_groups(count, 128), std::array { count, static_cast<uint32_t>(this->stride), this->active });
     }
 
     Clustering finish() {
-        if (!active) {
+        if (!this->active) {
             throw std::logic_error("Missing e-means training pass");
         }
-        update_centers(Finish, 0);
-        std::vector<float> packed(active * stride);
+        this->update_centers(Finish, 0);
+        std::vector<float> packed(this->active * this->stride);
         auto center_bytes = std::as_writable_bytes(std::span(packed));
-        commands.copy(centers, readback, center_bytes.size());
-        commands.copy(labels, readback, labels.size(), 0, center_bytes.size());
-        sync();
-        readback.read_into(center_bytes);
-        std::vector<uint32_t> shuffled(order.size());
-        readback.read_into(std::as_writable_bytes(std::span(shuffled)), center_bytes.size());
-        Clustering result { Centers(active, columns), std::vector<uint32_t>(order.size()) };
-        for (size_t entry = 0; entry < active; ++entry) {
-            std::copy_n(packed.data() + entry * stride, columns, result.centroids.row(entry).data());
+        this->commands.copy(this->centers, this->readback, center_bytes.size());
+        this->commands.copy(this->labels, this->readback, this->labels.size(), 0, center_bytes.size());
+        this->sync();
+        this->readback.read_into(center_bytes);
+        std::vector<uint32_t> shuffled(this->order.size());
+        this->readback.read_into(std::as_writable_bytes(std::span(shuffled)), center_bytes.size());
+        Clustering result { Centers(this->active, this->columns), std::vector<uint32_t>(this->order.size()) };
+        for (size_t entry = 0; entry < this->active; ++entry) {
+            std::copy_n(packed.data() + entry * this->stride, this->columns, result.centroids.row(entry).data());
         }
-        for (size_t row = 0; row < order.size(); ++row) {
-            result.labels[order[row]] = shuffled[row];
+        for (size_t row = 0; row < this->order.size(); ++row) {
+            result.labels[this->order[row]] = shuffled[row];
         }
-        active = 0;
+        this->active = 0;
         return result;
     }
 };
@@ -215,11 +214,11 @@ struct EmeansGpu::Impl {
 EmeansGpu::EmeansGpu(FeatureView points, std::span<const float> weights, std::span<const uint32_t> order, size_t capacity, size_t chunk_rows)
     : impl_(std::make_unique<Impl>(points, weights, order, capacity, chunk_rows)) {}
 EmeansGpu::~EmeansGpu() = default;
-void EmeansGpu::begin(const Centers& seeds) { impl_->begin(seeds); }
-void EmeansGpu::batch(size_t first, size_t count, float alpha, bool closing) { impl_->batch(first, count, alpha, closing); }
+void EmeansGpu::begin(const Centers& seeds) { this->impl_->begin(seeds); }
+void EmeansGpu::batch(size_t first, size_t count, float alpha, bool closing) { this->impl_->batch(first, count, alpha, closing); }
 void EmeansGpu::revive(std::span<float> usage, SplitSelector choose) {
-    impl_->read_usage(usage);
-    impl_->split(choose(usage));
+    this->impl_->read_usage(usage);
+    this->impl_->split(choose(usage));
 }
-Clustering EmeansGpu::finish() { return impl_->finish(); }
+Clustering EmeansGpu::finish() { return this->impl_->finish(); }
 } // namespace splat_transform::spatial

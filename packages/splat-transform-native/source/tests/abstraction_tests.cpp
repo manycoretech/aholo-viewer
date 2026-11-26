@@ -207,7 +207,7 @@ void float_ply_layouts() {
         std::filesystem::path path;
         ~Cleanup() {
             std::error_code error;
-            std::filesystem::remove(path, error);
+            std::filesystem::remove(this->path, error);
         }
     } cleanup { path };
     const std::array<std::string, 14> fields {

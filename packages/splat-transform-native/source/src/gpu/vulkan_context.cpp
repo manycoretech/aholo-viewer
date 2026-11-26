@@ -49,59 +49,59 @@ DeviceInfo describe(const vk::raii::PhysicalDevice& physical) {
 
 } // namespace
 
-Device::Device(uint32_t index) : instance_(create_instance(context_)) {
-    auto devices = instance_.enumeratePhysicalDevices();
+Device::Device(uint32_t index) : instance_(create_instance(this->context_)) {
+    auto devices = this->instance_.enumeratePhysicalDevices();
     if (index >= devices.size()) {
         throw std::runtime_error("Vulkan device index is unavailable; run list:gpu to select a Vulkan device");
     }
-    physical_ = std::move(devices[index]);
-    if (physical_.getProperties().apiVersion < VK_API_VERSION_1_2) {
+    this->physical_ = std::move(devices[index]);
+    if (this->physical_.getProperties().apiVersion < VK_API_VERSION_1_2) {
         throw std::runtime_error("Selected device must support Vulkan 1.2 or newer");
     }
-    const auto description = describe(physical_);
+    const auto description = describe(this->physical_);
     utility::logger().info("Vulkan device: ", description.name, " vendor=", description.vendor_id, " device=", description.device_id, " uuid=", description.uuid);
-    const auto properties = physical_.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceMaintenance3Properties>();
-    limits_ = properties.get<vk::PhysicalDeviceProperties2>().properties.limits;
-    storage_limit_ = std::min<uint64_t>(limits_.maxStorageBufferRange, properties.get<vk::PhysicalDeviceMaintenance3Properties>().maxMemoryAllocationSize);
-    const auto families = physical_.getQueueFamilyProperties();
+    const auto properties = this->physical_.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceMaintenance3Properties>();
+    this->limits_ = properties.get<vk::PhysicalDeviceProperties2>().properties.limits;
+    this->storage_limit_ = std::min<uint64_t>(this->limits_.maxStorageBufferRange, properties.get<vk::PhysicalDeviceMaintenance3Properties>().maxMemoryAllocationSize);
+    const auto families = this->physical_.getQueueFamilyProperties();
     auto found = std::find_if(families.begin(), families.end(), [](const auto& family) { return family.queueCount && static_cast<bool>(family.queueFlags & vk::QueueFlagBits::eCompute); });
     if (found == families.end()) {
         throw std::runtime_error("Selected Vulkan device has no compute queue");
     }
-    family_ = static_cast<uint32_t>(found - families.begin());
+    this->family_ = static_cast<uint32_t>(found - families.begin());
     const float priority = 1;
-    vk::DeviceQueueCreateInfo queue_info({}, family_, 1, &priority);
+    vk::DeviceQueueCreateInfo queue_info({}, this->family_, 1, &priority);
     std::vector<const char*> extensions;
-    for (const auto& extension : physical_.enumerateDeviceExtensionProperties()) {
+    for (const auto& extension : this->physical_.enumerateDeviceExtensionProperties()) {
         if (std::string_view(extension.extensionName.data()) == "VK_KHR_portability_subset") {
             extensions.push_back("VK_KHR_portability_subset");
         }
         if (std::string_view(extension.extensionName.data()) == VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) {
             extensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
-            memory_budget_ = true;
+            this->memory_budget_ = true;
         }
     }
-    auto features = physical_.getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceTimelineSemaphoreFeatures>();
+    auto features = this->physical_.getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceTimelineSemaphoreFeatures>();
     auto& timeline = features.get<vk::PhysicalDeviceTimelineSemaphoreFeatures>();
     if (!timeline.timelineSemaphore) {
         throw std::runtime_error("Selected Vulkan device does not support the timelineSemaphore feature");
     }
-    const auto timeline_properties = physical_.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceTimelineSemaphoreProperties>();
-    timeline_max_difference_ = timeline_properties.get<vk::PhysicalDeviceTimelineSemaphoreProperties>().maxTimelineSemaphoreValueDifference;
+    const auto timeline_properties = this->physical_.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceTimelineSemaphoreProperties>();
+    this->timeline_max_difference_ = timeline_properties.get<vk::PhysicalDeviceTimelineSemaphoreProperties>().maxTimelineSemaphoreValueDifference;
     vk::DeviceCreateInfo info;
     info.setQueueCreateInfos(queue_info).setPEnabledExtensionNames(extensions).setPNext(&timeline);
-    device_ = physical_.createDevice(info);
-    queue_ = device_.getQueue(family_, 0);
+    this->device_ = this->physical_.createDevice(info);
+    this->queue_ = this->device_.getQueue(this->family_, 0);
     VmaVulkanFunctions functions {};
-    functions.vkGetInstanceProcAddr = context_.getDispatcher()->vkGetInstanceProcAddr;
-    functions.vkGetDeviceProcAddr = instance_.getDispatcher()->vkGetDeviceProcAddr;
+    functions.vkGetInstanceProcAddr = this->context_.getDispatcher()->vkGetInstanceProcAddr;
+    functions.vkGetDeviceProcAddr = this->instance_.getDispatcher()->vkGetDeviceProcAddr;
     VmaAllocatorCreateInfo allocator_info {};
-    allocator_info.instance = static_cast<VkInstance>(*instance_);
-    allocator_info.physicalDevice = static_cast<VkPhysicalDevice>(*physical_);
-    allocator_info.device = static_cast<VkDevice>(*device_);
+    allocator_info.instance = static_cast<VkInstance>(*this->instance_);
+    allocator_info.physicalDevice = static_cast<VkPhysicalDevice>(*this->physical_);
+    allocator_info.device = static_cast<VkDevice>(*this->device_);
     allocator_info.vulkanApiVersion = VK_API_VERSION_1_2;
     allocator_info.pVulkanFunctions = &functions;
-    if (memory_budget_) {
+    if (this->memory_budget_) {
         allocator_info.flags |= VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
     }
     allocator_info.preferredLargeHeapBlockSize = 64 * 1024 * 1024;
@@ -110,21 +110,21 @@ Device::Device(uint32_t index) : instance_(create_instance(context_)) {
     if (vmaCreateAllocator(&allocator_info, &allocator) != VK_SUCCESS) {
         throw std::runtime_error("Cannot initialize Vulkan memory allocator");
     }
-    allocator_.reset(allocator);
+    this->allocator_.reset(allocator);
 }
 Device::~Device() = default;
 ComputeLimits Device::limits() const {
-    return { storage_limit_, static_cast<size_t>(limits_.minStorageBufferOffsetAlignment),
-        std::min(limits_.maxPerStageDescriptorStorageBuffers, limits_.maxDescriptorSetStorageBuffers),
-        limits_.maxPushConstantsSize, limits_.maxComputeSharedMemorySize,
-        { limits_.maxComputeWorkGroupCount[0], limits_.maxComputeWorkGroupCount[1], limits_.maxComputeWorkGroupCount[2] },
-        { limits_.maxComputeWorkGroupSize[0], limits_.maxComputeWorkGroupSize[1], limits_.maxComputeWorkGroupSize[2] },
-        limits_.maxComputeWorkGroupInvocations };
+    return { this->storage_limit_, static_cast<size_t>(this->limits_.minStorageBufferOffsetAlignment),
+        std::min(this->limits_.maxPerStageDescriptorStorageBuffers, this->limits_.maxDescriptorSetStorageBuffers),
+        this->limits_.maxPushConstantsSize, this->limits_.maxComputeSharedMemorySize,
+        { this->limits_.maxComputeWorkGroupCount[0], this->limits_.maxComputeWorkGroupCount[1], this->limits_.maxComputeWorkGroupCount[2] },
+        { this->limits_.maxComputeWorkGroupSize[0], this->limits_.maxComputeWorkGroupSize[1], this->limits_.maxComputeWorkGroupSize[2] },
+        this->limits_.maxComputeWorkGroupInvocations };
 }
 size_t Device::available_memory() const {
     std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> budgets;
-    vmaGetHeapBudgets(allocator_.get(), budgets.data());
-    const auto properties = physical_.getMemoryProperties();
+    vmaGetHeapBudgets(this->allocator_.get(), budgets.data());
+    const auto properties = this->physical_.getMemoryProperties();
     uint64_t available = 0;
     for (uint32_t i = 0; i < properties.memoryHeapCount; ++i) {
         if (properties.memoryHeaps[i].flags & vk::MemoryHeapFlagBits::eDeviceLocal) {
@@ -135,7 +135,7 @@ size_t Device::available_memory() const {
 }
 size_t Device::allocation_bytes() const {
     VmaTotalStatistics statistics {};
-    vmaCalculateStatistics(allocator_.get(), &statistics);
+    vmaCalculateStatistics(this->allocator_.get(), &statistics);
     return statistics.total.statistics.allocationBytes;
 }
 Buffer::Buffer(VmaAllocator allocator, size_t size, BufferMemory memory, bool within_budget) : allocator_(allocator) {
@@ -154,30 +154,30 @@ Buffer::Buffer(VmaAllocator allocator, size_t size, BufferMemory memory, bool wi
     if (within_budget) {
         allocation.flags |= VMA_ALLOCATION_CREATE_WITHIN_BUDGET_BIT;
     }
-    const auto status = vmaCreateBuffer(allocator_, &info, &allocation, &buffer_, &allocation_, &info_);
+    const auto status = vmaCreateBuffer(this->allocator_, &info, &allocation, &this->buffer_, &this->allocation_, &this->info_);
     if (status != VK_SUCCESS) {
         throw AllocationFailure("Vulkan allocation failed: " + std::to_string(status));
     }
 }
-Buffer::~Buffer() { vmaDestroyBuffer(allocator_, buffer_, allocation_); }
+Buffer::~Buffer() { vmaDestroyBuffer(this->allocator_, this->buffer_, this->allocation_); }
 std::byte* Buffer::mapped_data() {
-    if (!info_.pMappedData) {
+    if (!this->info_.pMappedData) {
         throw std::runtime_error("Vulkan buffer is not mapped");
     }
-    return static_cast<std::byte*>(info_.pMappedData);
+    return static_cast<std::byte*>(this->info_.pMappedData);
 }
 void Buffer::flush() {
-    if (vmaFlushAllocation(allocator_, allocation_, 0, VK_WHOLE_SIZE) != VK_SUCCESS) {
+    if (vmaFlushAllocation(this->allocator_, this->allocation_, 0, VK_WHOLE_SIZE) != VK_SUCCESS) {
         throw std::runtime_error("Vulkan upload flush failed");
     }
 }
 void Buffer::invalidate() {
-    if (vmaInvalidateAllocation(allocator_, allocation_, 0, VK_WHOLE_SIZE) != VK_SUCCESS) {
+    if (vmaInvalidateAllocation(this->allocator_, this->allocation_, 0, VK_WHOLE_SIZE) != VK_SUCCESS) {
         throw std::runtime_error("Vulkan readback invalidate failed");
     }
 }
 std::unique_ptr<detail::BackendBuffer> Device::create_buffer(size_t size, BufferMemory memory, bool within_budget) {
-    return std::make_unique<Buffer>(allocator_.get(), size, memory, within_budget);
+    return std::make_unique<Buffer>(this->allocator_.get(), size, memory, within_budget);
 }
 std::unique_ptr<detail::BackendPipeline> Device::create_pipeline(const ComputeShader& description) {
     const auto code = description.code.bytes;
@@ -196,15 +196,15 @@ std::unique_ptr<detail::BackendPipeline> Device::create_pipeline(const ComputeSh
     }
     vk::PipelineLayoutCreateInfo layout_info;
     if (!bindings.empty()) {
-        pipeline->descriptors = device_.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo({}, bindings));
+        pipeline->descriptors = this->device_.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo({}, bindings));
         layout_info.setSetLayouts(*pipeline->descriptors);
     }
     const vk::PushConstantRange range(vk::ShaderStageFlagBits::eCompute, 0, description.push_constant_bytes);
     if (description.push_constant_bytes) {
         layout_info.setPushConstantRanges(range);
     }
-    pipeline->layout = device_.createPipelineLayout(layout_info);
-    pipeline->shader = device_.createShaderModule(vk::ShaderModuleCreateInfo({}, code.size(), words.data()));
+    pipeline->layout = this->device_.createPipelineLayout(layout_info);
+    pipeline->shader = this->device_.createShaderModule(vk::ShaderModuleCreateInfo({}, code.size(), words.data()));
     vk::PipelineShaderStageCreateInfo shader({}, vk::ShaderStageFlagBits::eCompute, *pipeline->shader, description.entry_point.c_str());
     std::vector<vk::SpecializationMapEntry> entries;
     std::vector<uint32_t> values;
@@ -217,7 +217,7 @@ std::unique_ptr<detail::BackendPipeline> Device::create_pipeline(const ComputeSh
         specialization.setMapEntries(entries).setDataSize(values.size() * sizeof(uint32_t)).setPData(values.data());
         shader.setPSpecializationInfo(&specialization);
     }
-    pipeline->pipeline = device_.createComputePipeline(nullptr, vk::ComputePipelineCreateInfo({}, shader, *pipeline->layout));
+    pipeline->pipeline = this->device_.createComputePipeline(nullptr, vk::ComputePipelineCreateInfo({}, shader, *pipeline->layout));
     return pipeline;
 }
 struct DescriptorTable final : detail::BackendDescriptorTable {
@@ -231,8 +231,8 @@ std::unique_ptr<detail::BackendDescriptorTable> Device::create_descriptor_table(
     }
     const auto& pipeline = static_cast<Pipeline&>(base);
     const vk::DescriptorPoolSize size(vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(buffers.size()));
-    table->pool = device_.createDescriptorPool(vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 1, size));
-    auto sets = device_.allocateDescriptorSets(vk::DescriptorSetAllocateInfo(*table->pool, *pipeline.descriptors));
+    table->pool = this->device_.createDescriptorPool(vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 1, size));
+    auto sets = this->device_.allocateDescriptorSets(vk::DescriptorSetAllocateInfo(*table->pool, *pipeline.descriptors));
     table->set = std::move(sets.front());
     std::vector<vk::DescriptorBufferInfo> infos;
     infos.reserve(buffers.size());
@@ -244,55 +244,55 @@ std::unique_ptr<detail::BackendDescriptorTable> Device::create_descriptor_table(
     for (uint32_t i = 0; i < infos.size(); ++i) {
         writes.emplace_back(*table->set, i, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &infos[i]);
     }
-    device_.updateDescriptorSets(writes, nullptr);
+    this->device_.updateDescriptorSets(writes, nullptr);
     return table;
 }
 class Commands final : public detail::BackendCommands {
 public:
     explicit Commands(Device& device) : context_(device) {
-        pool_ = context_.device_.createCommandPool(vk::CommandPoolCreateInfo({}, context_.family_));
-        auto commands = context_.device_.allocateCommandBuffers(vk::CommandBufferAllocateInfo(*pool_, vk::CommandBufferLevel::ePrimary, 1));
-        command_ = std::move(commands.front());
+        this->pool_ = this->context_.device_.createCommandPool(vk::CommandPoolCreateInfo({}, this->context_.family_));
+        auto commands = this->context_.device_.allocateCommandBuffers(vk::CommandBufferAllocateInfo(*this->pool_, vk::CommandBufferLevel::ePrimary, 1));
+        this->command_ = std::move(commands.front());
     }
-    vk::CommandBuffer handle() const { return *command_; }
+    vk::CommandBuffer handle() const { return *this->command_; }
     void reset() override {
         // This pool owns one recording. The HAL rejects resets while pending.
-        pool_.reset({});
-        pipeline_ = nullptr;
+        this->pool_.reset({});
+        this->pipeline_ = nullptr;
     }
-    void begin() override { command_.begin({}); }
+    void begin() override { this->command_.begin({}); }
     void copy(const detail::BackendRange& source, const detail::BackendRange& destination) override {
-        barrier(vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead | vk::AccessFlagBits::eTransferWrite);
-        command_.copyBuffer(static_cast<Buffer*>(source.buffer)->handle(), static_cast<Buffer*>(destination.buffer)->handle(),
+        this->barrier(vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead | vk::AccessFlagBits::eTransferWrite);
+        this->command_.copyBuffer(static_cast<Buffer*>(source.buffer)->handle(), static_cast<Buffer*>(destination.buffer)->handle(),
             vk::BufferCopy(source.offset, destination.offset, source.size));
     }
     void fill(const detail::BackendRange& buffer, uint32_t value) override {
-        barrier(vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite);
-        command_.fillBuffer(static_cast<Buffer*>(buffer.buffer)->handle(), buffer.offset, buffer.size, value);
+        this->barrier(vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite);
+        this->command_.fillBuffer(static_cast<Buffer*>(buffer.buffer)->handle(), buffer.offset, buffer.size, value);
     }
     void bind_pipeline(detail::BackendPipeline& base) override {
-        pipeline_ = &static_cast<Pipeline&>(base);
-        command_.bindPipeline(vk::PipelineBindPoint::eCompute, *pipeline_->pipeline);
+        this->pipeline_ = &static_cast<Pipeline&>(base);
+        this->command_.bindPipeline(vk::PipelineBindPoint::eCompute, *this->pipeline_->pipeline);
     }
     void bind_descriptor_table(detail::BackendDescriptorTable& base) override {
         const auto& table = static_cast<DescriptorTable&>(base);
         if (*table.set) {
-            command_.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *pipeline_->layout, 0, *table.set, nullptr);
+            this->command_.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *this->pipeline_->layout, 0, *table.set, nullptr);
         }
     }
     void push_constants(std::span<const std::byte> push) override {
         if (!push.empty()) {
-            command_.pushConstants<std::byte>(*pipeline_->layout, vk::ShaderStageFlagBits::eCompute, 0, push);
+            this->command_.pushConstants<std::byte>(*this->pipeline_->layout, vk::ShaderStageFlagBits::eCompute, 0, push);
         }
     }
     void dispatch(std::array<uint32_t, 3> groups) override {
-        barrier(vk::PipelineStageFlagBits::eComputeShader, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite);
-        command_.dispatch(groups[0], groups[1], groups[2]);
+        this->barrier(vk::PipelineStageFlagBits::eComputeShader, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite);
+        this->command_.dispatch(groups[0], groups[1], groups[2]);
     }
     void end() override {
         const vk::MemoryBarrier host(vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead);
-        command_.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eHost, {}, host, nullptr, nullptr);
-        command_.end();
+        this->command_.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eHost, {}, host, nullptr, nullptr);
+        this->command_.end();
     }
 
 private:
@@ -302,7 +302,7 @@ private:
         const vk::MemoryBarrier dependency(vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite |
                                                vk::AccessFlagBits::eTransferRead | vk::AccessFlagBits::eTransferWrite,
             access);
-        command_.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eTransfer, stage, {}, dependency, nullptr, nullptr);
+        this->command_.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eTransfer, stage, {}, dependency, nullptr, nullptr);
     }
     Device& context_;
     vk::raii::CommandPool pool_ { nullptr };
@@ -315,10 +315,10 @@ public:
         const vk::SemaphoreTypeCreateInfo type(vk::SemaphoreType::eTimeline, initial_value);
         vk::SemaphoreCreateInfo info;
         info.setPNext(&type);
-        semaphore_ = device.createSemaphore(info);
+        this->semaphore_ = device.createSemaphore(info);
     }
-    vk::Semaphore handle() const { return *semaphore_; }
-    uint64_t completed_value() const override { return semaphore_.getCounterValue(); }
+    vk::Semaphore handle() const { return *this->semaphore_; }
+    uint64_t completed_value() const override { return this->semaphore_.getCounterValue(); }
 
 private:
     vk::raii::Semaphore semaphore_ { nullptr };
@@ -329,7 +329,7 @@ public:
     void submit(detail::BackendCommands& commands, detail::BackendFence& fence, uint64_t value) override {
         auto& timeline = static_cast<Fence&>(fence);
         const auto completed = timeline.completed_value();
-        if (value <= completed || value - completed > context_.timeline_max_difference_) {
+        if (value <= completed || value - completed > this->context_.timeline_max_difference_) {
             throw std::runtime_error("Vulkan fence signal value exceeds the timeline semaphore value range");
         }
         const auto command = static_cast<Commands&>(commands).handle();
@@ -338,22 +338,22 @@ public:
         values.setSignalSemaphoreValues(value);
         vk::SubmitInfo submit;
         submit.setCommandBuffers(command).setSignalSemaphores(semaphore).setPNext(&values);
-        context_.queue_.submit(submit, nullptr);
+        this->context_.queue_.submit(submit, nullptr);
     }
     void wait_cpu(detail::BackendFence& fence, uint64_t value) override {
         const auto semaphore = static_cast<Fence&>(fence).handle();
         const vk::SemaphoreWaitInfo info({}, semaphore, value);
-        if (context_.device_.waitSemaphores(info, std::numeric_limits<uint64_t>::max()) != vk::Result::eSuccess) {
+        if (this->context_.device_.waitSemaphores(info, std::numeric_limits<uint64_t>::max()) != vk::Result::eSuccess) {
             throw std::runtime_error("Vulkan timeline semaphore CPU wait failed");
         }
     }
-    void wait_cpu() override { context_.queue_.waitIdle(); }
+    void wait_cpu() override { this->context_.queue_.waitIdle(); }
 
 private:
     Device& context_;
 };
 std::unique_ptr<detail::BackendQueue> Device::create_queue() { return std::make_unique<Queue>(*this); }
-std::unique_ptr<detail::BackendFence> Device::create_fence(uint64_t initial_value) { return std::make_unique<Fence>(device_, initial_value); }
+std::unique_ptr<detail::BackendFence> Device::create_fence(uint64_t initial_value) { return std::make_unique<Fence>(this->device_, initial_value); }
 std::unique_ptr<detail::BackendCommands> Device::create_commands() { return std::make_unique<Commands>(*this); }
 } // namespace vulkan
 namespace detail {

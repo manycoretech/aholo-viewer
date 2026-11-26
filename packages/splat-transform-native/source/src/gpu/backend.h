@@ -86,7 +86,7 @@ private:
     std::vector<Entry> entries_;
 };
 struct DeviceState {
-    explicit DeviceState(std::unique_ptr<BackendDevice> device) : backend(std::move(device)), limits(backend->limits()) {}
+    explicit DeviceState(std::unique_ptr<BackendDevice> device) : backend(std::move(device)), limits(this->backend->limits()) {}
     // The top-level DeviceGuard controls this context's lifetime. Views borrow it.
     std::unique_ptr<BackendDevice> backend;
     ComputeLimits limits;

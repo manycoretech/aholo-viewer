@@ -19,8 +19,8 @@ void require(bool condition, const char* message) {
 class CaptureErrors {
 public:
     std::ostringstream output;
-    CaptureErrors() : previous_(std::cerr.rdbuf(output.rdbuf())) {}
-    ~CaptureErrors() { std::cerr.rdbuf(previous_); }
+    CaptureErrors() : previous_(std::cerr.rdbuf(this->output.rdbuf())) {}
+    ~CaptureErrors() { std::cerr.rdbuf(this->previous_); }
 
 private:
     std::streambuf* previous_;

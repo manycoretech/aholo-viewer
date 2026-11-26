@@ -78,33 +78,33 @@ PreparedData prepare(const splat::Splat& data) {
 }
 void PreparedData::select(std::span<const uint32_t> indices) {
     assert(std::adjacent_find(indices.begin(), indices.end(), std::greater_equal<uint32_t>()) == indices.end());
-    assert(indices.empty() || indices.back() < gaussians.size());
-    scene.min().setConstant(std::numeric_limits<float>::infinity());
-    scene.max().setConstant(-std::numeric_limits<float>::infinity());
+    assert(indices.empty() || indices.back() < this->gaussians.size());
+    this->scene.min().setConstant(std::numeric_limits<float>::infinity());
+    this->scene.max().setConstant(-std::numeric_limits<float>::infinity());
     size_t next_invalid = 0, kept_invalid = 0;
     for (size_t i = 0; i < indices.size(); ++i) {
         const auto index = indices[i];
-        while (next_invalid < invalid_extents.size() && invalid_extents[next_invalid] < index) {
+        while (next_invalid < this->invalid_extents.size() && this->invalid_extents[next_invalid] < index) {
             ++next_invalid;
         }
-        const bool valid = next_invalid == invalid_extents.size() || invalid_extents[next_invalid] != index;
+        const bool valid = next_invalid == this->invalid_extents.size() || this->invalid_extents[next_invalid] != index;
         if (i != index) {
-            gaussians[i] = gaussians[index];
+            this->gaussians[i] = this->gaussians[index];
         }
         if (!valid) {
             // Read positions advance before writing the compacted sparse list.
             ++next_invalid;
-            invalid_extents[kept_invalid++] = static_cast<uint32_t>(i);
+            this->invalid_extents[kept_invalid++] = static_cast<uint32_t>(i);
             continue;
         }
-        const auto& g = gaussians[i].values;
+        const auto& g = this->gaussians[i].values;
         for (int32_t a = 0; a < 3; ++a) {
-            scene.min()[a] = std::min(scene.min()[a], g[a] - g[11 + a]);
-            scene.max()[a] = std::max(scene.max()[a], g[a] + g[11 + a]);
+            this->scene.min()[a] = std::min(this->scene.min()[a], g[a] - g[11 + a]);
+            this->scene.max()[a] = std::max(this->scene.max()[a], g[a] + g[11 + a]);
         }
     }
-    gaussians.resize(indices.size());
-    invalid_extents.resize(kept_invalid);
+    this->gaussians.resize(indices.size());
+    this->invalid_extents.resize(kept_invalid);
 }
 Eigen::AlignedBox3f align_bounds(Eigen::AlignedBox3f bounds, float resolution) {
     const float block_size = resolution * 4;

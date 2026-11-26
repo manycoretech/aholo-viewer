@@ -57,14 +57,14 @@ std::string input_extension(const FileInput& input) {
 } // namespace
 
 Bytes IFile::write(const splat::Splat&, std::span<const uint32_t>) const {
-    throw std::runtime_error("Writing is unsupported for " + std::string(name()));
+    throw std::runtime_error("Writing is unsupported for " + std::string(this->name()));
 }
 void IFile::write(const std::filesystem::path& path, const splat::Splat& splat, std::span<const uint32_t> indices) const {
-    write_bytes(path, write(splat, indices));
+    write_bytes(path, this->write(splat, indices));
 }
 splat::Splat IFile::read(const std::filesystem::path& path, uint32_t max_sh_degree) const {
     const auto bytes = read_bytes(path);
-    return read({ path, bytes, max_sh_degree });
+    return this->read({ path, bytes, max_sh_degree });
 }
 std::unique_ptr<IFile> create_file(std::string_view extension, const FileOptions& options, FileOperation operation) {
     const auto normalized = utility::lower(std::string(extension));

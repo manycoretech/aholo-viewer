@@ -33,12 +33,12 @@ public:
     uint32_t block_index(Eigen::Vector3i point) const;
     Eigen::Vector3i block_point(uint32_t index) const;
     uint64_t block_count() const;
-    bool contains(Eigen::Vector3i p) const { return (p.array() >= 0).all() && (p.array() < size.array()).all(); }
+    bool contains(Eigen::Vector3i p) const { return (p.array() >= 0).all() && (p.array() < this->size.array()).all(); }
     uint64_t mask(uint32_t index) const;
     void set_mask(uint32_t index, uint64_t value);
     void or_mask(Eigen::Vector3i block, uint64_t value);
     bool get(Eigen::Vector3i p) const {
-        return contains(p) && ((masks.get(p / 4) >> ((p.x() & 3) + 4 * (p.y() & 3) + 16 * (p.z() & 3))) & 1);
+        return this->contains(p) && ((this->masks.get(p / 4) >> ((p.x() & 3) + 4 * (p.y() & 3) + 16 * (p.z() & 3))) & 1);
     }
     void set(Eigen::Vector3i point);
     Grid inverted() const;

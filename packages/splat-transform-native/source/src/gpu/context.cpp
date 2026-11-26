@@ -7,23 +7,23 @@ namespace detail {
 void DeviceRegistry::append(std::vector<DeviceInfo> devices, Factory factory) {
     uint32_t backend_index = 0;
     for (auto& info : devices) {
-        info.index = static_cast<uint32_t>(entries_.size());
-        entries_.push_back({ std::move(info), backend_index++, factory });
+        info.index = static_cast<uint32_t>(this->entries_.size());
+        this->entries_.push_back({ std::move(info), backend_index++, factory });
     }
 }
 std::vector<DeviceInfo> DeviceRegistry::devices() const {
     std::vector<DeviceInfo> result;
-    result.reserve(entries_.size());
-    for (const auto& entry : entries_) {
+    result.reserve(this->entries_.size());
+    for (const auto& entry : this->entries_) {
         result.push_back(entry.info);
     }
     return result;
 }
 std::unique_ptr<BackendDevice> DeviceRegistry::create(uint32_t index) const {
-    if (index >= entries_.size()) {
+    if (index >= this->entries_.size()) {
         throw std::runtime_error("GPU device index is unavailable; run list:gpu to select a device");
     }
-    const auto& entry = entries_[index];
+    const auto& entry = this->entries_[index];
     return entry.factory(entry.backend_index);
 }
 namespace {

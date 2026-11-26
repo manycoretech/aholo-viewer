@@ -15,16 +15,16 @@ namespace {
 class ZlibStream {
 public:
     explicit ZlibStream(bool encode, int32_t level, int32_t window_bits = 31) : encode_(encode) {
-        const int32_t status = encode ? deflateInit2(&stream, level, Z_DEFLATED, window_bits, 8, Z_DEFAULT_STRATEGY) : inflateInit2(&stream, 47);
+        const int32_t status = encode ? deflateInit2(&this->stream, level, Z_DEFLATED, window_bits, 8, Z_DEFAULT_STRATEGY) : inflateInit2(&this->stream, 47);
         if (status != Z_OK) {
             throw std::runtime_error("Cannot initialize gzip stream");
         }
     }
     ~ZlibStream() {
-        if (encode_) {
-            deflateEnd(&stream);
+        if (this->encode_) {
+            deflateEnd(&this->stream);
         } else {
-            inflateEnd(&stream);
+            inflateEnd(&this->stream);
         }
     }
     z_stream stream {};

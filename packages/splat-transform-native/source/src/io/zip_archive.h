@@ -23,18 +23,18 @@ public:
             zip_source_free(source);
             throw std::runtime_error(zip_error_strerror(&error));
         }
-        archive_.reset(archive);
+        this->archive_.reset(archive);
     }
     std::vector<std::string> entries() const {
         std::vector<std::string> result;
-        const auto count = zip_get_num_entries(archive_.get(), 0);
+        const auto count = zip_get_num_entries(this->archive_.get(), 0);
         if (count < 0) {
-            throw std::runtime_error(zip_strerror(archive_.get()));
+            throw std::runtime_error(zip_strerror(this->archive_.get()));
         }
         for (zip_uint64_t i = 0; i < static_cast<uint64_t>(count); ++i) {
-            const char* name = zip_get_name(archive_.get(), i, 0);
+            const char* name = zip_get_name(this->archive_.get(), i, 0);
             if (!name) {
-                throw std::runtime_error(zip_strerror(archive_.get()));
+                throw std::runtime_error(zip_strerror(this->archive_.get()));
             }
             const std::string value(name);
             if (!value.empty() && value.back() != '/') {
@@ -45,12 +45,12 @@ public:
     }
     Bytes read(const std::string& name) const {
         zip_stat_t stat;
-        if (zip_stat(archive_.get(), name.c_str(), 0, &stat) != 0 || stat.size > std::numeric_limits<size_t>::max()) {
+        if (zip_stat(this->archive_.get(), name.c_str(), 0, &stat) != 0 || stat.size > std::numeric_limits<size_t>::max()) {
             throw std::runtime_error("Cannot read ZIP entry: " + name);
         }
-        auto file = std::unique_ptr<zip_file_t, decltype(&zip_fclose)>(zip_fopen(archive_.get(), name.c_str(), 0), zip_fclose);
+        auto file = std::unique_ptr<zip_file_t, decltype(&zip_fclose)>(zip_fopen(this->archive_.get(), name.c_str(), 0), zip_fclose);
         if (!file) {
-            throw std::runtime_error(zip_strerror(archive_.get()));
+            throw std::runtime_error(zip_strerror(this->archive_.get()));
         }
         Bytes output(static_cast<size_t>(stat.size));
         size_t offset = 0;

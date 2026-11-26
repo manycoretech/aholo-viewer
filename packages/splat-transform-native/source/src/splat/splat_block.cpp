@@ -18,8 +18,8 @@ struct RefSplat {
     bool need_split;
 
     RefSplat(splat::Splat& splat) : source(splat), box(splat.bounding_box), need_split(true) {
-        gaussians.resize(splat.gaussians.size());
-        std::iota(gaussians.begin(), gaussians.end(), 0);
+        this->gaussians.resize(splat.gaussians.size());
+        std::iota(this->gaussians.begin(), this->gaussians.end(), 0);
     }
     RefSplat(RefSplat& splat) : source(splat.source), need_split(true) {}
     RefSplat(RefSplat&& splat) = default;
@@ -50,7 +50,7 @@ struct RefSplat {
         splat::Splat result;
         result.gaussians = std::move(gaussians);
         result.bounding_box = this->box;
-        result.sh_degree = source.sh_degree;
+        result.sh_degree = this->source.sh_degree;
         return result;
     }
 };

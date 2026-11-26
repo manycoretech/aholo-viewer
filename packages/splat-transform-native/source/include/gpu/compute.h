@@ -65,7 +65,7 @@ public:
     Buffer& operator=(Buffer&&) noexcept;
     Buffer(const Buffer&) = delete;
     Buffer& operator=(const Buffer&) = delete;
-    explicit operator bool() const { return static_cast<bool>(impl_); }
+    explicit operator bool() const { return static_cast<bool>(this->impl_); }
     size_t size() const;
     std::byte* mapped_data() const;
     void flush() const;
@@ -86,7 +86,7 @@ public:
     ComputePipeline& operator=(ComputePipeline&&) noexcept;
     ComputePipeline(const ComputePipeline&) = delete;
     ComputePipeline& operator=(const ComputePipeline&) = delete;
-    explicit operator bool() const { return static_cast<bool>(impl_); }
+    explicit operator bool() const { return static_cast<bool>(this->impl_); }
 
 private:
     friend class ComputeDevice;
@@ -111,7 +111,7 @@ public:
     DescriptorTable& operator=(DescriptorTable&&) noexcept;
     DescriptorTable(const DescriptorTable&) = delete;
     DescriptorTable& operator=(const DescriptorTable&) = delete;
-    explicit operator bool() const { return static_cast<bool>(impl_); }
+    explicit operator bool() const { return static_cast<bool>(this->impl_); }
 
 private:
     friend class ComputeDevice;
@@ -163,7 +163,7 @@ public:
     Fence& operator=(Fence&&) noexcept;
     Fence(const Fence&) = delete;
     Fence& operator=(const Fence&) = delete;
-    explicit operator bool() const { return static_cast<bool>(state_); }
+    explicit operator bool() const { return static_cast<bool>(this->state_); }
     uint64_t completed_value() const;
 
 private:

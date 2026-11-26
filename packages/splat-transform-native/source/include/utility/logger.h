@@ -52,19 +52,19 @@ public:
 
     template<typename... Args>
     void info(Args&&... args) {
-        emit(std::cout, false, std::forward<Args>(args)...);
+        this->emit(std::cout, false, std::forward<Args>(args)...);
     }
     template<typename... Args>
     void warn(Args&&... args) {
-        emit(std::cerr, false, std::forward<Args>(args)...);
+        this->emit(std::cerr, false, std::forward<Args>(args)...);
     }
     template<typename... Args>
     void error(Args&&... args) {
-        emit(std::cerr, true, std::forward<Args>(args)...);
+        this->emit(std::cerr, true, std::forward<Args>(args)...);
     }
     template<typename... Args>
     void progress(Args&&... args) {
-        emit(std::cout, true, std::forward<Args>(args)...);
+        this->emit(std::cout, true, std::forward<Args>(args)...);
     }
 
 private:
@@ -73,13 +73,13 @@ private:
     void write(std::ostream& stream, const std::string& message, bool force);
     template<typename... Args>
     void emit(std::ostream& stream, bool force, Args&&... args) {
-        if (!force && !enabled()) {
+        if (!force && !this->enabled()) {
             return;
         }
         std::ostringstream message;
         message << std::boolalpha;
         (message << ... << std::forward<Args>(args));
-        write(stream, message.str(), force);
+        this->write(stream, message.str(), force);
     }
     std::mutex mutex_;
     State state_;

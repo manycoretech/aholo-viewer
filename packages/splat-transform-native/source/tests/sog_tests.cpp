@@ -38,8 +38,8 @@ struct Fixture {
     io::Json meta;
     io::Archive files;
     io::Bytes bundle() const {
-        auto archive = files;
-        archive["meta.json"] = json_bytes(meta);
+        auto archive = this->files;
+        archive["meta.json"] = json_bytes(this->meta);
         return io::zip(archive);
     }
 };
@@ -455,7 +455,7 @@ int main(int argc, char** argv) {
         std::filesystem::path path;
         ~Cleanup() {
             std::error_code error;
-            std::filesystem::remove_all(path, error);
+            std::filesystem::remove_all(this->path, error);
         }
     } cleanup { directory };
     try {

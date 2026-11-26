@@ -66,7 +66,7 @@ ThreadPool& default_pool();
 
 template<typename T>
 void ThreadPool::wait(std::future<T>& future) {
-    if (!owns_current_thread()) {
+    if (!this->owns_current_thread()) {
         future.wait();
         return;
     }
@@ -81,7 +81,7 @@ void ThreadPool::wait(std::future<T>& future) {
             future.wait();
             return;
         }
-        if (!run_one()) {
+        if (!this->run_one()) {
             future.wait_for(std::chrono::milliseconds(1));
         }
     }
@@ -89,7 +89,7 @@ void ThreadPool::wait(std::future<T>& future) {
 
 template<typename T>
 T ThreadPool::get(std::future<T>& future) {
-    wait(future);
+    this->wait(future);
     return future.get();
 }
 
@@ -98,11 +98,11 @@ T ThreadPool::get(std::future<T>& future) {
 template<typename T>
 class TaskGroup {
 public:
-    explicit TaskGroup(ThreadPool& pool, size_t capacity = 0) : pool_(pool) { futures_.reserve(capacity); }
+    explicit TaskGroup(ThreadPool& pool, size_t capacity = 0) : pool_(pool) { this->futures_.reserve(capacity); }
     ~TaskGroup() {
-        for (auto& future : futures_) {
+        for (auto& future : this->futures_) {
             if (future.valid()) {
-                pool_.wait(future);
+                this->pool_.wait(future);
             }
         }
     }
@@ -112,18 +112,18 @@ public:
         requires std::invocable<std::decay_t<F>, std::decay_t<Args>...> &&
                  std::same_as<std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>, T>
     void submit(F&& function, Args&&... args) {
-        auto future = pool_.submit_task(std::forward<F>(function), std::forward<Args>(args)...);
+        auto future = this->pool_.submit_task(std::forward<F>(function), std::forward<Args>(args)...);
         try {
-            futures_.push_back(std::move(future));
+            this->futures_.push_back(std::move(future));
         } catch (...) {
             if (future.valid()) {
-                pool_.wait(future);
+                this->pool_.wait(future);
             }
             throw;
         }
     }
-    size_t size() const noexcept { return futures_.size(); }
-    T get(size_t index) { return pool_.get(futures_.at(index)); }
+    size_t size() const noexcept { return this->futures_.size(); }
+    T get(size_t index) { return this->pool_.get(this->futures_.at(index)); }
 
 private:
     ThreadPool& pool_;

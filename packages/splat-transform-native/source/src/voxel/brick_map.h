@@ -29,17 +29,17 @@ public:
         const auto x = static_cast<uint32_t>(block.x()) / block_side;
         const auto y = static_cast<uint32_t>(block.y()) / block_side;
         const auto z = static_cast<uint32_t>(block.z()) / block_side;
-        return x + dimensions_.x() * (y + dimensions_.y() * z);
+        return x + this->dimensions_.x() * (y + this->dimensions_.y() * z);
     }
     uint64_t get(Eigen::Vector3i block) const {
-        const auto slot = directory_[brick_index(block)];
+        const auto slot = this->directory_[this->brick_index(block)];
         const auto bits = slot == EMPTY ? uint64_t { 0 } : slot == SOLID ? FULL_BLOCK
-                                                                         : pool_[slot].masks[local_index(block)];
-        return bits ^ background_;
+                                                                         : this->pool_[slot].masks[local_index(block)];
+        return bits ^ this->background_;
     }
     void set(Eigen::Vector3i block, uint64_t mask);
-    uint64_t background() const { return background_; }
-    void invert() { background_ = ~background_; }
+    uint64_t background() const { return this->background_; }
+    void invert() { this->background_ = ~this->background_; }
     bool empty() const;
     size_t occupied_blocks() const;
     uint64_t voxel_count() const;
@@ -58,7 +58,7 @@ public:
             for (size_t i = begin; i < end; ++i) {
                 auto& entry = entries[i];
                 entry.index = index_at(i);
-                entry.bits = classify(masks_at(i), valid_blocks(origin(entry.index)));
+                entry.bits = classify(masks_at(i), this->valid_blocks(this->origin(entry.index)));
             }
         });
         uint32_t mixed = 0;
@@ -75,23 +75,23 @@ public:
                 }
             }
         });
-        std::fill(directory_.begin(), directory_.end(), EMPTY);
+        std::fill(this->directory_.begin(), this->directory_.end(), EMPTY);
         for (const auto& entry : entries) {
-            directory_[entry.index] = entry.slot;
+            this->directory_[entry.index] = entry.slot;
         }
-        pool_ = std::move(pool);
-        background_ = 0;
+        this->pool_ = std::move(pool);
+        this->background_ = 0;
     }
 
     // Skip either empty or fully occupied blocks. Order within and between
     // bricks is spatial; callers needing linear block order sort explicitly.
     template<typename F>
     void for_each_block(uint64_t skip, F&& visit) const {
-        visit_bricks(skip, [&](Eigen::Vector3i base, const BlockBits& bits, const Brick* brick) {
+        this->visit_bricks(skip, [&](Eigen::Vector3i base, const BlockBits& bits, const Brick* brick) {
             bits.for_each([&](size_t i) {
                 const Eigen::Vector3i local { static_cast<int32_t>(i % block_side),
                     static_cast<int32_t>((i / block_side) % block_side), static_cast<int32_t>(i / block_side / block_side) };
-                visit(base + local, brick ? brick->masks[i] ^ background_ : ~skip);
+                visit(base + local, brick ? brick->masks[i] ^ this->background_ : ~skip);
             });
         });
     }
@@ -103,23 +103,23 @@ private:
         std::array<uint64_t, (block_capacity + 63) / 64> words {};
         void set(size_t i, bool value) {
             const uint64_t bit = uint64_t { 1 } << (i % 64);
-            auto& word = words[i / 64];
+            auto& word = this->words[i / 64];
             word = value ? word | bit : word & ~bit;
         }
         bool empty() const {
-            return std::ranges::all_of(words, [](uint64_t word) { return word == 0; });
+            return std::ranges::all_of(this->words, [](uint64_t word) { return word == 0; });
         }
         size_t count() const {
             size_t total = 0;
-            for (auto word : words) {
+            for (auto word : this->words) {
                 total += std::popcount(word);
             }
             return total;
         }
         template<typename F>
         void for_each(F&& visit) const {
-            for (size_t i = 0; i < words.size(); ++i) {
-                for (auto bits = words[i]; bits; bits &= bits - 1) {
+            for (size_t i = 0; i < this->words.size(); ++i) {
+                for (auto bits = this->words[i]; bits; bits &= bits - 1) {
                     visit(i * 64 + std::countr_zero(bits));
                 }
             }
@@ -145,17 +145,17 @@ private:
 
     template<typename F>
     void visit_bricks(uint64_t skip, F&& visit) const {
-        const bool skip_solid = (skip ^ background_) == FULL_BLOCK;
+        const bool skip_solid = (skip ^ this->background_) == FULL_BLOCK;
         const auto skipped = skip_solid ? SOLID : EMPTY;
-        for (uint32_t i = 0; i < directory_.size(); ++i) {
-            const auto slot = directory_[i];
+        for (uint32_t i = 0; i < this->directory_.size(); ++i) {
+            const auto slot = this->directory_[i];
             if (slot != skipped) {
-                const auto base = origin(i);
-                const auto* brick = slot < SOLID ? &pool_[slot] : nullptr;
+                const auto base = this->origin(i);
+                const auto* brick = slot < SOLID ? &this->pool_[slot] : nullptr;
                 if (brick) {
                     visit(base, skip_solid ? brick->bits.nonfull : brick->bits.nonempty, brick);
                 } else {
-                    visit(base, valid_blocks(base), nullptr);
+                    visit(base, this->valid_blocks(base), nullptr);
                 }
             }
         }

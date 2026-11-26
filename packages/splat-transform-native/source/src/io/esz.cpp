@@ -178,7 +178,7 @@ splat::Splat EszFile::read(const std::filesystem::path& path, uint32_t max_sh_de
 }
 
 Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices) const {
-    const auto high_precision = high_precision_;
+    const auto high_precision = this->high_precision_;
     auto& logger = utility::logger();
     logger.info(high_precision ? "ESZ encoding high mode" : "ESZ encoding low mode");
     constexpr int32_t LEVEL = 3;
@@ -212,7 +212,7 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             append(segment, codec::encode_oct_quaternion(data.gaussians[index].rotation));
         }
         append_segment(output, segment);
-        const auto& rgb_bits = sh_bits_;
+        const auto& rgb_bits = this->sh_bits_;
         const std::array<uint32_t, 3> masks { (1u << rgb_bits[0]) - 1, (1u << rgb_bits[1]) - 1, (1u << rgb_bits[2]) - 1 };
         for (size_t group = 0; group < data.sh_count() / 3; group += 4) {
             segment.clear();
@@ -281,7 +281,7 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         colors_time.finish();
         if (data.sh_degree) {
             auto sh_time = logger.time("ESZ encoding shN");
-            const auto steps = codec::sh_quantization_steps(sh_bits_);
+            const auto steps = codec::sh_quantization_steps(this->sh_bits_);
             const auto coefficients = data.sh_count() / 3;
             const auto [w, h] = codec::texture_size(data.size() * coefficients);
             pixels.assign(static_cast<size_t>(w) * h * 4, std::byte { 255 });

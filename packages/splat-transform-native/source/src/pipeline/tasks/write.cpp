@@ -20,7 +20,7 @@ struct SplatWrite {
     std::filesystem::path path;
     SplatPtr data;
     io::FileOptions options;
-    void operator()() const { io::write_splat(path, *data, options); }
+    void operator()() const { io::write_splat(this->path, *this->data, this->options); }
 };
 void write_resource(const Resource& resource, const std::filesystem::path& path, const io::FileOptions& options, const PathResolver& paths) {
     const auto output = path.string();

@@ -5,7 +5,7 @@
 
 namespace splat_transform::pipeline {
 PathResolver::PathResolver(const io::Json& config, const std::filesystem::path& pipeline_file)
-    : work_dir_(std::filesystem::current_path()), pipeline_dir_(pipeline_file.empty() ? work_dir_ : std::filesystem::absolute(pipeline_file).parent_path()) {
+    : work_dir_(std::filesystem::current_path()), pipeline_dir_(pipeline_file.empty() ? this->work_dir_ : std::filesystem::absolute(pipeline_file).parent_path()) {
     auto version = config.value("version", 2);
     if (version != 1 && version != 2) {
         utility::logger().warn("Unrecognized pipeline version ", version, ". Using version 2.");
@@ -17,7 +17,7 @@ PathResolver::PathResolver(const io::Json& config, const std::filesystem::path& 
         utility::logger().warn("Unrecognized pipeline base ", base, ". Using pipelineDir.");
         base = "pipelineDir";
     }
-    use_pipeline_dir_ = base == "pipelineDir";
+    this->use_pipeline_dir_ = base == "pipelineDir";
 }
 
 std::filesystem::path PathResolver::resolve(const std::string& path) const {
@@ -32,10 +32,10 @@ std::filesystem::path PathResolver::resolve(const std::string& path) const {
         expanded.append(rest.substr(0, start));
         rest.remove_prefix(start);
         if (rest.starts_with(WORK_DIR)) {
-            expanded += io::path_utf8(work_dir_);
+            expanded += io::path_utf8(this->work_dir_);
             rest.remove_prefix(WORK_DIR.size());
         } else if (rest.starts_with(PIPELINE_DIR)) {
-            expanded += io::path_utf8(pipeline_dir_);
+            expanded += io::path_utf8(this->pipeline_dir_);
             rest.remove_prefix(PIPELINE_DIR.size());
         } else {
             expanded += "${";
@@ -43,7 +43,7 @@ std::filesystem::path PathResolver::resolve(const std::string& path) const {
         }
     }
     expanded.append(rest);
-    const auto& base = use_pipeline_dir_ ? pipeline_dir_ : work_dir_;
+    const auto& base = this->use_pipeline_dir_ ? this->pipeline_dir_ : this->work_dir_;
     return std::filesystem::absolute(base / io::utf8_path(expanded)).lexically_normal();
 }
 } // namespace splat_transform::pipeline

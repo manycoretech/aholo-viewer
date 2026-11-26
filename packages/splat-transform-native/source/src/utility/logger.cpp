@@ -35,21 +35,21 @@ Logger& logger() {
     return instance;
 }
 Logger::State Logger::exchange(State state) {
-    std::lock_guard lock(mutex_);
-    return std::exchange(state_, std::move(state));
+    std::lock_guard lock(this->mutex_);
+    return std::exchange(this->state_, std::move(state));
 }
 bool Logger::enabled() {
-    std::lock_guard lock(mutex_);
-    return !state_.silent;
+    std::lock_guard lock(this->mutex_);
+    return !this->state_.silent;
 }
 void Logger::write(std::ostream& stream, const std::string& message, bool force) {
     std::string prefix;
     {
-        std::lock_guard lock(mutex_);
-        if (state_.silent && !force) {
+        std::lock_guard lock(this->mutex_);
+        if (this->state_.silent && !force) {
             return;
         }
-        prefix = state_.prefix;
+        prefix = this->state_.prefix;
     }
     std::osyncstream output(stream);
     output.rdbuf()->set_emit_on_sync(true);
@@ -59,12 +59,12 @@ void Logger::write(std::ostream& stream, const std::string& message, bool force)
     output << message << std::endl;
 }
 Logger::Scope::Scope(Logger& logger, State state) : logger_(logger), previous_(logger.exchange(std::move(state))) {}
-Logger::Scope::~Scope() { logger_.exchange(std::move(previous_)); }
+Logger::Scope::~Scope() { this->logger_.exchange(std::move(this->previous_)); }
 Logger::Scope Logger::silence() {
     State state;
     {
-        std::lock_guard lock(mutex_);
-        state = state_;
+        std::lock_guard lock(this->mutex_);
+        state = this->state_;
     }
     state.silent = true;
     return Scope(*this, std::move(state));
@@ -73,20 +73,20 @@ Logger::Timer::Timer(Logger& logger, std::string label)
     : logger_(logger), label_(std::move(label)), start_(std::chrono::steady_clock::now()),
       exceptions_(std::uncaught_exceptions()), enabled_(logger.enabled()) {}
 Logger::Timer::~Timer() {
-    if (std::uncaught_exceptions() == exceptions_) {
+    if (std::uncaught_exceptions() == this->exceptions_) {
         try {
-            finish();
+            this->finish();
         } catch (...) {
             // Logging from a destructor must not interrupt resource cleanup.
         }
     }
 }
 void Logger::Timer::finish() {
-    if (!std::exchange(enabled_, false)) {
+    if (!std::exchange(this->enabled_, false)) {
         return;
     }
-    const auto elapsed = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - start_).count();
-    logger_.info(label_, ": ", duration_text(elapsed));
+    const auto elapsed = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - this->start_).count();
+    this->logger_.info(this->label_, ": ", duration_text(elapsed));
 }
 std::string fixed(float value, int32_t precision) {
     if (std::isnan(value)) {

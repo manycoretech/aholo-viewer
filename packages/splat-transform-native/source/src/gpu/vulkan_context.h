@@ -8,7 +8,7 @@ class Buffer final : public detail::BackendBuffer {
 public:
     Buffer(VmaAllocator allocator, size_t size, BufferMemory memory, bool within_budget);
     ~Buffer() override;
-    vk::Buffer handle() const { return vk::Buffer(buffer_); }
+    vk::Buffer handle() const { return vk::Buffer(this->buffer_); }
     std::byte* mapped_data() override;
     void flush() override;
     void invalidate() override;

@@ -218,7 +218,7 @@ int main(int argc, char** argv) {
         std::filesystem::path path;
         ~Cleanup() {
             std::error_code error;
-            std::filesystem::remove_all(path, error);
+            std::filesystem::remove_all(this->path, error);
         }
     } cleanup { directory };
     try {

@@ -54,87 +54,87 @@ void pack_cluster_points(const gpu::Buffer& upload, FeatureView points, std::spa
 
 struct ClusterSession::Impl {
     Impl(FeatureView points, size_t centroid_count, size_t max_batch_rows, std::span<const uint32_t> order)
-        : points_(points), order_(order), columns_(points.dimensions()), rows_(points.rows()), centroid_count_(centroid_count), stride_((columns_ + 3) / 4 * 4) {
-        if (!rows_ || !columns_ || !centroid_count_ || centroid_count_ > std::numeric_limits<uint32_t>::max()) {
+        : points_(points), order_(order), columns_(points.dimensions()), rows_(points.rows()), centroid_count_(centroid_count), stride_((this->columns_ + 3) / 4 * 4) {
+        if (!this->rows_ || !this->columns_ || !this->centroid_count_ || this->centroid_count_ > std::numeric_limits<uint32_t>::max()) {
             throw std::runtime_error("Invalid GPU clustering dimensions");
         }
-        if (!order.empty() && (order.size() != rows_ || std::ranges::any_of(order, [&](auto row) { return row >= rows_; }))) {
+        if (!order.empty() && (order.size() != this->rows_ || std::ranges::any_of(order, [&](auto row) { return row >= this->rows_; }))) {
             throw std::runtime_error("Invalid GPU clustering point order");
         }
-        const size_t centroid_bytes = centroid_count_ * stride_ * sizeof(float);
-        if (centroid_bytes > device_.limits().storage_buffer_bytes) {
+        const size_t centroid_bytes = this->centroid_count_ * this->stride_ * sizeof(float);
+        if (centroid_bytes > this->device_.limits().storage_buffer_bytes) {
             throw std::runtime_error("Clustering centroid table exceeds the storage buffer limit");
         }
-        tile_ = cluster_tile(device_, stride_);
-        pipeline_ = make_cluster_pipeline(device_, stride_, tile_);
-        size_t budget = device_.available_memory();
+        this->tile_ = cluster_tile(this->device_, this->stride_);
+        this->pipeline_ = make_cluster_pipeline(this->device_, this->stride_, this->tile_);
+        size_t budget = this->device_.available_memory();
         for (;;) {
-            schedule_ = cluster_schedule(rows_, centroid_count_, stride_,
-                { device_.limits().storage_buffer_bytes, device_.limits().workgroup_count[0], budget }, max_batch_rows);
+            this->schedule_ = cluster_schedule(this->rows_, this->centroid_count_, this->stride_,
+                { this->device_.limits().storage_buffer_bytes, this->device_.limits().workgroup_count[0], budget }, max_batch_rows);
             try {
-                allocate();
+                this->allocate();
                 break;
             } catch (const gpu::AllocationFailure&) {
-                clear();
+                this->clear();
                 if (budget <= 32 * 1024 * 1024) {
                     throw;
                 }
                 budget = std::max<size_t>(32 * 1024 * 1024, budget / 2);
             }
         }
-        upload_cached_points();
-        tune_pending_ = rows_ >= 1024 * 1024 && centroid_count_ >= 32768 && tile_ >= 32 && !cached_.empty();
-        const auto batches = (rows_ + schedule_.batch_rows - 1) / schedule_.batch_rows;
-        const auto concurrency = std::min<size_t>(2, schedule_.cached_batches + schedule_.streaming_slots);
-        utility::logger().info("GPU cluster assignment initialized with batch ", (schedule_.batch_rows + 127) / 128,
+        this->upload_cached_points();
+        this->tune_pending_ = this->rows_ >= 1024 * 1024 && this->centroid_count_ >= 32768 && this->tile_ >= 32 && !this->cached_.empty();
+        const auto batches = (this->rows_ + this->schedule_.batch_rows - 1) / this->schedule_.batch_rows;
+        const auto concurrency = std::min<size_t>(2, this->schedule_.cached_batches + this->schedule_.streaming_slots);
+        utility::logger().info("GPU cluster assignment initialized with batch ", (this->schedule_.batch_rows + 127) / 128,
             "*128*", batches, ", concurrency: ", concurrency, ", runs: ", (batches + concurrency - 1) / concurrency);
     }
     ~Impl() {
         // The task owns all in-flight resources, including on exception paths.
         try {
-            queue_.wait_cpu();
+            this->queue_.wait_cpu();
         } catch (...) {
         }
     }
     void assign(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& centroids,
         std::span<uint32_t> labels, const std::function<void(size_t)>& ready, size_t first) try {
-        if (static_cast<size_t>(centroids.cols()) != columns_) {
+        if (static_cast<size_t>(centroids.cols()) != this->columns_) {
             throw std::runtime_error("GPU centroid column count differs");
         }
         const size_t active = static_cast<size_t>(centroids.rows());
-        if (!active || active > centroid_count_) {
+        if (!active || active > this->centroid_count_) {
             throw std::runtime_error("GPU centroid count differs");
         }
-        if (first > rows_ || labels.size() > rows_ - first) {
+        if (first > this->rows_ || labels.size() > this->rows_ - first) {
             throw std::runtime_error("GPU label count differs");
         }
-        queue_.wait_cpu(fence_, centroid_value_);
-        auto* packed = reinterpret_cast<float*>(centroid_upload_.mapped_data());
-        auto* norms = reinterpret_cast<float*>(norm_upload_.mapped_data());
+        this->queue_.wait_cpu(this->fence_, this->centroid_value_);
+        auto* packed = reinterpret_cast<float*>(this->centroid_upload_.mapped_data());
+        auto* norms = reinterpret_cast<float*>(this->norm_upload_.mapped_data());
         for (size_t row = 0; row < active; ++row) {
             float norm = 0;
-            for (size_t c = 0; c < columns_; ++c) {
+            for (size_t c = 0; c < this->columns_; ++c) {
                 const auto value = centroids(row, c);
-                packed[row * stride_ + c] = value;
+                packed[row * this->stride_ + c] = value;
                 norm += static_cast<float>(value) * value;
             }
-            std::fill(packed + row * stride_ + columns_, packed + (row + 1) * stride_, 0.0f);
+            std::fill(packed + row * this->stride_ + this->columns_, packed + (row + 1) * this->stride_, 0.0f);
             norms[row] = norm;
         }
-        centroid_upload_.flush();
-        norm_upload_.flush();
-        if (active != recorded_centroids_) {
-            record_centroids(active);
+        this->centroid_upload_.flush();
+        this->norm_upload_.flush();
+        if (active != this->recorded_centroids_) {
+            this->record_centroids(active);
         }
-        centroid_value_ = queue_.submit(centroid_command_, fence_);
-        if (tune_pending_ && active == centroid_count_ && labels.size() == rows_) {
-            tune();
+        this->centroid_value_ = this->queue_.submit(this->centroid_command_, this->fence_);
+        if (this->tune_pending_ && active == this->centroid_count_ && labels.size() == this->rows_) {
+            this->tune();
         }
         std::deque<Slot*> pending;
         auto retire = [&] {
             auto* slot = pending.front();
             pending.pop_front();
-            queue_.wait_cpu(fence_, slot->completion_value);
+            this->queue_.wait_cpu(this->fence_, slot->completion_value);
             const size_t output_offset = slot->start - first;
             slot->readback.read_into(std::as_writable_bytes(labels.subspan(output_offset, slot->count)));
             if (ready) {
@@ -143,28 +143,28 @@ struct ClusterSession::Impl {
         };
         const size_t end = first + labels.size();
         for (size_t start = first; start < end;) {
-            const size_t batch = start / schedule_.batch_rows;
-            const size_t offset = start % schedule_.batch_rows;
-            const size_t count = std::min(end - start, schedule_.batch_rows - offset);
+            const size_t batch = start / this->schedule_.batch_rows;
+            const size_t offset = start % this->schedule_.batch_rows;
+            const size_t count = std::min(end - start, this->schedule_.batch_rows - offset);
             // Two submissions keep transfer/CPU packing ahead without unbounded queueing.
             if (pending.size() == 2) {
                 retire();
             }
             Slot* slot;
-            if (batch < cached_.size()) {
-                slot = cached_[batch].get();
+            if (batch < this->cached_.size()) {
+                slot = this->cached_[batch].get();
                 if (slot->start != start || slot->count != count || slot->active != active) {
-                    record(*slot, start, count, offset, active, false);
+                    this->record(*slot, start, count, offset, active, false);
                 }
             } else {
-                slot = streaming_[(batch - cached_.size()) % streaming_.size()].get();
+                slot = this->streaming_[(batch - this->cached_.size()) % this->streaming_.size()].get();
                 if (!pending.empty() && pending.front() == slot) {
                     retire();
                 }
-                pack_cluster_points(slot->upload, points_, order_, start, count, stride_);
-                record(*slot, start, count, 0, active, true);
+                pack_cluster_points(slot->upload, this->points_, this->order_, start, count, this->stride_);
+                this->record(*slot, start, count, 0, active, true);
             }
-            slot->completion_value = queue_.submit(slot->command, fence_);
+            slot->completion_value = this->queue_.submit(slot->command, this->fence_);
             pending.push_back(slot);
             start += count;
         }
@@ -174,13 +174,13 @@ struct ClusterSession::Impl {
     } catch (...) {
         // Finish borrowed resources before propagating a task failure or retry.
         try {
-            queue_.wait_cpu();
+            this->queue_.wait_cpu();
         } catch (...) {
         }
         throw;
     }
 
-    size_t rows() const { return rows_; }
+    size_t rows() const { return this->rows_; }
 
 private:
     struct Slot {
@@ -196,26 +196,26 @@ private:
         // Large jobs amortize a bounded sample of existing shader variants.
         // Shared-memory capacity alone does not predict kernel throughput.
         // Use resident points and the first real centroids; discard sample labels.
-        std::array<gpu::ComputePipeline, 2> alternatives { make_cluster_pipeline(device_, stride_, tile_ / 2), make_cluster_pipeline(device_, stride_, tile_ / 4) };
+        std::array<gpu::ComputePipeline, 2> alternatives { make_cluster_pipeline(this->device_, this->stride_, this->tile_ / 2), make_cluster_pipeline(this->device_, this->stride_, this->tile_ / 4) };
         std::array<double, 3> durations;
         durations.fill(std::numeric_limits<double>::infinity());
-        auto commands = device_.create_commands();
-        const uint32_t count = static_cast<uint32_t>(std::min({ schedule_.batch_rows, rows_ / 32, static_cast<size_t>(131072) }));
+        auto commands = this->device_.create_commands();
+        const uint32_t count = static_cast<uint32_t>(std::min({ this->schedule_.batch_rows, this->rows_ / 32, static_cast<size_t>(131072) }));
         for (size_t pass = 0; pass < 3; ++pass) {
             for (size_t i = 0; i < durations.size(); ++i) {
                 const size_t option = pass % 2 ? durations.size() - i - 1 : i;
                 commands.reset();
                 commands.begin();
-                dispatch_cluster(commands, option ? alternatives[option - 1] : pipeline_, cached_.front()->table, count, static_cast<uint32_t>(centroid_count_));
+                dispatch_cluster(commands, option ? alternatives[option - 1] : this->pipeline_, this->cached_.front()->table, count, static_cast<uint32_t>(this->centroid_count_));
                 commands.end();
                 const auto start = std::chrono::steady_clock::now();
                 try {
-                    const auto value = queue_.submit(commands, fence_);
-                    queue_.wait_cpu(fence_, value);
+                    const auto value = this->queue_.submit(commands, this->fence_);
+                    this->queue_.wait_cpu(this->fence_, value);
                 } catch (...) {
                     // Retire borrowed commands/pipelines before local owners unwind.
                     try {
-                        queue_.wait_cpu();
+                        this->queue_.wait_cpu();
                     } catch (...) {
                     }
                     throw;
@@ -230,94 +230,94 @@ private:
         const size_t best = static_cast<size_t>(std::min_element(durations.begin(), durations.end()) - durations.begin());
         // Retain the original choice when the difference is within timing noise.
         if (best && durations[best] < durations[0] * 0.95) {
-            for (auto& slot : cached_) {
+            for (auto& slot : this->cached_) {
                 slot->command.reset();
                 slot->active = 0;
             }
-            pipeline_ = std::move(alternatives[best - 1]);
-            tile_ >>= best;
+            this->pipeline_ = std::move(alternatives[best - 1]);
+            this->tile_ >>= best;
         }
-        tune_pending_ = false;
-        utility::logger().info("GPU cluster assignment tile selected: ", tile_, " (sample rows=", count,
+        this->tune_pending_ = false;
+        utility::logger().info("GPU cluster assignment tile selected: ", this->tile_, " (sample rows=", count,
             ", variant ms=", utility::fixed(static_cast<float>(durations[0] * 1000), 3), '/',
             utility::fixed(static_cast<float>(durations[1] * 1000), 3), '/', utility::fixed(static_cast<float>(durations[2] * 1000), 3), ')');
     }
     gpu::Buffer buffer(size_t bytes, gpu::BufferMemory memory = gpu::BufferMemory::Device) {
-        return device_.create_buffer(bytes, memory, memory == gpu::BufferMemory::Device);
+        return this->device_.create_buffer(bytes, memory, memory == gpu::BufferMemory::Device);
     }
     void allocate() {
         using enum gpu::BufferMemory;
-        centroids_ = buffer(centroid_count_ * stride_ * sizeof(float));
-        norms_ = buffer(centroid_count_ * sizeof(float));
-        centroid_upload_ = buffer(centroids_.size(), Upload);
-        norm_upload_ = buffer(norms_.size(), Upload);
+        this->centroids_ = this->buffer(this->centroid_count_ * this->stride_ * sizeof(float));
+        this->norms_ = this->buffer(this->centroid_count_ * sizeof(float));
+        this->centroid_upload_ = this->buffer(this->centroids_.size(), Upload);
+        this->norm_upload_ = this->buffer(this->norms_.size(), Upload);
         auto create_slot = [&](bool streaming) {
             auto slot = std::make_unique<Slot>();
-            slot->points = buffer(schedule_.batch_rows * stride_ * sizeof(float));
-            slot->labels = buffer(schedule_.batch_rows * sizeof(uint32_t));
-            slot->readback = buffer(slot->labels.size(), Readback);
+            slot->points = this->buffer(this->schedule_.batch_rows * this->stride_ * sizeof(float));
+            slot->labels = this->buffer(this->schedule_.batch_rows * sizeof(uint32_t));
+            slot->readback = this->buffer(slot->labels.size(), Readback);
             if (streaming) {
-                slot->upload = buffer(slot->points.size(), Upload);
+                slot->upload = this->buffer(slot->points.size(), Upload);
             }
-            const std::array<gpu::BufferRange, 4> bindings { gpu::BufferRange { &slot->points }, { &centroids_ }, { &norms_ }, { &slot->labels } };
-            slot->table = device_.create_descriptor_table(pipeline_, bindings);
-            slot->command = device_.create_commands();
+            const std::array<gpu::BufferRange, 4> bindings { gpu::BufferRange { &slot->points }, { &this->centroids_ }, { &this->norms_ }, { &slot->labels } };
+            slot->table = this->device_.create_descriptor_table(this->pipeline_, bindings);
+            slot->command = this->device_.create_commands();
             return slot;
         };
-        for (size_t i = 0; i < schedule_.cached_batches; ++i) {
-            cached_.push_back(create_slot(false));
+        for (size_t i = 0; i < this->schedule_.cached_batches; ++i) {
+            this->cached_.push_back(create_slot(false));
         }
-        for (size_t i = 0; i < schedule_.streaming_slots; ++i) {
-            streaming_.push_back(create_slot(true));
+        for (size_t i = 0; i < this->schedule_.streaming_slots; ++i) {
+            this->streaming_.push_back(create_slot(true));
         }
-        centroid_command_ = device_.create_commands();
-        if (!cached_.empty()) {
-            initial_upload_ = buffer(schedule_.batch_rows * stride_ * sizeof(float), Upload);
+        this->centroid_command_ = this->device_.create_commands();
+        if (!this->cached_.empty()) {
+            this->initial_upload_ = this->buffer(this->schedule_.batch_rows * this->stride_ * sizeof(float), Upload);
         }
     }
     void clear() {
-        cached_.clear();
-        streaming_.clear();
-        centroid_command_ = {};
-        centroids_ = {};
-        norms_ = {};
-        centroid_upload_ = {};
-        norm_upload_ = {};
-        initial_upload_ = {};
+        this->cached_.clear();
+        this->streaming_.clear();
+        this->centroid_command_ = {};
+        this->centroids_ = {};
+        this->norms_ = {};
+        this->centroid_upload_ = {};
+        this->norm_upload_ = {};
+        this->initial_upload_ = {};
     }
     void upload_cached_points() {
-        if (cached_.empty()) {
+        if (this->cached_.empty()) {
             return;
         }
-        auto command = device_.create_commands();
-        for (size_t batch = 0; batch < cached_.size(); ++batch) {
-            const size_t count = std::min(schedule_.batch_rows, rows_ - batch * schedule_.batch_rows);
-            pack_cluster_points(initial_upload_, points_, order_, batch * schedule_.batch_rows, count, stride_);
+        auto command = this->device_.create_commands();
+        for (size_t batch = 0; batch < this->cached_.size(); ++batch) {
+            const size_t count = std::min(this->schedule_.batch_rows, this->rows_ - batch * this->schedule_.batch_rows);
+            pack_cluster_points(this->initial_upload_, this->points_, this->order_, batch * this->schedule_.batch_rows, count, this->stride_);
             command.reset();
             command.begin();
-            command.copy(initial_upload_, cached_[batch]->points, count * stride_ * sizeof(float));
+            command.copy(this->initial_upload_, this->cached_[batch]->points, count * this->stride_ * sizeof(float));
             command.end();
-            const auto value = queue_.submit(command, fence_);
+            const auto value = this->queue_.submit(command, this->fence_);
             try {
-                queue_.wait_cpu(fence_, value);
+                this->queue_.wait_cpu(this->fence_, value);
             } catch (...) {
                 // Constructor failure must finish the borrowed local recording.
                 try {
-                    queue_.wait_cpu();
+                    this->queue_.wait_cpu();
                 } catch (...) {
                 }
                 throw;
             }
         }
-        initial_upload_ = {};
+        this->initial_upload_ = {};
     }
     void record_centroids(size_t active) {
-        centroid_command_.reset();
-        centroid_command_.begin();
-        centroid_command_.copy(centroid_upload_, centroids_, active * stride_ * sizeof(float));
-        centroid_command_.copy(norm_upload_, norms_, active * sizeof(float));
-        centroid_command_.end();
-        recorded_centroids_ = active;
+        this->centroid_command_.reset();
+        this->centroid_command_.begin();
+        this->centroid_command_.copy(this->centroid_upload_, this->centroids_, active * this->stride_ * sizeof(float));
+        this->centroid_command_.copy(this->norm_upload_, this->norms_, active * sizeof(float));
+        this->centroid_command_.end();
+        this->recorded_centroids_ = active;
     }
     void record(Slot& slot, size_t start, size_t count, size_t offset, size_t active, bool upload) {
         slot.start = start;
@@ -326,15 +326,15 @@ private:
         slot.command.reset();
         slot.command.begin();
         if (upload) {
-            slot.command.copy(slot.upload, slot.points, slot.count * stride_ * sizeof(float));
+            slot.command.copy(slot.upload, slot.points, slot.count * this->stride_ * sizeof(float));
         }
-        dispatch_cluster(slot.command, pipeline_, slot.table, static_cast<uint32_t>(count), static_cast<uint32_t>(active), static_cast<uint32_t>(offset));
+        dispatch_cluster(slot.command, this->pipeline_, slot.table, static_cast<uint32_t>(count), static_cast<uint32_t>(active), static_cast<uint32_t>(offset));
         slot.command.copy(slot.labels, slot.readback, slot.count * sizeof(uint32_t));
         slot.command.end();
     }
     gpu::ComputeDevice device_;
-    gpu::Queue& queue_ { device_.default_queue() };
-    gpu::Fence fence_ { device_.create_fence() };
+    gpu::Queue& queue_ { this->device_.default_queue() };
+    gpu::Fence fence_ { this->device_.create_fence() };
     uint64_t centroid_value_ = 0;
     FeatureView points_;
     std::span<const uint32_t> order_;
@@ -352,12 +352,12 @@ ClusterSession::ClusterSession(FeatureView points, size_t centroid_count, size_t
     : impl_(std::make_unique<Impl>(points, centroid_count, max_batch_rows, order)) {}
 ClusterSession::~ClusterSession() = default;
 std::vector<uint32_t> ClusterSession::assign(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& centroids) {
-    std::vector<uint32_t> labels(impl_->rows());
-    assign(centroids, labels);
+    std::vector<uint32_t> labels(this->impl_->rows());
+    this->assign(centroids, labels);
     return labels;
 }
 void ClusterSession::assign(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& centroids,
     std::span<uint32_t> labels, const std::function<void(size_t)>& ready, size_t first) {
-    impl_->assign(centroids, labels, ready, first);
+    this->impl_->assign(centroids, labels, ready, first);
 }
 } // namespace splat_transform::spatial

@@ -74,10 +74,10 @@ struct TaskContext::CachedVoxelGrid {
 TaskContext::TaskContext(PathResolver resolver) : paths(std::move(resolver)) {}
 TaskContext::~TaskContext() = default;
 const Resource& TaskContext::input(const io::Json& config) const {
-    return resources_.at(config.at("input").get<std::string>()).data;
+    return this->resources_.at(config.at("input").get<std::string>()).data;
 }
 const SplatPtr& TaskContext::splat_ptr(const io::Json& config) const {
-    const auto& resource = input(config);
+    const auto& resource = this->input(config);
     if (const auto* data = std::get_if<SplatPtr>(&resource)) {
         return *data;
     }
@@ -88,9 +88,9 @@ const SplatPtr& TaskContext::splat_ptr(const io::Json& config) const {
     return std::get<SplatPtr>(files.front().content);
 }
 splat::Splat TaskContext::take_splat(const io::Json& config) {
-    const auto& pointer = splat_ptr(config);
+    const auto& pointer = this->splat_ptr(config);
     const auto name = config.at("input").get<std::string>();
-    const bool disposable = config.value("output", "") == name || releases_.contains(name);
+    const bool disposable = config.value("output", "") == name || this->releases_.contains(name);
     // Retained resources and aliases remain valid. A replaced/released sole owner
     // can transfer its Gaussian and SH allocations directly into the task.
     if (disposable && pointer.use_count() == 1) {
@@ -99,18 +99,18 @@ splat::Splat TaskContext::take_splat(const io::Json& config) {
     return *pointer;
 }
 splat::Splat TaskContext::select_splat(const io::Json& config, std::span<const uint32_t> indices) {
-    const auto& pointer = splat_ptr(config);
+    const auto& pointer = this->splat_ptr(config);
     const auto name = config.at("input").get<std::string>();
-    if ((config.at("output") == name || releases_.contains(name)) && pointer.use_count() == 1) {
+    if ((config.at("output") == name || this->releases_.contains(name)) && pointer.use_count() == 1) {
         return std::move(*pointer).select(indices);
     }
     return pointer->select(indices);
 }
 void TaskContext::geometry_changed(const io::Json& config) {
-    const auto* changed = splat_ptr(config).get();
-    const auto lineage = parents_.size();
-    parents_.push_back(NO_LINEAGE);
-    for (auto& [key, entry] : resources_) {
+    const auto* changed = this->splat_ptr(config).get();
+    const auto lineage = this->parents_.size();
+    this->parents_.push_back(NO_LINEAGE);
+    for (auto& [key, entry] : this->resources_) {
         if (auto* point = std::get_if<SplatPtr>(&entry.data); point && point->get() == changed) {
             entry.lineage = lineage;
         }
@@ -118,10 +118,10 @@ void TaskContext::geometry_changed(const io::Json& config) {
 }
 void TaskContext::set(const io::Json& config, Resource resource, bool inherit_grid) {
     size_t source;
-    size_t lineage = parents_.size();
+    size_t lineage = this->parents_.size();
     size_t parent = NO_LINEAGE;
     if (config.contains("input")) {
-        const auto& input = resources_.at(config.at("input").get<std::string>());
+        const auto& input = this->resources_.at(config.at("input").get<std::string>());
         source = input.source;
         if (inherit_grid) {
             parent = input.lineage;
@@ -133,34 +133,34 @@ void TaskContext::set(const io::Json& config, Resource resource, bool inherit_gr
         }
     } else if (config.contains("inputs")) {
         const auto signature = geometry_hash(*std::get<SplatPtr>(resource));
-        auto [entry, inserted] = read_sources_.try_emplace(ordered_input_key(config.at("inputs"), paths), ReadSource { next_source_, NO_LINEAGE, signature });
+        auto [entry, inserted] = this->read_sources_.try_emplace(ordered_input_key(config.at("inputs"), this->paths), ReadSource { this->next_source_, NO_LINEAGE, signature });
         if (inserted) {
-            ++next_source_;
+            ++this->next_source_;
         }
         auto& read = entry->second;
         if (read.root_lineage_id == NO_LINEAGE || read.geometry_hash != signature) {
-            parents_.push_back(NO_LINEAGE);
-            read.root_lineage_id = parents_.size() - 1;
+            this->parents_.push_back(NO_LINEAGE);
+            read.root_lineage_id = this->parents_.size() - 1;
             read.geometry_hash = signature;
         }
         source = read.source_id;
         lineage = read.root_lineage_id;
     } else {
-        source = next_source_++;
+        source = this->next_source_++;
     }
-    if (lineage == parents_.size()) {
-        parents_.push_back(parent);
+    if (lineage == this->parents_.size()) {
+        this->parents_.push_back(parent);
     }
-    resources_.insert_or_assign(config.at("output").get<std::string>(), Entry { std::move(resource), source, lineage });
+    this->resources_.insert_or_assign(config.at("output").get<std::string>(), Entry { std::move(resource), source, lineage });
 }
 const voxel::Occupancy* TaskContext::find_grid(const io::Json& config, voxel::GridSpec requested) const {
-    const auto& input = resources_.at(config.at("input").get<std::string>());
-    const auto source = voxel_cache_.find(input.source);
-    if (source == voxel_cache_.end()) {
+    const auto& input = this->resources_.at(config.at("input").get<std::string>());
+    const auto source = this->voxel_cache_.find(input.source);
+    if (source == this->voxel_cache_.end()) {
         return nullptr;
     }
     const voxel::Occupancy* best = nullptr;
-    for (auto node = input.lineage; node != NO_LINEAGE; node = parents_[node]) {
+    for (auto node = input.lineage; node != NO_LINEAGE; node = this->parents_[node]) {
         for (const auto& entry : source->second) {
             const auto& grid = entry->occupancy;
             if (entry->lineage != node || grid.spec.opacity_cutoff != requested.opacity_cutoff) {
@@ -178,8 +178,8 @@ const voxel::Occupancy* TaskContext::find_grid(const io::Json& config, voxel::Gr
     return best;
 }
 const voxel::Occupancy& TaskContext::store_grid(const io::Json& config, voxel::Occupancy&& grid) {
-    const auto& input = resources_.at(config.at("input").get<std::string>());
-    auto& cached_grids = voxel_cache_[input.source];
+    const auto& input = this->resources_.at(config.at("input").get<std::string>());
+    auto& cached_grids = this->voxel_cache_[input.source];
     for (const auto& entry : cached_grids) {
         if (entry->lineage == input.lineage && entry->occupancy.spec == grid.spec) {
             return entry->occupancy;
@@ -189,35 +189,35 @@ const voxel::Occupancy& TaskContext::store_grid(const io::Json& config, voxel::O
     return entry->occupancy;
 }
 void TaskContext::begin_task(const io::Json& releases) {
-    releases_.clear();
+    this->releases_.clear();
     for (const auto& name : releases) {
-        releases_.insert(name.get<std::string>());
+        this->releases_.insert(name.get<std::string>());
     }
 }
 void TaskContext::finish_task() {
-    for (const auto& name : releases_) {
-        resources_.erase(name);
+    for (const auto& name : this->releases_) {
+        this->resources_.erase(name);
     }
-    releases_.clear();
+    this->releases_.clear();
 }
 void TaskContext::record_voxel(const io::Json& config) {
-    const auto path = paths.resolve(config.at("output").get<std::string>()) / "voxel-meta.json";
-    voxel_outputs_.insert_or_assign(path, resources_.at(config.at("input").get<std::string>()).source);
-    update_lod_metadata();
+    const auto path = this->paths.resolve(config.at("output").get<std::string>()) / "voxel-meta.json";
+    this->voxel_outputs_.insert_or_assign(path, this->resources_.at(config.at("input").get<std::string>()).source);
+    this->update_lod_metadata();
 }
 void TaskContext::record_lod_metadata(const io::Json& config, const std::filesystem::path& path) {
-    lod_outputs_.insert_or_assign(std::filesystem::absolute(path).lexically_normal(), resources_.at(config.at("input").get<std::string>()).source);
-    update_lod_metadata();
+    this->lod_outputs_.insert_or_assign(std::filesystem::absolute(path).lexically_normal(), this->resources_.at(config.at("input").get<std::string>()).source);
+    this->update_lod_metadata();
 }
 void TaskContext::update_lod_metadata() {
     // Output directories can be replaced by later Write tasks. Never keep links
     // to deleted files or update metadata belonging to a previous output.
     const auto missing = [](const auto& output) { return !std::filesystem::is_regular_file(output.first); };
-    std::erase_if(voxel_outputs_, missing);
-    std::erase_if(lod_outputs_, missing);
-    for (const auto& [path, source] : lod_outputs_) {
+    std::erase_if(this->voxel_outputs_, missing);
+    std::erase_if(this->lod_outputs_, missing);
+    for (const auto& [path, source] : this->lod_outputs_) {
         auto voxels = io::Json::array();
-        for (const auto& [voxel, voxel_source] : voxel_outputs_) {
+        for (const auto& [voxel, voxel_source] : this->voxel_outputs_) {
             if (voxel_source != source) {
                 continue;
             }

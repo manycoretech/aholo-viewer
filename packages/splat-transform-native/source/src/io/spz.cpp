@@ -161,33 +161,33 @@ public:
         if (indices.size() > std::numeric_limits<uint32_t>::max()) {
             throw std::runtime_error("Too many SPZ points");
         }
-        for (size_t field = 0; field < strides_.size(); ++field) {
-            offsets_[field + 1] = offsets_[field] + indices.size() * strides_[field];
+        for (size_t field = 0; field < this->strides_.size(); ++field) {
+            this->offsets_[field + 1] = this->offsets_[field] + indices.size() * this->strides_[field];
         }
-        append(header_, SPZ_MAGIC);
-        append(header_, static_cast<uint32_t>(version));
-        append(header_, static_cast<uint32_t>(indices.size()));
-        header_.push_back(static_cast<std::byte>(data.sh_degree));
-        header_.push_back(std::byte { 12 });
-        header_.push_back(std::byte { 1 });
-        header_.push_back(static_cast<std::byte>(version == 4 ? (data.sh_degree ? 6 : 5) : 0));
+        append(this->header_, SPZ_MAGIC);
+        append(this->header_, static_cast<uint32_t>(version));
+        append(this->header_, static_cast<uint32_t>(indices.size()));
+        this->header_.push_back(static_cast<std::byte>(data.sh_degree));
+        this->header_.push_back(std::byte { 12 });
+        this->header_.push_back(std::byte { 1 });
+        this->header_.push_back(static_cast<std::byte>(version == 4 ? (data.sh_degree ? 6 : 5) : 0));
     }
     void write(const codec::WriteChunk& output, const std::function<void(size_t)>& seek) const {
-        if (version_ == 3) {
-            const auto size = header_.size() + offsets_.back();
+        if (this->version_ == 3) {
+            const auto size = this->header_.size() + this->offsets_.back();
             const auto read = [&](size_t offset, std::span<std::byte> bytes) {
-                if (offset < header_.size()) {
-                    const size_t count = std::min(bytes.size(), header_.size() - offset);
-                    std::copy_n(header_.data() + offset, count, bytes.data());
+                if (offset < this->header_.size()) {
+                    const size_t count = std::min(bytes.size(), this->header_.size() - offset);
+                    std::copy_n(this->header_.data() + offset, count, bytes.data());
                     offset += count;
                     bytes = bytes.subspan(count);
                 }
                 if (!bytes.empty()) {
-                    encode(offset - header_.size(), bytes, false);
+                    this->encode(offset - this->header_.size(), bytes, false);
                 }
             };
-            if (level_ != -1) {
-                codec::gzip_stream(size, read, output, level_);
+            if (this->level_ != -1) {
+                codec::gzip_stream(size, read, output, this->level_);
             } else {
                 Bytes bytes(std::min(size, static_cast<size_t>(8 * 1024 * 1024)));
                 for (size_t offset = 0; offset < size;) {
@@ -199,22 +199,22 @@ public:
             }
             return;
         }
-        const size_t streams = data_.sh_degree ? 6 : 5;
-        auto header = header_;
+        const size_t streams = this->data_.sh_degree ? 6 : 5;
+        auto header = this->header_;
         append(header, static_cast<uint32_t>(32));
         header.resize(32 + streams * 16, std::byte {});
         output(header);
         size_t position = header.size();
         Bytes toc;
         for (size_t field = 0; field < streams; ++field) {
-            const auto size = offsets_[field + 1] - offsets_[field];
+            const auto size = this->offsets_[field + 1] - this->offsets_[field];
             const size_t start = position;
-            const auto read = [&](size_t offset, std::span<std::byte> bytes) { encode(offsets_[field] + offset, bytes, true); };
+            const auto read = [&](size_t offset, std::span<std::byte> bytes) { this->encode(this->offsets_[field] + offset, bytes, true); };
             const auto write = [&](std::span<const std::byte> bytes) {
                 output(bytes);
                 position += bytes.size();
             };
-            codec::zstd_stream(size, read, write, level_);
+            codec::zstd_stream(size, read, write, this->level_);
             append(toc, static_cast<uint64_t>(position - start));
             append(toc, static_cast<uint64_t>(size));
         }
@@ -226,8 +226,8 @@ public:
 
 private:
     void encode_rows(size_t field, size_t first, size_t count, std::byte* output) const {
-        for (size_t row = 0; row < count; ++row, output += strides_[field]) {
-            const auto& point = data_.gaussians[indices_[first + row]];
+        for (size_t row = 0; row < count; ++row, output += this->strides_[field]) {
+            const auto& point = this->data_.gaussians[this->indices_[first + row]];
             if (field == 0) {
                 for (size_t c = 0; c < 3; ++c) {
                     const auto value = static_cast<uint32_t>(static_cast<int32_t>(std::clamp(static_cast<float>(point.attribute(c)) * 4096, -8388607.0f, 8388607.0f)));
@@ -266,26 +266,26 @@ private:
                     output[c] = static_cast<std::byte>(packed >> (8 * c));
                 }
             } else {
-                for (size_t c = 0; c < data_.sh_count(); ++c) {
-                    output[c] = codec::quantize_sh(point.attribute(splat::ShOffset + c), sh_steps_[c / 3]);
+                for (size_t c = 0; c < this->data_.sh_count(); ++c) {
+                    output[c] = codec::quantize_sh(point.attribute(splat::ShOffset + c), this->sh_steps_[c / 3]);
                 }
             }
         }
     }
     void encode_field(size_t field, size_t offset, std::span<std::byte> bytes, bool parallel) const {
-        const size_t stride = strides_[field];
+        const size_t stride = this->strides_[field];
         size_t first = offset / stride;
         const size_t skip = offset % stride;
         std::array<std::byte, 45> partial;
         if (skip) {
-            encode_rows(field, first++, 1, partial.data());
+            this->encode_rows(field, first++, 1, partial.data());
             const size_t count = std::min(bytes.size(), stride - skip);
             std::copy_n(partial.data() + skip, count, bytes.data());
             bytes = bytes.subspan(count);
         }
         const size_t rows = bytes.size() / stride;
         if (rows) {
-            const auto run = [&](size_t begin, size_t end) { encode_rows(field, first + begin, end - begin, bytes.data() + begin * stride); };
+            const auto run = [&](size_t begin, size_t end) { this->encode_rows(field, first + begin, end - begin, bytes.data() + begin * stride); };
             if (parallel) {
                 parallel_rows(rows, run);
             } else {
@@ -295,15 +295,15 @@ private:
             bytes = bytes.subspan(rows * stride);
         }
         if (!bytes.empty()) {
-            encode_rows(field, first, 1, partial.data());
+            this->encode_rows(field, first, 1, partial.data());
             std::copy_n(partial.data(), bytes.size(), bytes.data());
         }
     }
     void encode(size_t offset, std::span<std::byte> bytes, bool parallel) const {
         while (!bytes.empty()) {
-            const size_t field = std::upper_bound(offsets_.begin(), offsets_.end(), offset) - offsets_.begin() - 1;
-            const size_t count = std::min(bytes.size(), offsets_[field + 1] - offset);
-            encode_field(field, offset - offsets_[field], bytes.first(count), parallel);
+            const size_t field = std::upper_bound(this->offsets_.begin(), this->offsets_.end(), offset) - this->offsets_.begin() - 1;
+            const size_t count = std::min(bytes.size(), this->offsets_[field + 1] - offset);
+            this->encode_field(field, offset - this->offsets_[field], bytes.first(count), parallel);
             offset += count;
             bytes = bytes.subspan(count);
         }
@@ -318,7 +318,7 @@ private:
 };
 } // namespace
 Bytes SpzFile::write(const splat::Splat& data, std::span<const uint32_t> indices) const {
-    SpzWriter writer(data, indices, version_, compression_level_, sh_bits_);
+    SpzWriter writer(data, indices, this->version_, this->compression_level_, this->sh_bits_);
     Bytes output;
     size_t position = 0;
     writer.write(
@@ -331,7 +331,7 @@ Bytes SpzFile::write(const splat::Splat& data, std::span<const uint32_t> indices
     return output;
 }
 void SpzFile::write(const std::filesystem::path& path, const splat::Splat& data, std::span<const uint32_t> indices) const {
-    SpzWriter writer(data, indices, version_, compression_level_, sh_bits_);
+    SpzWriter writer(data, indices, this->version_, this->compression_level_, this->sh_bits_);
     FileStream output(path, FileStream::Access::Write);
     writer.write([&](std::span<const std::byte> bytes) { output.write(bytes); }, [&](size_t offset) { output.seek(offset); });
     output.close();

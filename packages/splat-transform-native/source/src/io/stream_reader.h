@@ -13,14 +13,14 @@ public:
     explicit StreamReader(const std::filesystem::path& path, size_t buffer_size = 1024 * 1024);
     explicit StreamReader(std::span<const std::byte> bytes, size_t buffer_size = 1024 * 1024);
     explicit StreamReader(Read read, size_t buffer_size = 1024 * 1024);
-    size_t remaining() const { return remaining_; }
+    size_t remaining() const { return this->remaining_; }
     std::span<const std::byte> peek(size_t count);
     std::span<const std::byte> take(size_t count);
     std::span<const std::byte> read_some(size_t maximum);
     void skip(size_t count);
     void require_end();
     template<typename T>
-    T read(bool little = true) { return ByteReader(take(sizeof(T))).read<T>(little); }
+    T read(bool little = true) { return ByteReader(this->take(sizeof(T))).read<T>(little); }
 
 private:
     void fill(size_t minimum);

@@ -40,8 +40,8 @@ Eigen::Vector3i line_key(int32_t axis, Eigen::Vector3i p) {
 struct Rectangle {
     int32_t bucket, plane, u0, v0, u1, v1;
     std::array<Eigen::Vector3i, 4> corners() const {
-        const int32_t axis = bucket / 2;
-        return { global_point(axis, plane, u0, v0), global_point(axis, plane, u1, v0), global_point(axis, plane, u1, v1), global_point(axis, plane, u0, v1) };
+        const int32_t axis = this->bucket / 2;
+        return { global_point(axis, this->plane, this->u0, this->v0), global_point(axis, this->plane, this->u1, this->v0), global_point(axis, this->plane, this->u1, this->v1), global_point(axis, this->plane, this->u0, this->v1) };
     }
 };
 } // namespace

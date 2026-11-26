@@ -29,7 +29,7 @@ public:
     GpuWorkspace& operator=(const GpuWorkspace&) = delete;
     GpuWorkspace(GpuWorkspace&&) noexcept = default;
     GpuWorkspace& operator=(GpuWorkspace&&) noexcept = default;
-    const gpu::ComputeDevice& device() const { return device_; }
+    const gpu::ComputeDevice& device() const { return this->device_; }
     void execute(const gpu::ComputeShader& shader, const std::vector<BufferData>& bindings,
         std::span<const std::byte> push, std::array<uint32_t, 3> groups);
     void execute_chain(const std::vector<BufferData>& bindings, const std::vector<ComputeStage>& stages);

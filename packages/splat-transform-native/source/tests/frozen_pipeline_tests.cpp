@@ -95,8 +95,8 @@ int main(int argc, char** argv) {
             std::filesystem::path previous;
             ~Cleanup() {
                 std::error_code error;
-                std::filesystem::current_path(previous, error);
-                std::filesystem::remove_all(directory, error);
+                std::filesystem::current_path(this->previous, error);
+                std::filesystem::remove_all(this->directory, error);
             }
         } cleanup { directory, std::filesystem::current_path() };
         prepare(directory);

@@ -11,10 +11,10 @@ using namespace splat_transform;
 namespace {
 class Capture {
 public:
-    explicit Capture(std::ostream& stream) : stream_(stream), previous_(stream.rdbuf(&output_)) {}
-    ~Capture() { stream_.rdbuf(previous_); }
-    std::string text() const { return output_.str(); }
-    size_t flush_count() const { return output_.flush_count; }
+    explicit Capture(std::ostream& stream) : stream_(stream), previous_(stream.rdbuf(&this->output_)) {}
+    ~Capture() { this->stream_.rdbuf(this->previous_); }
+    std::string text() const { return this->output_.str(); }
+    size_t flush_count() const { return this->output_.flush_count; }
 
 private:
     struct Buffer : std::stringbuf {
@@ -22,8 +22,8 @@ private:
 
     private:
         int32_t sync() override {
-            ++flush_count;
-            return std::stringbuf::sync();
+            ++this->flush_count;
+            return this->std::stringbuf::sync();
         }
     };
     Buffer output_;

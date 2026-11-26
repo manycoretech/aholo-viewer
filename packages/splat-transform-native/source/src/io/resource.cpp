@@ -22,24 +22,24 @@ struct Resources::Impl {
 };
 Resources::Resources(const std::filesystem::path& path, std::span<const std::byte> bytes, const std::string& format) : impl_(std::make_unique<Impl>()) {
     if (bytes.size() >= 4 && bytes[0] == std::byte { 'P' } && bytes[1] == std::byte { 'K' }) {
-        impl_->archive = std::make_unique<ZipArchive>(bytes);
+        this->impl_->archive = std::make_unique<ZipArchive>(bytes);
         std::vector<std::string> candidates;
-        for (auto& name : impl_->archive->entries()) {
+        for (auto& name : this->impl_->archive->entries()) {
             const auto entry = utf8_path(name).lexically_normal();
             if (is_archive_metadata(name, format)) {
-                impl_->directory = entry.parent_path();
+                this->impl_->directory = entry.parent_path();
                 candidates.push_back(name);
             }
-            impl_->entries.try_emplace(utility::lower(entry.generic_u8string()), std::move(name));
+            this->impl_->entries.try_emplace(utility::lower(entry.generic_u8string()), std::move(name));
         }
         if (candidates.size() != 1) {
             throw std::runtime_error("Archive must contain exactly one " + format + " metadata file");
         }
-        const auto metadata = impl_->archive->read(candidates[0]);
-        meta = Json::parse(std::string_view(reinterpret_cast<const char*>(metadata.data()), metadata.size()));
+        const auto metadata = this->impl_->archive->read(candidates[0]);
+        this->meta = Json::parse(std::string_view(reinterpret_cast<const char*>(metadata.data()), metadata.size()));
     } else {
-        impl_->directory = path.has_parent_path() ? path.parent_path() : std::filesystem::path(".");
-        meta = Json::parse(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
+        this->impl_->directory = path.has_parent_path() ? path.parent_path() : std::filesystem::path(".");
+        this->meta = Json::parse(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
     }
 }
 Resources::~Resources() = default;
@@ -48,12 +48,12 @@ std::string Resources::resolve(const std::string& name) const {
         return name;
     }
     const auto relative = utf8_path(name).lexically_normal();
-    const auto path = impl_->directory / relative;
-    const auto by_filename = impl_->directory / relative.filename();
-    if (impl_->archive) {
+    const auto path = this->impl_->directory / relative;
+    const auto by_filename = this->impl_->directory / relative.filename();
+    if (this->impl_->archive) {
         for (const auto& candidate : { path, relative, by_filename }) {
-            const auto entry = impl_->entries.find(utility::lower(candidate.lexically_normal().generic_u8string()));
-            if (entry != impl_->entries.end()) {
+            const auto entry = this->impl_->entries.find(utility::lower(candidate.lexically_normal().generic_u8string()));
+            if (entry != this->impl_->entries.end()) {
                 return entry->second;
             }
         }
@@ -63,9 +63,9 @@ std::string Resources::resolve(const std::string& name) const {
                 return path_utf8(candidate);
             }
         }
-        if (std::filesystem::is_directory(impl_->directory)) {
+        if (std::filesystem::is_directory(this->impl_->directory)) {
             const auto folded_name = utility::lower(std::u8string(name.begin(), name.end()));
-            for (const auto& entry : std::filesystem::directory_iterator(impl_->directory)) {
+            for (const auto& entry : std::filesystem::directory_iterator(this->impl_->directory)) {
                 if (entry.is_regular_file() && utility::lower(entry.path().filename().u8string()) == folded_name) {
                     return path_utf8(entry.path());
                 }
@@ -75,7 +75,7 @@ std::string Resources::resolve(const std::string& name) const {
     throw std::runtime_error("Missing resource: " + relative.string());
 }
 Bytes Resources::read(const std::string& name) const {
-    const auto path = resolve(name);
+    const auto path = this->resolve(name);
     if (path.starts_with("https://") || path.starts_with("http://")) {
         static const int32_t initialized = [] {
             if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
@@ -108,8 +108,8 @@ Bytes Resources::read(const std::string& name) const {
         }
         return result;
     }
-    if (impl_->archive) {
-        return impl_->archive->read(path);
+    if (this->impl_->archive) {
+        return this->impl_->archive->read(path);
     }
     return read_bytes(utf8_path(path));
 }

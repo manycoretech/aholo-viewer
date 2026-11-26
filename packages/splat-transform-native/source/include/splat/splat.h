@@ -46,22 +46,22 @@ public:
     ShCoefficients& set_zero() noexcept;
     ShCoefficients& add_multiplied(const ShCoefficients& other, float scalar) noexcept;
 
-    const float& operator[](size_t index) const { return data()[index]; }
-    float& operator[](size_t index) { return data()[index]; }
+    const float& operator[](size_t index) const { return this->data()[index]; }
+    float& operator[](size_t index) { return this->data()[index]; }
 
     float* data() noexcept {
-        if (auto* heap = std::get_if<Heap>(&storage_)) {
+        if (auto* heap = std::get_if<Heap>(&this->storage_)) {
             return heap->get();
         }
-        return std::get<Inline>(storage_).data();
+        return std::get<Inline>(this->storage_).data();
     }
     const float* data() const noexcept {
-        if (const auto* heap = std::get_if<Heap>(&storage_)) {
+        if (const auto* heap = std::get_if<Heap>(&this->storage_)) {
             return heap->get();
         }
-        return std::get<Inline>(storage_).data();
+        return std::get<Inline>(this->storage_).data();
     }
-    size_t size() const noexcept { return size_; }
+    size_t size() const noexcept { return this->size_; }
 
     ~ShCoefficients() noexcept;
 
@@ -119,9 +119,9 @@ struct Splat {
 
     Splat() = default;
     Splat(size_t count, uint32_t sh_degree);
-    size_t size() const noexcept { return gaussians.size(); }
-    size_t sh_count() const { return SH_COUNTS.at(sh_degree); }
-    size_t attribute_count() const { return ShOffset + sh_count(); }
+    size_t size() const noexcept { return this->gaussians.size(); }
+    size_t sh_count() const { return SH_COUNTS.at(this->sh_degree); }
+    size_t attribute_count() const { return ShOffset + this->sh_count(); }
     void limit_sh_degree(uint32_t maximum);
     Splat select(std::span<const uint32_t> indices) const&;
     Splat select(std::span<const uint32_t> indices) &&;

@@ -21,18 +21,18 @@ using Archive = std::unordered_map<std::string, Bytes>;
 class ByteReader {
 public:
     explicit ByteReader(std::span<const std::byte> bytes) : bytes_(bytes) {}
-    size_t remaining() const { return bytes_.size() - offset_; }
+    size_t remaining() const { return this->bytes_.size() - this->offset_; }
     std::span<const std::byte> take(size_t count) {
-        if (count > remaining()) {
-            throw std::runtime_error("Truncated input at byte " + std::to_string(offset_));
+        if (count > this->remaining()) {
+            throw std::runtime_error("Truncated input at byte " + std::to_string(this->offset_));
         }
-        auto result = bytes_.subspan(offset_, count);
-        offset_ += count;
+        auto result = this->bytes_.subspan(this->offset_, count);
+        this->offset_ += count;
         return result;
     }
     template<typename T>
     T read(bool little_endian = true) {
-        auto input = take(sizeof(T));
+        auto input = this->take(sizeof(T));
         std::array<std::byte, sizeof(T)> bytes;
         std::ranges::copy(input, bytes.begin());
         if (little_endian != (std::endian::native == std::endian::little)) {
@@ -42,10 +42,10 @@ public:
     }
     template<typename T>
     T read_at(size_t offset, bool little_endian = true) const {
-        if (offset > bytes_.size()) {
+        if (offset > this->bytes_.size()) {
             throw std::runtime_error("Invalid binary offset");
         }
-        return ByteReader(bytes_.subspan(offset)).read<T>(little_endian);
+        return ByteReader(this->bytes_.subspan(offset)).read<T>(little_endian);
     }
 
 private:
@@ -101,7 +101,7 @@ struct FileInput {
         if (degree > 3) {
             throw std::runtime_error("Unsupported SH degree");
         }
-        return std::min(degree, max_sh_degree);
+        return std::min(degree, this->max_sh_degree);
     }
 };
 

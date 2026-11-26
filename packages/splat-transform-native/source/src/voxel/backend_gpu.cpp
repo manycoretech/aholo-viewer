@@ -76,7 +76,7 @@ public:
     bool requires_gpu() const noexcept override { return true; }
     Grid voxelize(const PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff) const override {
         auto output = make_grid(bounds, resolution);
-        const auto [batches, indices] = build_batches(session_, data, output, bounds, resolution);
+        const auto [batches, indices] = build_batches(this->session_, data, output, bounds, resolution);
         std::vector<VoxelBatch> specs;
         specs.reserve(batches.size());
         for (const auto& b : batches) {
@@ -89,7 +89,7 @@ public:
         // full Gaussian input across splits. Fixed 256-batch calls re-uploaded the
         // entire scene on every call, even though only the batch descriptors changed.
         auto dispatch_time = utility::logger().time("Voxel GPU dispatch");
-        const auto masks = session_.voxelize(data.gaussians, indices, specs, resolution, cutoff, Grid::Storage::block_capacity);
+        const auto masks = this->session_.voxelize(data.gaussians, indices, specs, resolution, cutoff, Grid::Storage::block_capacity);
         dispatch_time.finish();
         output.masks.assign_bricks(batches.size(),
             [&](size_t i) { return output.masks.brick_index(batches[i].origin); },
@@ -123,7 +123,7 @@ public:
             const auto bits = grid.mask(index);
             packed.insert(packed.end(), { index, static_cast<uint32_t>(bits), static_cast<uint32_t>(bits >> 32) });
         }
-        const auto masks = session_.dilate_blocks(packed, { static_cast<uint32_t>(grid.size[0]), static_cast<uint32_t>(grid.size[1]), static_cast<uint32_t>(grid.size[2]) },
+        const auto masks = this->session_.dilate_blocks(packed, { static_cast<uint32_t>(grid.size[0]), static_cast<uint32_t>(grid.size[1]), static_cast<uint32_t>(grid.size[2]) },
             { static_cast<uint32_t>(radius[0]), static_cast<uint32_t>(radius[1]), static_cast<uint32_t>(radius[2]) });
         Grid output(grid.size);
         for (uint32_t index = 0; index < grid.block_count(); ++index) {

@@ -27,7 +27,7 @@ name: build native
 
 env:
   NODE_VERSION: 24
-  CMAKE_VERSION: 4.4.5
+  CMAKE_VERSION: 4.5.1
   NINJA_VERSION: 1.13.2
 
 permissions:
@@ -78,7 +78,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            os: ubuntu-26.04
+            os: ubuntu-latest
           - arch: arm64
             os: ubuntu-26.04-arm
     steps:
@@ -127,7 +127,7 @@ jobs:
   publish-linux-image:
     name: Publish multi-platform Linux image
     needs: build-linux-image
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
       - name: Resolve Linux image metadata
         id: image
@@ -188,7 +188,7 @@ jobs:
           - target: linux-x64-gnu
             preset: x64-linux
             executable: splat-transform
-            os: ubuntu-26.04
+            os: ubuntu-latest
             shell: bash
             arch: amd64
           - target: linux-arm64-gnu

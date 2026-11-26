@@ -71,9 +71,9 @@ public:
             result(7, 3) = std::sqrt(10.0f / 3);
             return result;
         }();
-        sh1_.noalias() = basis * rotation * basis.transpose();
-        sh2_.noalias() = projection2 * Eigen::kroneckerProduct(sh1_, sh1_).eval() * embedding2;
-        sh3_.noalias() = projection3 * Eigen::kroneckerProduct(sh1_, sh2_).eval() * embedding3;
+        this->sh1_.noalias() = basis * rotation * basis.transpose();
+        this->sh2_.noalias() = projection2 * Eigen::kroneckerProduct(this->sh1_, this->sh1_).eval() * embedding2;
+        this->sh3_.noalias() = projection3 * Eigen::kroneckerProduct(this->sh1_, this->sh2_).eval() * embedding3;
     }
     void apply(splat::ShCoefficients& sh) const {
         const size_t count = sh.size() > 3 ? (sh.size() - 3) / 3 : 0;
@@ -86,19 +86,19 @@ public:
         if (!Eigen::Map<const Eigen::VectorXf>(sh.data() + 3, count * 3).allFinite()) {
             // The former dense product also propagated 0 * NaN/Inf across bands.
             Eigen::Matrix<float, 15, 15> factors = Eigen::Matrix<float, 15, 15>::Zero();
-            factors.topLeftCorner<3, 3>() = sh1_;
-            factors.block<5, 5>(3, 3) = sh2_;
-            factors.bottomRightCorner<7, 7>() = sh3_;
+            factors.topLeftCorner<3, 3>() = this->sh1_;
+            factors.block<5, 5>(3, 3) = this->sh2_;
+            factors.bottomRightCorner<7, 7>() = this->sh3_;
             Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, 3, Eigen::RowMajor>> coefficients(sh.data() + 3, count, 3);
             coefficients = (factors.topLeftCorner(count, count) * coefficients).eval();
             return;
         }
-        rotate_band<3>(sh, 1, sh1_);
+        rotate_band<3>(sh, 1, this->sh1_);
         if (count >= 8) {
-            rotate_band<5>(sh, 4, sh2_);
+            rotate_band<5>(sh, 4, this->sh2_);
         }
         if (count == 15) {
-            rotate_band<7>(sh, 9, sh3_);
+            rotate_band<7>(sh, 9, this->sh3_);
         }
     }
 
