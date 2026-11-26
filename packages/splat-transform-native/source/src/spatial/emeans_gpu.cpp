@@ -1,6 +1,7 @@
 #include "emeans_gpu.h"
 #include "cluster_gpu.h"
 #include <bit>
+#include <emeans_assign.h>
 #include <emeans_bin.h>
 #include <emeans_offsets.h>
 #include <emeans_reduce.h>
@@ -52,7 +53,7 @@ struct EmeansGpu::Impl {
 
     Impl(FeatureView points, std::span<const float> weights, std::span<const uint32_t> permutation, size_t max_count, size_t requested_chunk)
         : order(permutation), columns(points.dimensions()), stride((columns + 3) / 4 * 4), capacity(max_count) {
-        if (!capacity || capacity > 262144 || !points.rows() || order.size() != points.rows() || weights.size() != order.size() || !requested_chunk ||
+        if (!capacity || capacity > 262144 || !columns || !points.rows() || order.size() != points.rows() || weights.size() != order.size() || !requested_chunk ||
             std::ranges::any_of(order, [&](auto row) { return row >= points.rows(); })) {
             throw std::invalid_argument("Invalid e-means GPU input");
         }
@@ -73,7 +74,8 @@ struct EmeansGpu::Impl {
         pairs = storage(std::max<size_t>(1, capacity / 2) * sizeof(Split));
         upload = device.create_buffer(centers.size(), Upload);
         readback = device.create_buffer(centers.size() + labels.size(), Readback);
-        assignment = make_cluster_pipeline(device, stride, cluster_tile(device, stride));
+        assignment = device.create_pipeline({ "emeans-assign", shaders::emeans_assign, { Read, Read, Read, ReadWrite }, 16,
+            { { 0, static_cast<uint32_t>(stride / 4) } } });
         binning = device.create_pipeline({ "emeans-bin", shaders::emeans_bin, { Read, ReadWrite, ReadWrite }, 12 });
         offsets = device.create_pipeline({ "emeans-offsets", shaders::emeans_offsets, { ReadWrite }, 4 });
         reduce = device.create_pipeline({ "emeans-reduce", shaders::emeans_reduce, { Read, Read, Read, ReadWrite }, 20 });

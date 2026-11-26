@@ -48,6 +48,38 @@ voxel::Grid reference_dilation(const voxel::Grid& grid, Eigen::Vector3i radius) 
     }
     return result;
 }
+void emeans_assignment_tiles(uint32_t degree, bool large = false) {
+    // The large SH3 fixture also exercises labels beyond the 16-bit palette limit.
+    const uint32_t rows = large ? 90113 : 287, entries = large ? 65539 : 131;
+    const auto columns = splat::SH_COUNTS.at(degree);
+    decltype(spatial::Clustering::centroids) centers(entries, columns), points(rows, columns);
+    centers.setZero();
+    for (uint32_t entry = 0; entry < entries; ++entry) {
+        for (uint32_t bit = 0; bit < std::bit_width(entries - 1); ++bit) {
+            centers(entry, columns - 1 - bit) = entry & (1u << bit) ? 1.0f : -1.0f;
+        }
+    }
+    centers.row(entries - 1) = centers.row(0); // Equal distances across centroid tiles.
+    std::vector<uint32_t> expected(rows);
+    for (uint32_t row = 0; row < rows; ++row) {
+        points.row(row) = centers.row(row % entries).array() + 0.125f;
+        expected[row] = row % entries == entries - 1 ? 0 : row % entries;
+    }
+    const auto source = feature_splats(points, degree);
+    const std::vector<float> weights(rows, 1.0f);
+    std::vector<uint32_t> order(rows);
+    std::iota(order.rbegin(), order.rend(), 0);
+    spatial::EmeansGpu session(spatial::FeatureView(source), weights, order, entries, large ? rows : 143);
+    session.begin(centers);
+    session.batch(11, rows, 1, true); // Nonzero offsets, wrapped chunks and a partial 128-row group.
+    const auto result = session.finish();
+    if (result.labels != expected) {
+        throw std::runtime_error("Tiled e-means assignment lost the nearest label or its tie order");
+    }
+    if (!result.centroids.topRows(entries - 1).isApprox((centers.topRows(entries - 1).array() + 0.125f).matrix())) {
+        throw std::runtime_error("Tiled e-means assignment lost part of the closing batch");
+    }
+}
 void emeans_device_updates(uint32_t degree) {
     constexpr size_t rows = 271;
     splat::Splat source(rows, degree);
@@ -215,6 +247,7 @@ int main(int argc, char** argv) {
         }
         gpu::select_device(selected);
         for (uint32_t degree : { 1u, 2u, 3u }) {
+            emeans_assignment_tiles(degree);
             emeans_device_updates(degree);
         }
         const auto devices = gpu::enumerate_devices();
@@ -434,6 +467,7 @@ int main(int argc, char** argv) {
             }
         }
         if (large_tests) {
+            emeans_assignment_tiles(3, true);
             {
                 // Exercise first-iteration tile selection, cached recordings,
                 // and an incomplete batch with exactly distinguishable centers.

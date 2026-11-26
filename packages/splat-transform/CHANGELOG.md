@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Reduce Vulkan e-means clustering time for automatic SOG SH palettes by about 20%.
+- Credit Faiss e-means under the MIT license.
+
 ## 2.5.1
 
 - Add `Write.shBits` to set quantization bits independently for SH degrees 1, 2, and 3 in SPZ v3/v4, USPZ, and low-precision ESZ output. The array defaults to `[5, 4, 4]`, and each entry is clamped to 1–8 bits. High-precision ESZ uses fixed RGB widths of 11/10/11 bits for every degree.

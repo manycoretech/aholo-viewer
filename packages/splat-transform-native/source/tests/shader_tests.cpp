@@ -3,6 +3,7 @@
 #include "cluster.h"
 #include "compact.h"
 #include "dilate.h"
+#include "emeans_assign.h"
 #include "emeans_bin.h"
 #include "emeans_offsets.h"
 #include "emeans_reduce.h"
@@ -206,6 +207,7 @@ int main() {
         for (const auto& shader : cluster_variants) {
             check(shader.code.bytes, std::array { 16u, 16u, 4u, 4u }, 16, 128, shader.tile * (shader.columns * 16 + 4));
         }
+        check(emeans_assign.bytes, std::array { 16u, 16u, 4u, 4u }, 16, 64, 64 * (12 * 16 + 4));
         check(emeans_bin.bytes, std::array { 4u, 4u, 4u }, 12, 128, 0);
         check(emeans_offsets.bytes, std::array { 4u }, 4, 128, 8);
         check(emeans_reduce.bytes, std::array { 4u, 4u, 4u, 4u }, 20, 64, 64 * 49 * 4);
