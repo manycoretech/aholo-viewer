@@ -6,7 +6,8 @@ namespace splat_transform::io {
 class EszFile final : public IFile {
 public:
     explicit EszFile(bool high_precision = false, ShBits sh_bits = FileOptions::default_sh_bits)
-        : high_precision_(high_precision), sh_bits_(high_precision ? high_precision_rgb_bits : clamp_sh_bits(sh_bits)) {}
+        : high_precision_(high_precision), sh_bits_(high_precision ? high_precision_rgb_bits : clamp_sh_bits(sh_bits)) {
+    }
     std::string_view name() const noexcept override { return "ESZ"; }
     splat::Splat read(const FileInput& input) const override;
     splat::Splat read(const std::filesystem::path& path, uint32_t max_sh_degree) const override;

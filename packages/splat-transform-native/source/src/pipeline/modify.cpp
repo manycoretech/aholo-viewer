@@ -151,7 +151,9 @@ bool modify(splat::Splat& data, const io::Json& config, const PathResolver& reso
             const Eigen::Matrix4f combined = matrix(group.at("transform"), row_major) * model;
             geometry_changed |= !combined.isIdentity(0);
             const auto [scale, rotate] = transform(data, indices, combined);
-            logger.info("group[", block, ':', group_index++, "] size=", indices.size(), " scale=", scale, " rotate=", rotate);
+            logger.info(
+                "group[", block, ':', group_index++, "] size=", indices.size(), " scale=", scale, " rotate=", rotate
+            );
         }
         std::vector<uint32_t> remaining;
         for (size_t i = 0; i < count; ++i) {

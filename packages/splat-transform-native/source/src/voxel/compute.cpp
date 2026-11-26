@@ -19,8 +19,10 @@ struct VoxelSession::Impl {
 };
 VoxelSession::VoxelSession() : impl_(std::make_unique<Impl>()) {}
 VoxelSession::~VoxelSession() = default;
-std::vector<uint32_t> VoxelSession::voxelize(std::span<const Gaussian> gaussians, std::span<const uint32_t> indices, std::span<const VoxelBatch> batches,
-    float resolution, float cutoff, uint32_t max_blocks) {
+std::vector<uint32_t> VoxelSession::voxelize(
+    std::span<const Gaussian> gaussians, std::span<const uint32_t> indices, std::span<const VoxelBatch> batches,
+    float resolution, float cutoff, uint32_t max_blocks
+) {
     if (batches.empty()) {
         return {};
     }
@@ -40,35 +42,51 @@ std::vector<uint32_t> VoxelSession::voxelize(std::span<const Gaussian> gaussians
     const size_t storage = device.limits().storage_buffer_bytes;
     const size_t words = batches.size() * max_blocks * 2;
     std::vector<uint32_t> output(words);
-    const auto execute = [&](std::span<const Gaussian> points, std::span<const uint32_t> local_indices, std::span<const VoxelBatch> local_batches,
-                             Parameters parameters, std::span<const std::byte> previous, std::span<uint32_t> result, bool reuse_inputs = false) {
+    const auto execute = [&](std::span<const Gaussian> points, std::span<const uint32_t> local_indices,
+                             std::span<const VoxelBatch> local_batches, Parameters parameters,
+                             std::span<const std::byte> previous, std::span<uint32_t> result,
+                             bool reuse_inputs = false) {
         const uint64_t end_block = static_cast<uint64_t>(parameters.first_block) + parameters.max_blocks;
         const bool padded = std::ranges::any_of(local_batches, [&](const auto& batch) {
             return static_cast<uint64_t>(batch.blocks_x) * batch.blocks_y * batch.blocks_z < end_block;
         });
-        work.execute({ "voxelize", shaders::voxelize, { Read, Read, Read, ReadWrite }, sizeof(Parameters), { { 0, parameters.accumulation || parameters.first_block ? 1u : 0u } } },
-            { { std::as_bytes(points), 0, {}, reuse_inputs }, { std::as_bytes(local_indices), 0, {}, reuse_inputs }, { std::as_bytes(local_batches), 0 }, { previous, result.size_bytes(), std::as_writable_bytes(result), false, padded } },
-            std::as_bytes(std::span(&parameters, 1)), { parameters.max_blocks, 1, static_cast<uint32_t>(local_batches.size()) });
+        work.execute(
+            { "voxelize", shaders::voxelize, { Read, Read, Read, ReadWrite }, sizeof(Parameters),
+                { { 0, parameters.accumulation || parameters.first_block ? 1u : 0u } } },
+            { { std::as_bytes(points), 0, {}, reuse_inputs }, { std::as_bytes(local_indices), 0, {}, reuse_inputs },
+                { std::as_bytes(local_batches), 0 },
+                { previous, result.size_bytes(), std::as_writable_bytes(result), false, padded } },
+            std::as_bytes(std::span(&parameters, 1)),
+            { parameters.max_blocks, 1, static_cast<uint32_t>(local_batches.size()) }
+        );
     };
     if (gaussians.size_bytes() <= storage && indices.size_bytes() <= storage && batches.size_bytes() <= storage &&
-        words <= storage / 4 && max_blocks <= device.limits().workgroup_count[0] && batches.size() <= device.limits().workgroup_count[2]) {
+        words <= storage / 4 && max_blocks <= device.limits().workgroup_count[0] &&
+        batches.size() <= device.limits().workgroup_count[2]) {
         execute(gaussians, indices, batches, { resolution, cutoff, max_blocks, 0, 0 }, {}, output);
         return output;
     }
 
     const size_t point_limit = storage / sizeof(Gaussian);
-    const size_t batch_limit = std::min({ storage / sizeof(VoxelBatch), storage / (static_cast<size_t>(max_blocks) * 8), static_cast<size_t>(device.limits().workgroup_count[2]) });
+    const size_t batch_limit = std::min(
+        { storage / sizeof(VoxelBatch), storage / (static_cast<size_t>(max_blocks) * 8),
+            static_cast<size_t>(device.limits().workgroup_count[2]) }
+    );
     const size_t block_limit = std::min<size_t>(storage / (64 * 4), device.limits().workgroup_count[0]);
     if (!point_limit || !block_limit) {
         throw std::runtime_error("GPU limits cannot hold one voxel workgroup");
     }
     // When only the dispatch/output needs splitting, keep the original input
     // buffers resident instead of duplicating candidates into packed arrays.
-    if (gaussians.size_bytes() <= storage && indices.size_bytes() <= storage && batch_limit && max_blocks <= device.limits().workgroup_count[0]) {
+    if (gaussians.size_bytes() <= storage && indices.size_bytes() <= storage && batch_limit &&
+        max_blocks <= device.limits().workgroup_count[0]) {
         for (size_t begin = 0; begin < batches.size(); begin += batch_limit) {
             const auto local_batches = batches.subspan(begin, std::min(batch_limit, batches.size() - begin));
             const size_t local_words = local_batches.size() * max_blocks * 2;
-            execute(gaussians, indices, local_batches, { resolution, cutoff, max_blocks, 0, 0 }, {}, std::span(output).subspan(begin * max_blocks * 2, local_words), begin != 0);
+            execute(
+                gaussians, indices, local_batches, { resolution, cutoff, max_blocks, 0, 0 }, {},
+                std::span(output).subspan(begin * max_blocks * 2, local_words), begin != 0
+            );
         }
         return output;
     }
@@ -108,7 +126,10 @@ std::vector<uint32_t> VoxelSession::voxelize(std::span<const Gaussian> gaussians
         }
         if (!local_batches.empty()) {
             const size_t local_words = local_batches.size() * max_blocks * 2;
-            execute(packed, local_indices, local_batches, { resolution, cutoff, max_blocks, 0, 0 }, {}, std::span(output).subspan(begin * max_blocks * 2, local_words));
+            execute(
+                packed, local_indices, local_batches, { resolution, cutoff, max_blocks, 0, 0 }, {},
+                std::span(output).subspan(begin * max_blocks * 2, local_words)
+            );
             begin += local_batches.size();
             continue;
         }
@@ -132,8 +153,11 @@ std::vector<uint32_t> VoxelSession::voxelize(std::span<const Gaussian> gaussians
                 local.index_count = static_cast<uint32_t>(count);
                 const size_t stride = accumulation ? 64 : 2;
                 state.resize(static_cast<size_t>(block_count) * stride);
-                execute(packed, local_indices, std::span(&local, 1),
-                    { resolution, cutoff, block_count, accumulation, static_cast<uint32_t>(block) }, point ? std::as_bytes(std::span(state)) : std::span<const std::byte> {}, state);
+                execute(
+                    packed, local_indices, std::span(&local, 1),
+                    { resolution, cutoff, block_count, accumulation, static_cast<uint32_t>(block) },
+                    point ? std::as_bytes(std::span(state)) : std::span<const std::byte> {}, state
+                );
                 if (last) {
                     for (size_t i = 0; i < block_count; ++i) {
                         std::copy_n(state.data() + i * stride, 2, output.data() + (begin * max_blocks + block + i) * 2);
@@ -145,9 +169,13 @@ std::vector<uint32_t> VoxelSession::voxelize(std::span<const Gaussian> gaussians
     }
     return output;
 }
-CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std::array<float, 3> origin, float batch_size, std::array<uint32_t, 3> dimensions) {
+CandidateBins VoxelSession::candidates(
+    std::span<const Gaussian> gaussians, std::array<float, 3> origin, float batch_size,
+    std::array<uint32_t, 3> dimensions
+) {
     const uint64_t plane = static_cast<uint64_t>(dimensions[0]) * dimensions[1];
-    if ((dimensions[2] && plane > std::numeric_limits<uint32_t>::max() / dimensions[2]) || gaussians.size() > std::numeric_limits<uint32_t>::max()) {
+    if ((dimensions[2] && plane > std::numeric_limits<uint32_t>::max() / dimensions[2]) ||
+        gaussians.size() > std::numeric_limits<uint32_t>::max()) {
         throw std::runtime_error("Voxel candidate grid exceeds 32-bit indexing");
     }
     const size_t bin_count = static_cast<size_t>(plane * dimensions[2]);
@@ -169,7 +197,8 @@ CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std:
     };
     auto& work = this->impl_->work;
     const auto& device = work.device();
-    const size_t point_limit = std::min(device.limits().storage_buffer_bytes / sizeof(Gaussian), device.linear_item_limit(128));
+    const size_t point_limit =
+        std::min(device.limits().storage_buffer_bytes / sizeof(Gaussian), device.linear_item_limit(128));
     const size_t index_limit = device.limits().storage_buffer_bytes / sizeof(uint32_t);
     if (!point_limit || !index_limit) {
         throw std::runtime_error("GPU limits cannot hold one voxel candidate");
@@ -179,10 +208,15 @@ CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std:
         // Preserve the one-dispatch path on devices with a large buffer range.
         // Count and scatter share the same uploaded Gaussian buffer.
         const auto groups = device.linear_groups(gaussians.size(), 128);
-        const Parameters parameters { origin, batch_size, dimensions, static_cast<uint32_t>(gaussians.size()), groups[0], 0, static_cast<uint32_t>(bin_count), 0 };
+        const Parameters parameters { origin, batch_size, dimensions, static_cast<uint32_t>(gaussians.size()),
+            groups[0], 0, static_cast<uint32_t>(bin_count), 0 };
         const auto push = std::as_bytes(std::span(&parameters, 1));
-        work.execute({ "candidate_count", shaders::candidate_count, { Read, ReadWrite }, sizeof(Parameters) },
-            { { std::as_bytes(gaussians), 0 }, { {}, bin_count * 4, std::as_writable_bytes(std::span(output.counts)) } }, push, groups);
+        work.execute(
+            { "candidate_count", shaders::candidate_count, { Read, ReadWrite }, sizeof(Parameters) },
+            { { std::as_bytes(gaussians), 0 },
+                { {}, bin_count * 4, std::as_writable_bytes(std::span(output.counts)) } },
+            push, groups
+        );
         uint64_t total = 0;
         for (size_t i = 0; i < bin_count; ++i) {
             output.offsets[i] = static_cast<uint32_t>(total);
@@ -196,9 +230,15 @@ CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std:
         }
         if (total <= index_limit) {
             output.indices.resize(static_cast<size_t>(total));
-            work.execute({ "candidate_scatter", shaders::candidate_scatter, { Read, Read, ReadWrite, ReadWrite }, sizeof(Parameters) },
-                { { std::as_bytes(gaussians), 0, {}, true }, { std::as_bytes(std::span(output.offsets)), 0 }, { {}, bin_count * 4 },
-                    { {}, static_cast<size_t>(total) * 4, std::as_writable_bytes(std::span(output.indices)), false, false } }, push, groups);
+            work.execute(
+                { "candidate_scatter", shaders::candidate_scatter, { Read, Read, ReadWrite, ReadWrite },
+                    sizeof(Parameters) },
+                { { std::as_bytes(gaussians), 0, {}, true }, { std::as_bytes(std::span(output.offsets)), 0 },
+                    { {}, bin_count * 4 },
+                    { {}, static_cast<size_t>(total) * 4, std::as_writable_bytes(std::span(output.indices)), false,
+                        false } },
+                push, groups
+            );
             return output;
         }
         split_full_input = true;
@@ -215,7 +255,8 @@ CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std:
     };
     std::vector<Part> parts;
     uint64_t total_indices = 0;
-    const auto process = [&](auto&& self, size_t first_point, size_t point_count, size_t first_bin, size_t bins) -> void {
+    const auto process = [&](auto&& self, size_t first_point, size_t point_count, size_t first_bin,
+                             size_t bins) -> void {
         const auto points = gaussians.subspan(first_point, point_count);
         const auto groups = device.linear_groups(point_count, 128);
         const Parameters parameters { origin, batch_size, dimensions, static_cast<uint32_t>(point_count), groups[0],
@@ -224,8 +265,11 @@ CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std:
         const uint32_t windowed = first_bin || bins != bin_count ? 1 : 0;
         const auto push = std::as_bytes(std::span(&parameters, 1));
         std::vector<uint32_t> counts(bins);
-        work.execute({ "candidate_count", shaders::candidate_count, { Read, ReadWrite }, sizeof(Parameters), { { 0, windowed } } },
-            { { std::as_bytes(points), 0 }, { {}, bins * 4, std::as_writable_bytes(std::span(counts)) } }, push, groups);
+        work.execute(
+            { "candidate_count", shaders::candidate_count, { Read, ReadWrite }, sizeof(Parameters),
+                { { 0, windowed } } },
+            { { std::as_bytes(points), 0 }, { {}, bins * 4, std::as_writable_bytes(std::span(counts)) } }, push, groups
+        );
         const uint64_t total = std::accumulate(counts.begin(), counts.end(), static_cast<uint64_t>(0));
         if (!total) {
             return;
@@ -261,9 +305,13 @@ CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std:
             }
         }
         part.indices.resize(static_cast<size_t>(total));
-        work.execute({ "candidate_scatter", shaders::candidate_scatter, { Read, Read, ReadWrite, ReadWrite }, sizeof(Parameters), { { 0, windowed | (first_point ? 2u : 0u) } } },
+        work.execute(
+            { "candidate_scatter", shaders::candidate_scatter, { Read, Read, ReadWrite, ReadWrite }, sizeof(Parameters),
+                { { 0, windowed | (first_point ? 2u : 0u) } } },
             { { std::as_bytes(points), 0, {}, true }, { std::as_bytes(std::span(counts)), 0 }, { {}, bins * 4 },
-                { {}, static_cast<size_t>(total) * 4, std::as_writable_bytes(std::span(part.indices)), false, false } }, push, groups);
+                { {}, static_cast<size_t>(total) * 4, std::as_writable_bytes(std::span(part.indices)), false, false } },
+            push, groups
+        );
         parts.push_back(std::move(part));
     };
     if (split_full_input) {
@@ -273,7 +321,10 @@ CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std:
     } else {
         for (size_t bin = 0; bin < bin_count; bin += index_limit) {
             for (size_t point = 0; point < gaussians.size(); point += point_limit) {
-                process(process, point, std::min(point_limit, gaussians.size() - point), bin, std::min(index_limit, bin_count - bin));
+                process(
+                    process, point, std::min(point_limit, gaussians.size() - point), bin,
+                    std::min(index_limit, bin_count - bin)
+                );
             }
         }
     }
@@ -288,7 +339,9 @@ CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std:
         output.indices.resize(static_cast<size_t>(total_indices));
         for (auto& part : parts) {
             for (const auto& range : part.ranges) {
-                std::copy_n(part.indices.data() + range.offset, range.count, output.indices.data() + output.offsets[range.bin]);
+                std::copy_n(
+                    part.indices.data() + range.offset, range.count, output.indices.data() + output.offsets[range.bin]
+                );
                 output.offsets[range.bin] += range.count;
             }
             std::vector<uint32_t>().swap(part.indices);
@@ -299,7 +352,9 @@ CandidateBins VoxelSession::candidates(std::span<const Gaussian> gaussians, std:
     }
     return output;
 }
-std::vector<uint32_t> VoxelSession::dilate_blocks(std::span<const uint32_t> blocks, std::array<uint32_t, 3> dimensions, std::array<uint32_t, 3> radii) {
+std::vector<uint32_t> VoxelSession::dilate_blocks(
+    std::span<const uint32_t> blocks, std::array<uint32_t, 3> dimensions, std::array<uint32_t, 3> radii
+) {
     if (std::ranges::any_of(dimensions, [](uint32_t size) { return !size || size % 4; }) || blocks.size() % 3) {
         throw std::runtime_error("Invalid GPU dilation grid or packed blocks");
     }
@@ -320,27 +375,42 @@ std::vector<uint32_t> VoxelSession::dilate_blocks(std::span<const uint32_t> bloc
         const auto expand_groups = device.linear_groups(packed.size() / 3, 128);
         const auto compact_groups = device.linear_groups(count, 128);
         const auto dilate_groups = device.linear_groups(bytes / 4, 128);
-        std::array<uint32_t, 5> expand { size[0], size[1], size[2], static_cast<uint32_t>(packed.size() / 3), expand_groups[0] };
+        std::array<uint32_t, 5> expand { size[0], size[1], size[2], static_cast<uint32_t>(packed.size() / 3),
+            expand_groups[0] };
         std::array<uint32_t, 5> compact { size[0], size[1], size[2], static_cast<uint32_t>(count), compact_groups[0] };
         std::array<std::array<uint32_t, 7>, 3> dilation;
         std::vector<ComputeStage> stages;
-        stages.push_back({ { "expand", shaders::expand, { Read, ReadWrite }, sizeof(expand) }, { 0, 1 }, std::as_bytes(std::span(expand)), expand_groups });
+        stages.push_back(
+            { { "expand", shaders::expand, { Read, ReadWrite }, sizeof(expand) }, { 0, 1 },
+                std::as_bytes(std::span(expand)), expand_groups }
+        );
         uint32_t current = 1, next = 2;
         for (size_t axis = 0; axis < 3; ++axis) {
             if (radii[axis]) {
                 dilation[axis] = { size[0], size[1], size[2], 0, 0, 0, dilate_groups[0] };
                 dilation[axis][3 + axis] = std::min(radii[axis], size[axis] - 1);
-                stages.push_back({ { "dilate", shaders::dilate, { Read, ReadWrite }, sizeof(dilation[axis]) }, { current, next }, std::as_bytes(std::span(dilation[axis])), dilate_groups });
+                stages.push_back(
+                    { { "dilate", shaders::dilate, { Read, ReadWrite }, sizeof(dilation[axis]) }, { current, next },
+                        std::as_bytes(std::span(dilation[axis])), dilate_groups }
+                );
                 std::swap(current, next);
             }
         }
-        stages.push_back({ { "compact", shaders::compact, { Read, ReadWrite }, sizeof(compact) }, { current, 3 }, std::as_bytes(std::span(compact)), compact_groups });
+        stages.push_back(
+            { { "compact", shaders::compact, { Read, ReadWrite }, sizeof(compact) }, { current, 3 },
+                std::as_bytes(std::span(compact)), compact_groups }
+        );
         std::vector<uint32_t> output(count * 2);
-        work.execute_chain({ { std::as_bytes(packed), 0 }, { {}, bytes }, { {}, bytes, {}, false, false }, { {}, count * 8, std::as_writable_bytes(std::span(output)), false, false } }, stages);
+        work.execute_chain(
+            { { std::as_bytes(packed), 0 }, { {}, bytes }, { {}, bytes, {}, false, false },
+                { {}, count * 8, std::as_writable_bytes(std::span(output)), false, false } },
+            stages
+        );
         return output;
     };
-    if (blocks.size_bytes() <= device.limits().storage_buffer_bytes && dense_bytes <= device.limits().storage_buffer_bytes &&
-        blocks.size() / 3 <= device.linear_item_limit(128) && dense_bytes / 4 <= device.linear_item_limit(128)) {
+    if (blocks.size_bytes() <= device.limits().storage_buffer_bytes &&
+        dense_bytes <= device.limits().storage_buffer_bytes && blocks.size() / 3 <= device.linear_item_limit(128) &&
+        dense_bytes / 4 <= device.linear_item_limit(128)) {
         return execute(blocks, dimensions);
     }
 
@@ -407,9 +477,11 @@ std::vector<uint32_t> VoxelSession::dilate_blocks(std::span<const uint32_t> bloc
                 for (uint32_t iz = low[2]; iz < high[2]; ++iz) {
                     for (uint32_t iy = low[1]; iy < high[1]; ++iy) {
                         for (uint32_t ix = low[0]; ix < high[0]; ++ix) {
-                            const size_t index = static_cast<size_t>(ix) + static_cast<size_t>(iy) * grid[0] + static_cast<size_t>(iz) * grid[0] * grid[1];
+                            const size_t index = static_cast<size_t>(ix) + static_cast<size_t>(iy) * grid[0] +
+                                                 static_cast<size_t>(iz) * grid[0] * grid[1];
                             if (source[index * 2] | source[index * 2 + 1]) {
-                                const uint32_t local = ix - low[0] + (iy - low[1]) * size[0] + (iz - low[2]) * size[0] * size[1];
+                                const uint32_t local =
+                                    ix - low[0] + (iy - low[1]) * size[0] + (iz - low[2]) * size[0] * size[1];
                                 packed.insert(packed.end(), { local, source[index * 2], source[index * 2 + 1] });
                             }
                         }
@@ -421,9 +493,14 @@ std::vector<uint32_t> VoxelSession::dilate_blocks(std::span<const uint32_t> bloc
                 const auto masks = execute(packed, { size[0] * 4, size[1] * 4, size[2] * 4 });
                 for (uint32_t iz = begin[2]; iz < end[2]; ++iz) {
                     for (uint32_t iy = begin[1]; iy < end[1]; ++iy) {
-                        const size_t global = static_cast<size_t>(begin[0]) + static_cast<size_t>(iy) * grid[0] + static_cast<size_t>(iz) * grid[0] * grid[1];
-                        const size_t local = begin[0] - low[0] + static_cast<size_t>(iy - low[1]) * size[0] + static_cast<size_t>(iz - low[2]) * size[0] * size[1];
-                        std::copy_n(masks.data() + local * 2, static_cast<size_t>(end[0] - begin[0]) * 2, output.data() + global * 2);
+                        const size_t global = static_cast<size_t>(begin[0]) + static_cast<size_t>(iy) * grid[0] +
+                                              static_cast<size_t>(iz) * grid[0] * grid[1];
+                        const size_t local = begin[0] - low[0] + static_cast<size_t>(iy - low[1]) * size[0] +
+                                             static_cast<size_t>(iz - low[2]) * size[0] * size[1];
+                        std::copy_n(
+                            masks.data() + local * 2, static_cast<size_t>(end[0] - begin[0]) * 2,
+                            output.data() + global * 2
+                        );
                     }
                 }
             }

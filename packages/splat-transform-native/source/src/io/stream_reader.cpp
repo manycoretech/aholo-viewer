@@ -46,7 +46,8 @@ struct GzipState {
     bool finished = false, input_ended = false;
 };
 struct ZstdState {
-    ZstdState(StreamReader& input, size_t length) : source(input), remaining(length), stream(ZSTD_createDStream(), ZSTD_freeDStream) {
+    ZstdState(StreamReader& input, size_t length)
+        : source(input), remaining(length), stream(ZSTD_createDStream(), ZSTD_freeDStream) {
         if (!this->stream || ZSTD_isError(ZSTD_initDStream(this->stream.get()))) {
             throw std::runtime_error("Cannot initialize Zstd stream");
         }

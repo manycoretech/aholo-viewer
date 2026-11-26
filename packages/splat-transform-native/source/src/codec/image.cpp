@@ -18,7 +18,8 @@ Bytes encode_webp(std::span<const std::byte> rgba, uint32_t width, uint32_t heig
     auto picture_guard = std::unique_ptr<WebPPicture, decltype(&WebPPictureFree)>(&picture, WebPPictureFree);
     WebPMemoryWriter writer;
     WebPMemoryWriterInit(&writer);
-    auto writer_guard = std::unique_ptr<WebPMemoryWriter, decltype(&WebPMemoryWriterClear)>(&writer, WebPMemoryWriterClear);
+    auto writer_guard =
+        std::unique_ptr<WebPMemoryWriter, decltype(&WebPMemoryWriterClear)>(&writer, WebPMemoryWriterClear);
     config.lossless = lossless;
     config.exact = 1;
     picture.use_argb = lossless;
@@ -26,7 +27,10 @@ Bytes encode_webp(std::span<const std::byte> rgba, uint32_t width, uint32_t heig
     picture.height = static_cast<int32_t>(height);
     picture.writer = WebPMemoryWrite;
     picture.custom_ptr = &writer;
-    if (!WebPPictureImportRGBA(&picture, reinterpret_cast<const uint8_t*>(rgba.data()), static_cast<int32_t>(4 * width)) || !WebPEncode(&config, &picture)) {
+    if (!WebPPictureImportRGBA(
+            &picture, reinterpret_cast<const uint8_t*>(rgba.data()), static_cast<int32_t>(4 * width)
+        ) ||
+        !WebPEncode(&config, &picture)) {
         throw std::runtime_error("WebP encode failed");
     }
     const auto bytes = std::as_bytes(std::span(writer.mem, writer.size));
@@ -34,7 +38,9 @@ Bytes encode_webp(std::span<const std::byte> rgba, uint32_t width, uint32_t heig
 }
 Image decode_webp(std::span<const std::byte> bytes) {
     int32_t width = 0, height = 0;
-    auto pixels = std::unique_ptr<uint8_t, decltype(&WebPFree)>(WebPDecodeRGBA(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size(), &width, &height), WebPFree);
+    auto pixels = std::unique_ptr<uint8_t, decltype(&WebPFree)>(
+        WebPDecodeRGBA(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size(), &width, &height), WebPFree
+    );
     if (!pixels) {
         throw std::runtime_error("WebP decode failed");
     }
@@ -76,7 +82,9 @@ Image decode_avif(std::span<const std::byte> bytes) {
         throw std::bad_alloc();
     }
     decoder->maxThreads = 1;
-    if (avifDecoderReadMemory(decoder.get(), image.get(), reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()) != AVIF_RESULT_OK) {
+    if (avifDecoderReadMemory(
+            decoder.get(), image.get(), reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()
+        ) != AVIF_RESULT_OK) {
         throw std::runtime_error("AVIF decode failed");
     }
     Image output { Bytes(static_cast<size_t>(image->width) * image->height * 4), image->width, image->height };

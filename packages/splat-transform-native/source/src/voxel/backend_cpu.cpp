@@ -13,10 +13,13 @@ constexpr int32_t BATCH_BLOCKS = Grid::Storage::block_side;
 
 // Match the historical CPU worker's floor/ceil voxel window, including a
 // Gaussian whose center lies outside the grid but whose extent overlaps it.
-bool voxel_range(const Gaussian& gaussian, const Grid& grid, const Eigen::AlignedBox3f& bounds,
-    float resolution, Eigen::Vector3i& minimum, Eigen::Vector3i& maximum) {
+bool voxel_range(
+    const Gaussian& gaussian, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution,
+    Eigen::Vector3i& minimum, Eigen::Vector3i& maximum
+) {
     const auto& g = gaussian.values;
-    if (!(g[3] > ALPHA_THRESHOLD) || !std::all_of(g.begin(), g.begin() + 14, [](float value) { return std::isfinite(value); })) {
+    if (!(g[3] > ALPHA_THRESHOLD) ||
+        !std::all_of(g.begin(), g.begin() + 14, [](float value) { return std::isfinite(value); })) {
         return false;
     }
     for (int32_t a = 0; a < 3; ++a) {
@@ -39,7 +42,9 @@ class CpuBackend final : public Backend {
 public:
     std::string_view name() const noexcept override { return "CPU"; }
     bool requires_gpu() const noexcept override { return false; }
-    Grid voxelize(const PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff) const override {
+    Grid voxelize(
+        const PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff
+    ) const override {
         auto grid = make_grid(bounds, resolution);
         if (data.gaussians.size() > std::numeric_limits<uint32_t>::max()) {
             throw std::runtime_error("CPU voxel Gaussian indices exceed 32 bits");
@@ -58,14 +63,19 @@ public:
             for (int32_t z = minimum[2] / BATCH_VOXELS; z <= maximum[2] / BATCH_VOXELS; ++z) {
                 for (int32_t y = minimum[1] / BATCH_VOXELS; y <= maximum[1] / BATCH_VOXELS; ++y) {
                     for (int32_t x = minimum[0] / BATCH_VOXELS; x <= maximum[0] / BATCH_VOXELS; ++x) {
-                        visit(x + static_cast<size_t>(y) * dimensions[0] + static_cast<size_t>(z) * dimensions[0] * dimensions[1]);
+                        visit(
+                            x + static_cast<size_t>(y) * dimensions[0] +
+                            static_cast<size_t>(z) * dimensions[0] * dimensions[1]
+                        );
                     }
                 }
             }
         };
         threading::parallel_chunks(data.gaussians.size(), 4096, [&](size_t begin, size_t end) {
             for (size_t i = begin; i < end; ++i) {
-                visit_batches(i, [&](size_t key) { std::atomic_ref(counts[key]).fetch_add(1, std::memory_order_relaxed); });
+                visit_batches(i, [&](size_t key) {
+                    std::atomic_ref(counts[key]).fetch_add(1, std::memory_order_relaxed);
+                });
             }
         });
         std::vector<size_t> offsets(batch_count + 1);
@@ -118,25 +128,38 @@ public:
                     }
                     const float max_distance = -2 * std::log(ALPHA_THRESHOLD / g[3]);
                     const Eigen::Quaternionf inverse_rotation(g[4], -g[5], -g[6], -g[7]);
-                    const Eigen::Vector3f inverse_scale = Eigen::Map<const Eigen::Vector3f>(g.data() + 8).cwiseMax(1e-8f).cwiseInverse();
+                    const Eigen::Vector3f inverse_scale =
+                        Eigen::Map<const Eigen::Vector3f>(g.data() + 8).cwiseMax(1e-8f).cwiseInverse();
                     for (int32_t z = minimum[2]; z <= maximum[2]; ++z) {
                         for (int32_t y = minimum[1]; y <= maximum[1]; ++y) {
                             for (int32_t x = minimum[0]; x <= maximum[0]; ++x) {
                                 const Eigen::Vector3i local { x - origin[0], y - origin[1], z - origin[2] };
-                                const int32_t block = local[0] / 4 + BATCH_BLOCKS * (local[1] / 4 + BATCH_BLOCKS * (local[2] / 4));
+                                const int32_t block =
+                                    local[0] / 4 + BATCH_BLOCKS * (local[1] / 4 + BATCH_BLOCKS * (local[2] / 4));
                                 const uint64_t bit = uint64_t { 1 } << ((x & 3) + (y & 3) * 4 + (z & 3) * 16);
                                 if (result[block] & bit) {
                                     continue;
                                 }
-                                const Eigen::Vector3f center = bounds.min() +
-                                    (Eigen::Vector3f(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)).array() + 0.5f).matrix() * resolution;
+                                const Eigen::Vector3f center =
+                                    bounds.min() +
+                                    (Eigen::Vector3f(
+                                         static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)
+                                     )
+                                            .array() +
+                                        0.5f)
+                                            .matrix() *
+                                        resolution;
                                 const Eigen::Map<const Eigen::Vector3f> mean(g.data());
-                                const Eigen::Vector3f difference = mean.cwiseMax((center.array() - half).matrix()).cwiseMin((center.array() + half).matrix()) - mean;
-                                const float distance = (inverse_rotation * difference).cwiseProduct(inverse_scale).squaredNorm();
+                                const Eigen::Vector3f difference = mean.cwiseMax((center.array() - half).matrix())
+                                                                       .cwiseMin((center.array() + half).matrix()) -
+                                                                   mean;
+                                const float distance =
+                                    (inverse_rotation * difference).cwiseProduct(inverse_scale).squaredNorm();
                                 if (distance > max_distance) {
                                     continue;
                                 }
-                                auto& total = density[local[0] + local[1] * BATCH_VOXELS + local[2] * BATCH_VOXELS * BATCH_VOXELS];
+                                auto& total = density
+                                    [local[0] + local[1] * BATCH_VOXELS + local[2] * BATCH_VOXELS * BATCH_VOXELS];
                                 total += g[3] * std::exp(-0.5f * distance);
                                 if (total >= sigma_cutoff) {
                                     result[block] |= bit;
@@ -147,9 +170,10 @@ public:
                 }
             }
         });
-        grid.masks.assign_bricks(active.size(),
-            [&](size_t i) { return active[i]; },
-            [&](size_t i) -> const Grid::Storage::Masks& { return masks[i]; });
+        grid.masks.assign_bricks(
+            active.size(), [&](size_t i) { return active[i]; },
+            [&](size_t i) -> const Grid::Storage::Masks& { return masks[i]; }
+        );
         return grid;
     }
     Grid dilate(const Grid& grid, Eigen::Vector3i radius) const override {
@@ -158,7 +182,10 @@ public:
             for (int32_t distance = 0; distance < radius[axis]; ++distance) {
                 Grid next = output;
                 output.masks.for_each_block(0, [&](Eigen::Vector3i p, uint64_t bits) {
-                    next.or_mask(p, ((bits & ~face_mask(axis, 3)) << BIT_STRIDES[axis]) | ((bits & ~face_mask(axis, 0)) >> BIT_STRIDES[axis]));
+                    next.or_mask(
+                        p, ((bits & ~face_mask(axis, 3)) << BIT_STRIDES[axis]) |
+                               ((bits & ~face_mask(axis, 0)) >> BIT_STRIDES[axis])
+                    );
                     if (p[axis] > 0) {
                         --p[axis];
                         next.or_mask(p, (bits & face_mask(axis, 0)) << (3 * BIT_STRIDES[axis]));
@@ -177,7 +204,5 @@ public:
 };
 } // namespace
 
-std::unique_ptr<Backend> cpu_backend() {
-    return std::make_unique<CpuBackend>();
-}
+std::unique_ptr<Backend> cpu_backend() { return std::make_unique<CpuBackend>(); }
 } // namespace splat_transform::voxel

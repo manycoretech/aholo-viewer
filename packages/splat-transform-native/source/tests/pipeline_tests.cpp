@@ -31,7 +31,8 @@ void write_options(const std::filesystem::path& directory, const splat::Splat& s
     for (int32_t version : { 3, 4 }) {
         for (int32_t level : { 0, 1, 9 }) {
             const auto path = directory / "options.spz";
-            io::Json config { { "input", "source" }, { "output", path }, { "version", version }, { "enableMortonSort", false } };
+            io::Json config { { "input", "source" }, { "output", path }, { "version", version },
+                { "enableMortonSort", false } };
             if (level) {
                 config["compressLevel"] = level;
             }
@@ -52,17 +53,23 @@ void sh_quantization_options(const std::filesystem::path& directory) {
     pipeline::TaskContext context;
     context.set({ { "output", "source" } }, source);
     pipeline::WriteTask task;
-    for (const auto& [name, version] : { std::pair { "bits-v3.spz", 3 }, { "bits-v4.spz", 4 }, { "bits.uspz", 3 }, { "bits.esz", 2 } }) {
+    for (const auto& [name, version] :
+        { std::pair { "bits-v3.spz", 3 }, { "bits-v4.spz", 4 }, { "bits.uspz", 3 }, { "bits.esz", 2 } }) {
         const auto path = directory / name;
-        io::Json config { { "input", "source" }, { "output", path }, { "version", version }, { "shBits", { 9, 0, 6 } } };
+        io::Json config { { "input", "source" }, { "output", path }, { "version", version },
+            { "shBits", { 9, 0, 6 } } };
         task.exec(config, context);
         const auto decoded = io::read_splat(path);
         require(decoded.size() == 1 && decoded.sh_degree == 3, "Custom SH precision changed the splat shape");
         for (size_t c = 0; c < decoded.sh_count(); ++c) {
             // [9, 0, 6] clamps to [8, 1, 6]. The positive endpoint saturates at byte 255.
-            const int magnitude = c < 9 ? 13 : c < 24 ? 0 : 12;
+            const int magnitude = c < 9 ? 13 : c < 24 ? 0
+                                                      : 12;
             const std::array<int, 3> expected { magnitude, -magnitude, 127 };
-            require(decoded.gaussians.front().attribute(splat::ShOffset + c) == expected[c % 3] / 128.0f, "Wrong quantization for SH band or channel");
+            require(
+                decoded.gaussians.front().attribute(splat::ShOffset + c) == expected[c % 3] / 128.0f,
+                "Wrong quantization for SH band or channel"
+            );
         }
         config.erase("shBits");
         task.exec(config, context);
@@ -85,16 +92,25 @@ void write_gpu_requirements() {
     context.set({ { "output", "source" } }, source);
     pipeline::WriteTask task;
     // Encoding options are validated by exec, not by GPU requirement queries.
-    io::Json config { { "input", "source" }, { "version", "unused" }, { "compressLevel", "unused" }, { "highPrecision", "unused" }, { "enableMortonSort", "unused" } };
+    io::Json config { { "input", "source" }, { "version", "unused" }, { "compressLevel", "unused" },
+        { "highPrecision", "unused" }, { "enableMortonSort", "unused" } };
     for (const auto extension : { ".ply", ".spz", ".uspz", ".splat", ".esz", ".SOG" }) {
         config["output"] = std::string("output") + extension;
-        require(task.requires_gpu(config, context) == (std::string_view(extension) == ".SOG"), "GPU query parsed encoding options or misclassified an output format");
+        require(
+            task.requires_gpu(config, context) == (std::string_view(extension) == ".SOG"),
+            "GPU query parsed encoding options or misclassified an output format"
+        );
     }
-    context.set({ { "output", "bundle" } }, std::vector<pipeline::SingleFile> { { "metadata.sog", std::string("metadata") }, { "data.esz", source } });
+    context.set(
+        { { "output", "bundle" } },
+        std::vector<pipeline::SingleFile> { { "metadata.sog", std::string("metadata") }, { "data.esz", source } }
+    );
     config["input"] = "bundle";
     config["output"] = "bundle-directory";
     require(!task.requires_gpu(config, context), "Text bundle entries must not require GPU encoding");
-    context.set({ { "output", "bundle" } }, std::vector<pipeline::SingleFile> { { "data.esz", source }, { "data.SOG", source } });
+    context.set(
+        { { "output", "bundle" } }, std::vector<pipeline::SingleFile> { { "data.esz", source }, { "data.SOG", source } }
+    );
     require(task.requires_gpu(config, context), "GPU query missed a SOG entry in a mixed bundle");
 }
 static_assert(voxel::ValidBrickSize<4> && voxel::ValidBrickSize<12> && voxel::ValidBrickSize<32>);
@@ -112,7 +128,10 @@ void brick_size_contract() {
             source[i][j] = i == 7 ? voxel::FULL_BLOCK : uint64_t { 1 } << ((i + j) % 64);
         }
     }
-    map.assign_bricks(source.size(), [](size_t i) { return static_cast<uint32_t>(i); }, [&](size_t i) -> const typename Map::Masks& { return source[i]; });
+    map.assign_bricks(
+        source.size(), [](size_t i) { return static_cast<uint32_t>(i); },
+        [&](size_t i) -> const typename Map::Masks& { return source[i]; }
+    );
     uint64_t voxels = 0;
     size_t visited = 0;
     map.for_each_block(0, [&](Eigen::Vector3i p, uint64_t bits) {
@@ -123,7 +142,10 @@ void brick_size_contract() {
         voxels += std::popcount(bits);
         ++visited;
     });
-    require(visited == static_cast<size_t>(dims.prod()) && map.occupied_blocks() == visited && map.voxel_count() == voxels, "Brick size changed valid counts");
+    require(
+        visited == static_cast<size_t>(dims.prod()) && map.occupied_blocks() == visited && map.voxel_count() == voxels,
+        "Brick size changed valid counts"
+    );
     map.invert();
     map.set(dims - Eigen::Vector3i::Ones(), 5);
     require(map.voxel_count() == visited * 64 - voxels + 2, "Updating an inverse edge brick changed other voxels");
@@ -144,7 +166,10 @@ void brick_storage() {
     // The last brick has just one valid block. Its padding must not affect
     // uniform compression, traversal, or counting.
     bricks[7][0] = voxel::FULL_BLOCK;
-    grid.masks.assign_bricks(ids.size(), [&](size_t i) { return ids[i]; }, [&](size_t i) -> const voxel::Grid::Storage::Masks& { return bricks[ids[i]]; });
+    grid.masks.assign_bricks(
+        ids.size(), [&](size_t i) { return ids[i]; },
+        [&](size_t i) -> const voxel::Grid::Storage::Masks& { return bricks[ids[i]]; }
+    );
     std::array<uint64_t, 125> expected;
     for (uint32_t i = 0; i < expected.size(); ++i) {
         const auto p = grid.block_point(i);
@@ -162,7 +187,10 @@ void brick_storage() {
                 active.push_back(i);
             }
         }
-        require(actual.active_blocks() == active && actual.voxel_count() == voxels, "Partial brick traversal or ordering differs");
+        require(
+            actual.active_blocks() == active && actual.voxel_count() == voxels,
+            "Partial brick traversal or ordering differs"
+        );
     };
     check(grid, 0);
     for (uint32_t i = 0; i < expected.size(); ++i) {
@@ -179,14 +207,21 @@ void brick_storage() {
     require(grid.masks.get({ 4, 4, 4 }) == voxel::FULL_BLOCK, "Mutating an inverted copy changed its source");
     const auto crop = inverse.crop({ 1, 1, 1 }, { 5, 5, 5 }, true);
     for (uint32_t i = 0; i < crop.block_count(); ++i) {
-        require(crop.mask(i) == ~inverse.masks.get(crop.block_point(i) + Eigen::Vector3i::Ones()), "Unaligned inverted brick crop differs");
+        require(
+            crop.mask(i) == ~inverse.masks.get(crop.block_point(i) + Eigen::Vector3i::Ones()),
+            "Unaligned inverted brick crop differs"
+        );
     }
     const auto solid = voxel::unite(grid, grid.inverted());
-    require(solid.voxel_count() == expected.size() * 64 && solid.inverted().masks.empty(), "Uniform edge brick union differs");
+    require(
+        solid.voxel_count() == expected.size() * 64 && solid.inverted().masks.empty(),
+        "Uniform edge brick union differs"
+    );
 }
 void filter_neighborhoods() {
     std::mt19937_64 random(0x8193);
-    for (const Eigen::Vector3i dimensions : { Eigen::Vector3i { 4, 4, 4 }, Eigen::Vector3i { 8, 12, 16 }, Eigen::Vector3i { 12, 8, 4 } }) {
+    for (const Eigen::Vector3i dimensions :
+        { Eigen::Vector3i { 4, 4, 4 }, Eigen::Vector3i { 8, 12, 16 }, Eigen::Vector3i { 12, 8, 4 } }) {
         for (bool inverted : { false, true }) {
             voxel::Grid grid(dimensions);
             for (uint32_t index = 0; index < grid.block_count(); ++index) {
@@ -210,8 +245,11 @@ void filter_neighborhoods() {
                             neighbor[axis] += 2;
                             neighbors += grid.get(neighbor);
                         }
-                        const bool expected = bits == voxel::FULL_BLOCK || (bits != 0 && (grid.get(p) ? neighbors != 0 : neighbors == 6));
-                        require(filtered.get(p) == expected, "Blockwise filtering changed a scalar six-neighbor decision");
+                        const bool expected =
+                            bits == voxel::FULL_BLOCK || (bits != 0 && (grid.get(p) ? neighbors != 0 : neighbors == 6));
+                        require(
+                            filtered.get(p) == expected, "Blockwise filtering changed a scalar six-neighbor decision"
+                        );
                     }
                 }
             }
@@ -227,11 +265,15 @@ void filter_neighborhoods() {
         shell.set(p);
     }
     const auto filtered = voxel::filter_blocks(shell);
-    require(filtered.get(center) && filtered.voxel_count() == 1, "Cross-face hole filling must use the original neighbors");
+    require(
+        filtered.get(center) && filtered.voxel_count() == 1, "Cross-face hole filling must use the original neighbors"
+    );
 }
 } // namespace
 int main() {
-    const auto directory = std::filesystem::temp_directory_path() / ("splat-transform-tests-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto directory =
+        std::filesystem::temp_directory_path() /
+        ("splat-transform-tests-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::create_directories(directory);
     struct Cleanup {
         std::filesystem::path path;
@@ -244,7 +286,10 @@ int main() {
         const pipeline::PathResolver paths;
         require(paths.resolve("").empty(), "Resolving an empty path must preserve it");
         const auto expected = paths.work_dir() / R"(a\b)" / "c" / "e";
-        require(paths.resolve(R"(a\b//./c/d/../e)").native() == expected.native(), "Resolved paths must use normalized native spelling");
+        require(
+            paths.resolve(R"(a\b//./c/d/../e)").native() == expected.native(),
+            "Resolved paths must use normalized native spelling"
+        );
         brick_storage();
         filter_neighborhoods();
         splat::Splat points(16, 3);
@@ -272,7 +317,10 @@ int main() {
             require(decoded.sh_degree == (extension == "splat" ? 0u : 3u), "Format roundtrip lost SH bands");
             for (size_t i = 0; i < points.size(); ++i) {
                 for (size_t a = 0; a < 3; ++a) {
-                    require(std::abs(decoded.gaussians[i].attribute(a) - points.gaussians[i].attribute(a)) < 0.001, "Position quantization exceeded format tolerance");
+                    require(
+                        std::abs(decoded.gaussians[i].attribute(a) - points.gaussians[i].attribute(a)) < 0.001,
+                        "Position quantization exceeded format tolerance"
+                    );
                 }
             }
         }
@@ -301,19 +349,40 @@ int main() {
             }
             io::write_splat(directory / "rotations.ply", rotations, { .enable_morton_sort = false });
             const auto normalized = io::read_splat(directory / "rotations.ply");
-            require(normalized.gaussians[0].rotation.w() < 0 && normalized.gaussians[1].rotation.w() > 0, "Input normalization changed quaternion signs");
-            require(std::abs(normalized.gaussians[0].rotation.norm() - 1) < 1e-6f, "Input normalization did not produce a unit quaternion");
-            require(normalized.gaussians[0].rotation.angularDistance(normalized.gaussians[1].rotation) < 1e-6f, "Equivalent quaternion signs changed rotation");
+            require(
+                normalized.gaussians[0].rotation.w() < 0 && normalized.gaussians[1].rotation.w() > 0,
+                "Input normalization changed quaternion signs"
+            );
+            require(
+                std::abs(normalized.gaussians[0].rotation.norm() - 1) < 1e-6f,
+                "Input normalization did not produce a unit quaternion"
+            );
+            require(
+                normalized.gaussians[0].rotation.angularDistance(normalized.gaussians[1].rotation) < 1e-6f,
+                "Equivalent quaternion signs changed rotation"
+            );
             for (size_t c = splat::QuatX; c <= splat::QuatW; ++c) {
-                require(normalized.gaussians[0].attribute(c) == -normalized.gaussians[1].attribute(c), "Input normalization changed quaternion component signs");
-                require(normalized.gaussians[2].attribute(c) == 0, "Zero quaternion changed during input normalization");
+                require(
+                    normalized.gaussians[0].attribute(c) == -normalized.gaussians[1].attribute(c),
+                    "Input normalization changed quaternion component signs"
+                );
+                require(
+                    normalized.gaussians[2].attribute(c) == 0, "Zero quaternion changed during input normalization"
+                );
             }
             io::write_splat(directory / "rotations.splat", normalized, { .enable_morton_sort = false });
             const auto encoded = io::read_bytes(directory / "rotations.splat");
-            constexpr std::array<std::byte, 4> EXPECTED { std::byte { 168 }, std::byte { 88 }, std::byte { 209 }, std::byte { 47 } };
+            constexpr std::array<std::byte, 4> EXPECTED { std::byte { 168 }, std::byte { 88 }, std::byte { 209 },
+                std::byte { 47 } };
             for (size_t c = 0; c < 4; ++c) {
-                require(encoded[28 + c] == EXPECTED[c] && encoded[60 + c] == EXPECTED[c], "Quaternion quantization differs from the legacy sign convention");
-                require(encoded[92 + c] == std::byte { 128 }, "Zero quaternion quantization differs from the legacy encoding");
+                require(
+                    encoded[28 + c] == EXPECTED[c] && encoded[60 + c] == EXPECTED[c],
+                    "Quaternion quantization differs from the legacy sign convention"
+                );
+                require(
+                    encoded[92 + c] == std::byte { 128 },
+                    "Zero quaternion quantization differs from the legacy encoding"
+                );
             }
         }
         io::Bytes scores;
@@ -322,9 +391,22 @@ int main() {
         }
         io::write_bytes(directory / "scores.bin", scores);
         const auto path = [&](const char* name) { return (directory / name).generic_string(); };
-        pipeline::run({ { "version", 1 }, { "tasks", io::Json::array({ { { "id", "read" }, { "type", "Read" }, { "config", { { "inputs", io::Json::array({ path("input.ply") }) }, { "output", "data" } } } },
-                                                         { { "id", "flex" }, { "type", "FlexLod" }, { "config", { { "input", "data" }, { "output", "filtered" }, { "ratio", 0.25 }, { "scorePath", path("scores.bin") }, { "originalIndices", path("indices.bin") } } }, { "release", io::Json::array({ "data" }) } },
-                                                         { { "id", "write" }, { "type", "Write" }, { "config", { { "input", "filtered" }, { "output", path("filtered.ply") }, { "enableMortonSort", false } } } } }) } });
+        pipeline::run(
+            { { "version", 1 },
+                { "tasks", io::Json::array(
+                               { { { "id", "read" }, { "type", "Read" },
+                                     { "config", { { "inputs", io::Json::array({ path("input.ply") }) },
+                                                     { "output", "data" } } } },
+                                   { { "id", "flex" }, { "type", "FlexLod" },
+                                       { "config", { { "input", "data" }, { "output", "filtered" }, { "ratio", 0.25 },
+                                                       { "scorePath", path("scores.bin") },
+                                                       { "originalIndices", path("indices.bin") } } },
+                                       { "release", io::Json::array({ "data" }) } },
+                                   { { "id", "write" }, { "type", "Write" },
+                                       { "config", { { "input", "filtered" }, { "output", path("filtered.ply") },
+                                                       { "enableMortonSort", false } } } } }
+                           ) } }
+        );
         const auto filtered = io::read_splat(directory / "filtered.ply");
         require(filtered.size() == 4, "FlexLod count differs");
         const auto indices = io::read_bytes(directory / "indices.bin");
@@ -348,17 +430,31 @@ int main() {
         require(voxel::filter_blocks(single).voxel_count() == 0, "Isolated voxel was not filtered");
         for (const size_t budget : { 32 * 1024 * 1024, 48 * 1024 * 1024 }) {
             const auto schedule = spatial::cluster_schedule(200003, 129, 48, { 128 * 1024 * 1024, 65535, budget });
-            const auto bytes = (129 + schedule.batch_rows * (schedule.cached_batches + schedule.streaming_slots)) * 49 * sizeof(float);
+            const auto bytes =
+                (129 + schedule.batch_rows * (schedule.cached_batches + schedule.streaming_slots)) * 49 * sizeof(float);
             require(bytes <= budget, "Clustering schedule exceeded available memory");
             if (budget == 32 * 1024 * 1024) {
-                require(schedule.streaming_slots > 0 && schedule.batch_rows < 200003, "Clustering did not schedule streaming input");
+                require(
+                    schedule.streaming_slots > 0 && schedule.batch_rows < 200003,
+                    "Clustering did not schedule streaming input"
+                );
             } else {
-                require(!schedule.streaming_slots && schedule.cached_batches == 1 && schedule.batch_rows == 200003, "Clustering split input that fits in one device buffer");
+                require(
+                    !schedule.streaming_slots && schedule.cached_batches == 1 && schedule.batch_rows == 200003,
+                    "Clustering split input that fits in one device buffer"
+                );
             }
             const auto batched = spatial::cluster_schedule(200003, 129, 48, { 128 * 1024 * 1024, 65535, budget }, 8192);
-            const auto batched_bytes = (129 + batched.batch_rows * (batched.cached_batches + batched.streaming_slots)) * 49 * sizeof(float);
-            require(batched.batch_rows == 8192 && batched_bytes <= budget, "Callback batching exceeded the row or memory budget");
-            require((budget == 32 * 1024 * 1024) == (batched.streaming_slots != 0), "Callback batching changed cached/streaming budget selection");
+            const auto batched_bytes =
+                (129 + batched.batch_rows * (batched.cached_batches + batched.streaming_slots)) * 49 * sizeof(float);
+            require(
+                batched.batch_rows == 8192 && batched_bytes <= budget,
+                "Callback batching exceeded the row or memory budget"
+            );
+            require(
+                (budget == 32 * 1024 * 1024) == (batched.streaming_slots != 0),
+                "Callback batching changed cached/streaming budget selection"
+            );
         }
         std::cout << "Pipeline, formats, short scores, and voxel topology contracts passed\n";
     } catch (const std::exception& error) {

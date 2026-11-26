@@ -38,7 +38,8 @@ public:
     void set_mask(uint32_t index, uint64_t value);
     void or_mask(Eigen::Vector3i block, uint64_t value);
     bool get(Eigen::Vector3i p) const {
-        return this->contains(p) && ((this->masks.get(p / 4) >> ((p.x() & 3) + 4 * (p.y() & 3) + 16 * (p.z() & 3))) & 1);
+        return this->contains(p) &&
+               ((this->masks.get(p / 4) >> ((p.x() & 3) + 4 * (p.y() & 3) + 16 * (p.z() & 3))) & 1);
     }
     void set(Eigen::Vector3i point);
     Grid inverted() const;
@@ -59,7 +60,9 @@ Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool 
 std::optional<Eigen::Vector3i> nearest_cell(const Grid& allowed, Eigen::Vector3i seed, int32_t radius);
 Grid filter_blocks(const Grid& grid);
 void crop_grid(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, bool navigable, int32_t margin);
-void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const Navigation& options, const Backend& backend);
+void navigate(
+    Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const Navigation& options, const Backend& backend
+);
 struct Mesh {
     std::vector<float> positions;
     std::vector<uint32_t> indices;

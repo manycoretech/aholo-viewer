@@ -19,7 +19,14 @@ PreparedData prepare(const splat::Splat& data);
 Eigen::AlignedBox3f align_bounds(Eigen::AlignedBox3f bounds, float resolution);
 Grid make_grid(const Eigen::AlignedBox3f& bounds, float resolution);
 Occupancy generate_occupancy(const splat::Splat& data, GridSpec spec);
-std::vector<uint32_t> filter_indices(const splat::Splat& data, const Occupancy& occupancy, float min_contribution, bool cluster);
-std::optional<Occupancy> filter_cluster(PreparedData& data, const FilterClusterOptions& options, const Eigen::AlignedBox3f& box, const Backend& backend);
-Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBox3f& scene, const Eigen::AlignedBox3f& box, const std::optional<DenseBoxOptions>& options);
+std::vector<uint32_t> filter_indices(
+    const splat::Splat& data, const Occupancy& occupancy, float min_contribution, bool cluster
+);
+std::optional<Occupancy> filter_cluster(
+    PreparedData& data, const FilterClusterOptions& options, const Eigen::AlignedBox3f& box, const Backend& backend
+);
+Eigen::AlignedBox3f resolve_box(
+    const splat::Splat& data, const Eigen::AlignedBox3f& scene, const Eigen::AlignedBox3f& box,
+    const std::optional<DenseBoxOptions>& options
+);
 } // namespace splat_transform::voxel

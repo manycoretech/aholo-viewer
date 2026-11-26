@@ -65,12 +65,25 @@ int main() {
         logger.info("Total elapsed time: complete");
         require(capture.flush_count() > flushes, "Completed log line did not flush its output");
         const auto text = capture.text();
-        require(errors.text() == "[Task:Write#2] write error\n[Task:Write#2] write failed\n", "Warnings or errors used the wrong output stream or silence policy");
-        require(text.find("[Task:Write#2] - out/chunk_0.spz (1/2)\n") != std::string::npos, "Bundle progress disappeared while detail logs were muted");
+        require(
+            errors.text() == "[Task:Write#2] write error\n[Task:Write#2] write failed\n",
+            "Warnings or errors used the wrong output stream or silence policy"
+        );
+        require(
+            text.find("[Task:Write#2] - out/chunk_0.spz (1/2)\n") != std::string::npos,
+            "Bundle progress disappeared while detail logs were muted"
+        );
         require(text.find("hidden") == std::string::npos, "Muted detail or timer leaked into output");
-        require(text.find("[Task:Write#2] visible after failure\n") != std::string::npos, "Failed write did not restore logger state");
+        require(
+            text.find("[Task:Write#2] visible after failure\n") != std::string::npos,
+            "Failed write did not restore logger state"
+        );
         const auto elapsed = text.find("[Task:Write#2] elapsed time: ");
-        require(elapsed != std::string::npos && text.find("[Task:Write#2] elapsed time: ", elapsed + 1) == std::string::npos, "Timer did not finish exactly once");
+        require(
+            elapsed != std::string::npos &&
+                text.find("[Task:Write#2] elapsed time: ", elapsed + 1) == std::string::npos,
+            "Timer did not finish exactly once"
+        );
         require(text.ends_with("\nTotal elapsed time: complete\n"), "Task prefix escaped its scope");
         {
             auto task = logger.scope("[Task:Parallel#3]");
@@ -91,7 +104,12 @@ int main() {
         require(messages.size() == 100, "Concurrent logging lost or interleaved messages");
         for (int32_t worker = 0; worker < 4; ++worker) {
             for (int32_t index = 0; index < 25; ++index) {
-                require(messages.contains("[Task:Parallel#3] worker=" + std::to_string(worker) + " item=" + std::to_string(index)), "Concurrent logging changed a task prefix or message");
+                require(
+                    messages.contains(
+                        "[Task:Parallel#3] worker=" + std::to_string(worker) + " item=" + std::to_string(index)
+                    ),
+                    "Concurrent logging changed a task prefix or message"
+                );
             }
         }
     } catch (const std::exception& error) {

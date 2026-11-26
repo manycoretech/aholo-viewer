@@ -9,10 +9,14 @@ namespace splat_transform::io {
 // backend. macOS and unavailable io_uring kernels use the Asio file executor.
 class FileStream {
 public:
-    enum class Access { Read,
-        Write };
-    enum class Backend { Automatic,
-        ThreadPool };
+    enum class Access {
+        Read,
+        Write
+    };
+    enum class Backend {
+        Automatic,
+        ThreadPool
+    };
     FileStream(const std::filesystem::path& path, Access access, Backend backend = Backend::Automatic);
     ~FileStream();
     FileStream(const FileStream&) = delete;

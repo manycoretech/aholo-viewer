@@ -21,17 +21,24 @@ void prepare(const std::filesystem::path& directory) {
         splat::Splat data(second ? 7 : 12, 3);
         for (size_t i = 0; i < data.size(); ++i) {
             auto& point = data.gaussians[i];
-            point.mean = { static_cast<float>(i) * 0.125f + (second ? 100 : 0), static_cast<float>(i % 3) * 0.125f, static_cast<float>(i % 5) * 0.0625f };
+            point.mean = { static_cast<float>(i) * 0.125f + (second ? 100 : 0), static_cast<float>(i % 3) * 0.125f,
+                static_cast<float>(i % 5) * 0.0625f };
             point.scale = { 0.125f, 0.25f, 0.0625f };
             point.rotation.w() = 1;
             point.opacity = 0.75f;
             for (size_t c = 0; c < point.sh.size(); ++c) {
-                point.sh[c] = c < 3 ? static_cast<float>((i + c) % 4 + 1) * 0.125f : static_cast<float>(std::sin(i + c) * 0.05);
+                point.sh[c] =
+                    c < 3 ? static_cast<float>((i + c) % 4 + 1) * 0.125f : static_cast<float>(std::sin(i + c) * 0.05);
             }
         }
-        io::write_splat(directory / "inputs" / (second ? "second.ply" : "first.ply"), data, { .enable_morton_sort = false });
-        save_json(directory / "inputs" / (second ? "second.json" : "first.json"),
-            { { "transform", { 1, 0, 0, second ? -10 : 10, 0, 1, 0, 20, 0, 0, 1, 30, 0, 0, 0, 1 } }, { "deletedIndices", { second ? 4 : 2 } } });
+        io::write_splat(
+            directory / "inputs" / (second ? "second.ply" : "first.ply"), data, { .enable_morton_sort = false }
+        );
+        save_json(
+            directory / "inputs" / (second ? "second.json" : "first.json"),
+            { { "transform", { 1, 0, 0, second ? -10 : 10, 0, 1, 0, 20, 0, 0, 1, 30, 0, 0, 0, 1 } },
+                { "deletedIndices", { second ? 4 : 2 } } }
+        );
     }
     io::Bytes scores;
     for (size_t i = 0; i < 19; ++i) {
@@ -40,15 +47,21 @@ void prepare(const std::filesystem::path& directory) {
     io::write_bytes(directory / "inputs/scores.bin", scores);
 }
 void equal_data(const splat::Splat& first, const splat::Splat& second) {
-    require(first.size() == second.size() && first.sh_degree == second.sh_degree, "Frozen pipeline changed output schema");
+    require(
+        first.size() == second.size() && first.sh_degree == second.sh_degree, "Frozen pipeline changed output schema"
+    );
     for (size_t row = 0; row < first.size(); ++row) {
         for (size_t c = 0; c < first.attribute_count(); ++c) {
-            require(first.gaussians[row].attribute(c) == second.gaussians[row].attribute(c), "Frozen pipeline changed an attribute or alias");
+            require(
+                first.gaussians[row].attribute(c) == second.gaussians[row].attribute(c),
+                "Frozen pipeline changed an attribute or alias"
+            );
         }
     }
 }
 void verify(const std::filesystem::path& fixtures) {
-    for (const auto name : { "read-modify", "formats", "auto-lod", "auto-chunk-defaults", "auto-chunk-business", "flex-lod", "skeleton-lod", "split-splat" }) {
+    for (const auto name : { "read-modify", "formats", "auto-lod", "auto-chunk-defaults", "auto-chunk-business",
+             "flex-lod", "skeleton-lod", "split-splat" }) {
         const auto file = fixtures / (std::string(name) + ".json");
         pipeline::run(io::read_json(file), file);
     }
@@ -61,7 +74,8 @@ void verify(const std::filesystem::path& fixtures) {
         if (i == 1 || i == 14) {
             continue;
         }
-        const float expected_x = i < 12 ? static_cast<float>(i) * 0.125f + 10 : static_cast<float>(i - 12) * 0.125f + 90;
+        const float expected_x =
+            i < 12 ? static_cast<float>(i) * 0.125f + 10 : static_cast<float>(i - 12) * 0.125f + 90;
         require(source.gaussians[row++].mean.x() == expected_x, "Read order or block-relative patch behavior changed");
     }
     equal_data(io::read_splat("outputs/high.esz"), io::read_splat("outputs/repeated-high.esz"));
@@ -73,9 +87,16 @@ void verify(const std::filesystem::path& fixtures) {
         require(reader.read<uint32_t>() == i, "FlexLod original index order changed");
     }
     const auto meta = io::read_json("outputs/default-low/lod-meta.json");
-    require(meta == io::read_json("outputs/default-high/lod-meta.json") && meta == io::read_json("outputs/default-high-repeat/lod-meta.json"), "Repeated Write changed default LOD metadata");
+    require(
+        meta == io::read_json("outputs/default-high/lod-meta.json") &&
+            meta == io::read_json("outputs/default-high-repeat/lod-meta.json"),
+        "Repeated Write changed default LOD metadata"
+    );
     for (const auto& name : meta.at("files")) {
-        equal_data(io::read_splat(std::filesystem::path("outputs/default-high") / name.get<std::string>()), io::read_splat(std::filesystem::path("outputs/default-high-repeat") / name.get<std::string>()));
+        equal_data(
+            io::read_splat(std::filesystem::path("outputs/default-high") / name.get<std::string>()),
+            io::read_splat(std::filesystem::path("outputs/default-high-repeat") / name.get<std::string>())
+        );
     }
 }
 } // namespace
@@ -88,7 +109,9 @@ int main(int argc, char** argv) {
         }
         require(argc == 2, "Expected the frozen pipeline fixture directory");
         const auto fixtures = std::filesystem::absolute(io::utf8_path(argv[1]));
-        const auto directory = std::filesystem::temp_directory_path() / ("splat-frozen-pipelines-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        const auto directory =
+            std::filesystem::temp_directory_path() /
+            ("splat-frozen-pipelines-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::create_directories(directory);
         struct Cleanup {
             std::filesystem::path directory;

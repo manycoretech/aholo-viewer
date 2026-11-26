@@ -25,7 +25,9 @@ struct Parameters {
         if (index >= size) {
             break;
         }
-        int3 p = int3(index % parameters.nx, (index / parameters.nx) % parameters.ny, index / (parameters.nx * parameters.ny));
+        int3 p = int3(
+            index % parameters.nx, (index / parameters.nx) % parameters.ny, index / (parameters.nx * parameters.ny)
+        );
         bool occupied = false;
         for (int z = -int(parameters.rz); z <= int(parameters.rz) && !occupied; ++z) {
             for (int y = -int(parameters.ry); y <= int(parameters.ry) && !occupied; ++y) {

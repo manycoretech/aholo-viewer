@@ -39,12 +39,14 @@ DeviceInfo describe(const vk::raii::PhysicalDevice& physical) {
     for (auto byte : properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID) {
         uuid << std::hex << std::setw(2) << std::setfill('0') << static_cast<uint32_t>(byte);
     }
-    return { .name = base.deviceName.data(),
+    return {
+        .name = base.deviceName.data(),
         .api = ApiType::Vulkan,
         .api_version = base.apiVersion,
         .vendor_id = base.vendorID,
         .device_id = base.deviceID,
-        .uuid = uuid.str() };
+        .uuid = uuid.str()
+    };
 }
 
 } // namespace
@@ -59,12 +61,21 @@ Device::Device(uint32_t index) : instance_(create_instance(this->context_)) {
         throw std::runtime_error("Selected device must support Vulkan 1.2 or newer");
     }
     const auto description = describe(this->physical_);
-    utility::logger().info("Vulkan device: ", description.name, " vendor=", description.vendor_id, " device=", description.device_id, " uuid=", description.uuid);
-    const auto properties = this->physical_.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceMaintenance3Properties>();
+    utility::logger().info(
+        "Vulkan device: ", description.name, " vendor=", description.vendor_id, " device=", description.device_id,
+        " uuid=", description.uuid
+    );
+    const auto properties =
+        this->physical_.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceMaintenance3Properties>();
     this->limits_ = properties.get<vk::PhysicalDeviceProperties2>().properties.limits;
-    this->storage_limit_ = std::min<uint64_t>(this->limits_.maxStorageBufferRange, properties.get<vk::PhysicalDeviceMaintenance3Properties>().maxMemoryAllocationSize);
+    this->storage_limit_ = std::min<uint64_t>(
+        this->limits_.maxStorageBufferRange,
+        properties.get<vk::PhysicalDeviceMaintenance3Properties>().maxMemoryAllocationSize
+    );
     const auto families = this->physical_.getQueueFamilyProperties();
-    auto found = std::find_if(families.begin(), families.end(), [](const auto& family) { return family.queueCount && static_cast<bool>(family.queueFlags & vk::QueueFlagBits::eCompute); });
+    auto found = std::find_if(families.begin(), families.end(), [](const auto& family) {
+        return family.queueCount && static_cast<bool>(family.queueFlags & vk::QueueFlagBits::eCompute);
+    });
     if (found == families.end()) {
         throw std::runtime_error("Selected Vulkan device has no compute queue");
     }
@@ -81,13 +92,16 @@ Device::Device(uint32_t index) : instance_(create_instance(this->context_)) {
             this->memory_budget_ = true;
         }
     }
-    auto features = this->physical_.getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceTimelineSemaphoreFeatures>();
+    auto features =
+        this->physical_.getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceTimelineSemaphoreFeatures>();
     auto& timeline = features.get<vk::PhysicalDeviceTimelineSemaphoreFeatures>();
     if (!timeline.timelineSemaphore) {
         throw std::runtime_error("Selected Vulkan device does not support the timelineSemaphore feature");
     }
-    const auto timeline_properties = this->physical_.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceTimelineSemaphoreProperties>();
-    this->timeline_max_difference_ = timeline_properties.get<vk::PhysicalDeviceTimelineSemaphoreProperties>().maxTimelineSemaphoreValueDifference;
+    const auto timeline_properties =
+        this->physical_.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceTimelineSemaphoreProperties>();
+    this->timeline_max_difference_ =
+        timeline_properties.get<vk::PhysicalDeviceTimelineSemaphoreProperties>().maxTimelineSemaphoreValueDifference;
     vk::DeviceCreateInfo info;
     info.setQueueCreateInfos(queue_info).setPEnabledExtensionNames(extensions).setPNext(&timeline);
     this->device_ = this->physical_.createDevice(info);
@@ -117,8 +131,10 @@ ComputeLimits Device::limits() const {
     return { this->storage_limit_, static_cast<size_t>(this->limits_.minStorageBufferOffsetAlignment),
         std::min(this->limits_.maxPerStageDescriptorStorageBuffers, this->limits_.maxDescriptorSetStorageBuffers),
         this->limits_.maxPushConstantsSize, this->limits_.maxComputeSharedMemorySize,
-        { this->limits_.maxComputeWorkGroupCount[0], this->limits_.maxComputeWorkGroupCount[1], this->limits_.maxComputeWorkGroupCount[2] },
-        { this->limits_.maxComputeWorkGroupSize[0], this->limits_.maxComputeWorkGroupSize[1], this->limits_.maxComputeWorkGroupSize[2] },
+        { this->limits_.maxComputeWorkGroupCount[0], this->limits_.maxComputeWorkGroupCount[1],
+            this->limits_.maxComputeWorkGroupCount[2] },
+        { this->limits_.maxComputeWorkGroupSize[0], this->limits_.maxComputeWorkGroupSize[1],
+            this->limits_.maxComputeWorkGroupSize[2] },
         this->limits_.maxComputeWorkGroupInvocations };
 }
 size_t Device::available_memory() const {
@@ -128,7 +144,10 @@ size_t Device::available_memory() const {
     uint64_t available = 0;
     for (uint32_t i = 0; i < properties.memoryHeapCount; ++i) {
         if (properties.memoryHeaps[i].flags & vk::MemoryHeapFlagBits::eDeviceLocal) {
-            available = std::max(available, budgets[i].budget > budgets[i].usage ? budgets[i].budget - budgets[i].usage : static_cast<uint64_t>(0));
+            available = std::max(
+                available,
+                budgets[i].budget > budgets[i].usage ? budgets[i].budget - budgets[i].usage : static_cast<uint64_t>(0)
+            );
         }
     }
     return static_cast<size_t>(available);
@@ -141,20 +160,25 @@ size_t Device::allocation_bytes() const {
 Buffer::Buffer(VmaAllocator allocator, size_t size, BufferMemory memory, bool within_budget) : allocator_(allocator) {
     VkBufferCreateInfo info { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     info.size = size;
-    info.usage = memory == BufferMemory::Device   ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-                 : memory == BufferMemory::Upload ? VK_BUFFER_USAGE_TRANSFER_SRC_BIT
-                                                  : VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    info.usage =
+        memory == BufferMemory::Device
+            ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+        : memory == BufferMemory::Upload ? VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+                                         : VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     VmaAllocationCreateInfo allocation {};
-    allocation.usage = memory == BufferMemory::Device ? VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE : VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    allocation.usage =
+        memory == BufferMemory::Device ? VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE : VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
     if (memory != BufferMemory::Device) {
         allocation.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
-                           (memory == BufferMemory::Upload ? VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT : VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT);
+                           (memory == BufferMemory::Upload ? VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                                                           : VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT);
     }
     if (within_budget) {
         allocation.flags |= VMA_ALLOCATION_CREATE_WITHIN_BUDGET_BIT;
     }
-    const auto status = vmaCreateBuffer(this->allocator_, &info, &allocation, &this->buffer_, &this->allocation_, &this->info_);
+    const auto status =
+        vmaCreateBuffer(this->allocator_, &info, &allocation, &this->buffer_, &this->allocation_, &this->info_);
     if (status != VK_SUCCESS) {
         throw AllocationFailure("Vulkan allocation failed: " + std::to_string(status));
     }
@@ -196,7 +220,8 @@ std::unique_ptr<detail::BackendPipeline> Device::create_pipeline(const ComputeSh
     }
     vk::PipelineLayoutCreateInfo layout_info;
     if (!bindings.empty()) {
-        pipeline->descriptors = this->device_.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo({}, bindings));
+        pipeline->descriptors =
+            this->device_.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo({}, bindings));
         layout_info.setSetLayouts(*pipeline->descriptors);
     }
     const vk::PushConstantRange range(vk::ShaderStageFlagBits::eCompute, 0, description.push_constant_bytes);
@@ -205,7 +230,9 @@ std::unique_ptr<detail::BackendPipeline> Device::create_pipeline(const ComputeSh
     }
     pipeline->layout = this->device_.createPipelineLayout(layout_info);
     pipeline->shader = this->device_.createShaderModule(vk::ShaderModuleCreateInfo({}, code.size(), words.data()));
-    vk::PipelineShaderStageCreateInfo shader({}, vk::ShaderStageFlagBits::eCompute, *pipeline->shader, description.entry_point.c_str());
+    vk::PipelineShaderStageCreateInfo shader(
+        {}, vk::ShaderStageFlagBits::eCompute, *pipeline->shader, description.entry_point.c_str()
+    );
     std::vector<vk::SpecializationMapEntry> entries;
     std::vector<uint32_t> values;
     for (const auto& constant : description.constants) {
@@ -217,22 +244,28 @@ std::unique_ptr<detail::BackendPipeline> Device::create_pipeline(const ComputeSh
         specialization.setMapEntries(entries).setDataSize(values.size() * sizeof(uint32_t)).setPData(values.data());
         shader.setPSpecializationInfo(&specialization);
     }
-    pipeline->pipeline = this->device_.createComputePipeline(nullptr, vk::ComputePipelineCreateInfo({}, shader, *pipeline->layout));
+    pipeline->pipeline =
+        this->device_.createComputePipeline(nullptr, vk::ComputePipelineCreateInfo({}, shader, *pipeline->layout));
     return pipeline;
 }
 struct DescriptorTable final : detail::BackendDescriptorTable {
     vk::raii::DescriptorPool pool { nullptr };
     vk::raii::DescriptorSet set { nullptr };
 };
-std::unique_ptr<detail::BackendDescriptorTable> Device::create_descriptor_table(detail::BackendPipeline& base, std::span<const detail::BackendRange> buffers) {
+std::unique_ptr<detail::BackendDescriptorTable> Device::create_descriptor_table(
+    detail::BackendPipeline& base, std::span<const detail::BackendRange> buffers
+) {
     auto table = std::make_unique<DescriptorTable>();
     if (buffers.empty()) {
         return table;
     }
     const auto& pipeline = static_cast<Pipeline&>(base);
     const vk::DescriptorPoolSize size(vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(buffers.size()));
-    table->pool = this->device_.createDescriptorPool(vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 1, size));
-    auto sets = this->device_.allocateDescriptorSets(vk::DescriptorSetAllocateInfo(*table->pool, *pipeline.descriptors));
+    table->pool = this->device_.createDescriptorPool(
+        vk::DescriptorPoolCreateInfo(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 1, size)
+    );
+    auto sets =
+        this->device_.allocateDescriptorSets(vk::DescriptorSetAllocateInfo(*table->pool, *pipeline.descriptors));
     table->set = std::move(sets.front());
     std::vector<vk::DescriptorBufferInfo> infos;
     infos.reserve(buffers.size());
@@ -251,7 +284,9 @@ class Commands final : public detail::BackendCommands {
 public:
     explicit Commands(Device& device) : context_(device) {
         this->pool_ = this->context_.device_.createCommandPool(vk::CommandPoolCreateInfo({}, this->context_.family_));
-        auto commands = this->context_.device_.allocateCommandBuffers(vk::CommandBufferAllocateInfo(*this->pool_, vk::CommandBufferLevel::ePrimary, 1));
+        auto commands = this->context_.device_.allocateCommandBuffers(
+            vk::CommandBufferAllocateInfo(*this->pool_, vk::CommandBufferLevel::ePrimary, 1)
+        );
         this->command_ = std::move(commands.front());
     }
     vk::CommandBuffer handle() const { return *this->command_; }
@@ -262,9 +297,13 @@ public:
     }
     void begin() override { this->command_.begin({}); }
     void copy(const detail::BackendRange& source, const detail::BackendRange& destination) override {
-        this->barrier(vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead | vk::AccessFlagBits::eTransferWrite);
-        this->command_.copyBuffer(static_cast<Buffer*>(source.buffer)->handle(), static_cast<Buffer*>(destination.buffer)->handle(),
-            vk::BufferCopy(source.offset, destination.offset, source.size));
+        this->barrier(
+            vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead | vk::AccessFlagBits::eTransferWrite
+        );
+        this->command_.copyBuffer(
+            static_cast<Buffer*>(source.buffer)->handle(), static_cast<Buffer*>(destination.buffer)->handle(),
+            vk::BufferCopy(source.offset, destination.offset, source.size)
+        );
     }
     void fill(const detail::BackendRange& buffer, uint32_t value) override {
         this->barrier(vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite);
@@ -277,21 +316,30 @@ public:
     void bind_descriptor_table(detail::BackendDescriptorTable& base) override {
         const auto& table = static_cast<DescriptorTable&>(base);
         if (*table.set) {
-            this->command_.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *this->pipeline_->layout, 0, *table.set, nullptr);
+            this->command_.bindDescriptorSets(
+                vk::PipelineBindPoint::eCompute, *this->pipeline_->layout, 0, *table.set, nullptr
+            );
         }
     }
     void push_constants(std::span<const std::byte> push) override {
         if (!push.empty()) {
-            this->command_.pushConstants<std::byte>(*this->pipeline_->layout, vk::ShaderStageFlagBits::eCompute, 0, push);
+            this->command_.pushConstants<std::byte>(
+                *this->pipeline_->layout, vk::ShaderStageFlagBits::eCompute, 0, push
+            );
         }
     }
     void dispatch(std::array<uint32_t, 3> groups) override {
-        this->barrier(vk::PipelineStageFlagBits::eComputeShader, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite);
+        this->barrier(
+            vk::PipelineStageFlagBits::eComputeShader,
+            vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite
+        );
         this->command_.dispatch(groups[0], groups[1], groups[2]);
     }
     void end() override {
         const vk::MemoryBarrier host(vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead);
-        this->command_.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eHost, {}, host, nullptr, nullptr);
+        this->command_.pipelineBarrier(
+            vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eHost, {}, host, nullptr, nullptr
+        );
         this->command_.end();
     }
 
@@ -299,10 +347,15 @@ private:
     void barrier(vk::PipelineStageFlags stage, vk::AccessFlags access) {
         // Include reads to cover write-after-read hazards across repeated lists
         // and queue submissions, as well as transfer/compute write visibility.
-        const vk::MemoryBarrier dependency(vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite |
-                                               vk::AccessFlagBits::eTransferRead | vk::AccessFlagBits::eTransferWrite,
-            access);
-        this->command_.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eTransfer, stage, {}, dependency, nullptr, nullptr);
+        const vk::MemoryBarrier dependency(
+            vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite | vk::AccessFlagBits::eTransferRead |
+                vk::AccessFlagBits::eTransferWrite,
+            access
+        );
+        this->command_.pipelineBarrier(
+            vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eTransfer, stage, {}, dependency,
+            nullptr, nullptr
+        );
     }
     Device& context_;
     vk::raii::CommandPool pool_ { nullptr };
@@ -353,7 +406,9 @@ private:
     Device& context_;
 };
 std::unique_ptr<detail::BackendQueue> Device::create_queue() { return std::make_unique<Queue>(*this); }
-std::unique_ptr<detail::BackendFence> Device::create_fence(uint64_t initial_value) { return std::make_unique<Fence>(this->device_, initial_value); }
+std::unique_ptr<detail::BackendFence> Device::create_fence(uint64_t initial_value) {
+    return std::make_unique<Fence>(this->device_, initial_value);
+}
 std::unique_ptr<detail::BackendCommands> Device::create_commands() { return std::make_unique<Commands>(*this); }
 } // namespace vulkan
 namespace detail {

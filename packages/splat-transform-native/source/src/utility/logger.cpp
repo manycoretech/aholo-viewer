@@ -85,7 +85,8 @@ void Logger::Timer::finish() {
     if (!std::exchange(this->enabled_, false)) {
         return;
     }
-    const auto elapsed = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - this->start_).count();
+    const auto elapsed =
+        std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - this->start_).count();
     this->logger_.info(this->label_, ": ", duration_text(elapsed));
 }
 std::string fixed(float value, int32_t precision) {

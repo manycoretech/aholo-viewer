@@ -15,7 +15,9 @@ namespace {
 class ZlibStream {
 public:
     explicit ZlibStream(bool encode, int32_t level, int32_t window_bits = 31) : encode_(encode) {
-        const int32_t status = encode ? deflateInit2(&this->stream, level, Z_DEFLATED, window_bits, 8, Z_DEFAULT_STRATEGY) : inflateInit2(&this->stream, 47);
+        const int32_t status = encode
+                                   ? deflateInit2(&this->stream, level, Z_DEFLATED, window_bits, 8, Z_DEFAULT_STRATEGY)
+                                   : inflateInit2(&this->stream, 47);
         if (status != Z_OK) {
             throw std::runtime_error("Cannot initialize gzip stream");
         }
@@ -41,13 +43,19 @@ struct GzipBlock {
     uLong checksum;
     size_t size;
 };
-GzipBlock compress_block(std::span<const std::byte> data, std::span<const std::byte> dictionary, int32_t level, bool last) {
+GzipBlock compress_block(
+    std::span<const std::byte> data, std::span<const std::byte> dictionary, int32_t level, bool last
+) {
     ZlibStream state(true, level, -15);
     auto& stream = state.stream;
-    if (!dictionary.empty() && deflateSetDictionary(&stream, reinterpret_cast<const Bytef*>(dictionary.data()), static_cast<uInt>(dictionary.size())) != Z_OK) {
+    if (!dictionary.empty() &&
+        deflateSetDictionary(
+            &stream, reinterpret_cast<const Bytef*>(dictionary.data()), static_cast<uInt>(dictionary.size())
+        ) != Z_OK) {
         throw std::runtime_error("Cannot set gzip dictionary");
     }
-    GzipBlock result { Bytes(deflateBound(&stream, static_cast<uLong>(data.size())) + 16), crc32_z(0, reinterpret_cast<const Bytef*>(data.data()), data.size()), data.size() };
+    GzipBlock result { Bytes(deflateBound(&stream, static_cast<uLong>(data.size())) + 16),
+        crc32_z(0, reinterpret_cast<const Bytef*>(data.data()), data.size()), data.size() };
     stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(data.data()));
     stream.avail_in = static_cast<uInt>(data.size());
     stream.next_out = reinterpret_cast<Bytef*>(result.bytes.data());
@@ -64,9 +72,14 @@ Bytes parallel_gzip(std::span<const std::byte> data, int32_t level, int32_t work
     // Their concatenation is one gzip member, including one combined CRC32.
     constexpr size_t BLOCK_SIZE = 1024 * 1024;
     auto& pool = threading::default_pool();
-    Bytes output { std::byte { 0x1f }, std::byte { 0x8b }, std::byte { 8 },
-        std::byte {}, std::byte {}, std::byte {}, std::byte {}, std::byte {},
-        static_cast<std::byte>(level == 9 ? 2 : level == 1 ? 4 : 0), std::byte { 255 } };
+    Bytes output { std::byte { 0x1f }, std::byte { 0x8b }, std::byte { 8 }, std::byte {}, std::byte {}, std::byte {},
+        std::byte {}, std::byte {},
+        static_cast<std::byte>(
+            level == 9   ? 2
+            : level == 1 ? 4
+                         : 0
+        ),
+        std::byte { 255 } };
     uLong checksum = 0;
     for (size_t offset = 0; offset < data.size();) {
         threading::TaskGroup<GzipBlock> pending(pool, static_cast<size_t>(workers));
@@ -91,7 +104,9 @@ Bytes parallel_gzip(std::span<const std::byte> data, int32_t level, int32_t work
 ZSTD_threadPool* zstd_pool() {
     // zstd exposes its own shared-pool type, not a user-supplied task executor.
     // Share one bounded pool across contexts instead of creating one per file.
-    static const auto pool = std::unique_ptr<ZSTD_threadPool, decltype(&ZSTD_freeThreadPool)>(ZSTD_createThreadPool(threading::default_thread_count()), ZSTD_freeThreadPool);
+    static const auto pool = std::unique_ptr<ZSTD_threadPool, decltype(&ZSTD_freeThreadPool)>(
+        ZSTD_createThreadPool(threading::default_thread_count()), ZSTD_freeThreadPool
+    );
     if (!pool) {
         throw std::bad_alloc();
     }
@@ -135,12 +150,14 @@ Bytes process_gzip(std::span<const std::byte> input, bool encode, int32_t level)
         }
         stream.next_out = reinterpret_cast<Bytef*>(chunk.data());
         stream.avail_out = static_cast<uInt>(chunk.size());
-        const int32_t status = encode ? deflate(&stream, offset == input.size() ? Z_FINISH : Z_NO_FLUSH) : inflate(&stream, Z_NO_FLUSH);
+        const int32_t status =
+            encode ? deflate(&stream, offset == input.size() ? Z_FINISH : Z_NO_FLUSH) : inflate(&stream, Z_NO_FLUSH);
         output.insert(output.end(), chunk.begin(), chunk.begin() + (chunk.size() - stream.avail_out));
         if (status == Z_STREAM_END) {
             break;
         }
-        if (status != Z_OK || (!encode && stream.avail_out == chunk.size() && !stream.avail_in && offset == input.size())) {
+        if (status != Z_OK ||
+            (!encode && stream.avail_out == chunk.size() && !stream.avail_in && offset == input.size())) {
             throw std::runtime_error(stream.msg ? stream.msg : "Invalid or truncated gzip stream");
         }
     }
@@ -166,9 +183,14 @@ void gzip_stream(size_t size, const ReadRange& read, const WriteChunk& write, in
     constexpr size_t BLOCK_SIZE = 1024 * 1024;
     const auto workers = compression_workers(size, BLOCK_SIZE);
     if (workers > 1) {
-        const std::array<std::byte, 10> header { std::byte { 0x1f }, std::byte { 0x8b }, std::byte { 8 },
-            std::byte {}, std::byte {}, std::byte {}, std::byte {}, std::byte {},
-            static_cast<std::byte>(level == 9 ? 2 : level == 1 ? 4 : 0), std::byte { 255 } };
+        const std::array<std::byte, 10> header { std::byte { 0x1f }, std::byte { 0x8b }, std::byte { 8 }, std::byte {},
+            std::byte {}, std::byte {}, std::byte {}, std::byte {},
+            static_cast<std::byte>(
+                level == 9   ? 2
+                : level == 1 ? 4
+                             : 0
+            ),
+            std::byte { 255 } };
         write(header);
         auto& pool = threading::default_pool();
         uLong checksum = 0;
@@ -180,7 +202,10 @@ void gzip_stream(size_t size, const ReadRange& read, const WriteChunk& write, in
                     const size_t dictionary_size = std::min(offset, static_cast<size_t>(32768));
                     Bytes input(dictionary_size + count);
                     read(offset - dictionary_size, input);
-                    return compress_block(std::span(input).subspan(dictionary_size), std::span(input).first(dictionary_size), level, offset + count == size);
+                    return compress_block(
+                        std::span(input).subspan(dictionary_size), std::span(input).first(dictionary_size), level,
+                        offset + count == size
+                    );
                 });
                 offset += count;
             }

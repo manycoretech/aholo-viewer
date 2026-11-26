@@ -32,11 +32,16 @@ void ReplaceAppendTask::exec(const io::Json& config, TaskContext& context) const
     result->gaussians.reserve(source_count + appended);
     for (size_t i = 0; i < source_count; ++i) {
         const auto replacement = replacements.find(static_cast<uint32_t>(i));
-        result->gaussians.push_back(replacement == replacements.end() ? source.gaussians[i] : patch.gaussians[replacement->second]);
+        result->gaussians.push_back(
+            replacement == replacements.end() ? source.gaussians[i] : patch.gaussians[replacement->second]
+        );
     }
     result->gaussians.insert(result->gaussians.end(), patch.gaussians.begin() + indices.size(), patch.gaussians.end());
     single_block(*result);
     context.set(config, std::move(result), false);
-    utility::logger().info("replace-append stored -> key=\"", output, "\" source=", source_count, " replace=", indices.size(), " append=", appended);
+    utility::logger().info(
+        "replace-append stored -> key=\"", output, "\" source=", source_count, " replace=", indices.size(),
+        " append=", appended
+    );
 }
 } // namespace splat_transform::pipeline

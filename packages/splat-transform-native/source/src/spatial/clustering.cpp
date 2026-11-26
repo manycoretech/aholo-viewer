@@ -29,7 +29,10 @@ Quantization detail::quantize_values(std::vector<float> values, size_t rows, siz
     std::vector<float> sums(bins, 0), centers(bins), weights(bins);
     for (size_t i = 0; i < n; ++i) {
         const float uniform = (sorted[i] - min) / range;
-        const size_t bin = std::min(bins - 1, static_cast<size_t>(std::floor(bins * (beta * (static_cast<float>(i) / n) + (1 - beta) * uniform))));
+        const size_t bin = std::min(
+            bins - 1,
+            static_cast<size_t>(std::floor(bins * (beta * (static_cast<float>(i) / n) + (1 - beta) * uniform)))
+        );
         ++counts[bin];
         sums[bin] += uniform;
     }
@@ -50,7 +53,8 @@ Quantization detail::quantize_values(std::vector<float> values, size_t rows, siz
     };
     auto mean = [&](size_t a, size_t b) {
         const float w = prefix[b + 1] - prefix[a];
-        return w <= 0 ? std::midpoint(centers[a], centers[b]) : std::clamp((prefix_x[b + 1] - prefix_x[a]) / w, 0.0f, 1.0f);
+        return w <= 0 ? std::midpoint(centers[a], centers[b])
+                      : std::clamp((prefix_x[b + 1] - prefix_x[a]) / w, 0.0f, 1.0f);
     };
     const size_t k = std::min<size_t>(256, occupied);
     std::vector<float> previous(bins, 1e30f), current(bins, 1e30f);
@@ -95,7 +99,8 @@ Quantization detail::quantize_values(std::vector<float> values, size_t rows, siz
     return result;
 }
 Clustering detail::point_palette(FeatureView points) {
-    Clustering result { decltype(Clustering::centroids)(points.rows(), points.dimensions()), std::vector<uint32_t>(points.rows()) };
+    Clustering result { decltype(Clustering::centroids)(points.rows(), points.dimensions()),
+        std::vector<uint32_t>(points.rows()) };
     for (size_t row = 0; row < points.rows(); ++row) {
         for (size_t column = 0; column < points.dimensions(); ++column) {
             result.centroids(row, column) = points(row, column);

@@ -40,7 +40,8 @@ uint64_t geometry_hash(const splat::Splat& data) {
         std::array<float, chunk_size * 11> buffer;
         for (size_t chunk = begin; chunk < end; ++chunk) {
             auto* out = buffer.data();
-            for (const auto& point : std::span(data.gaussians).subspan(chunk * chunk_size, std::min(chunk_size, data.size() - chunk * chunk_size))) {
+            for (const auto& point : std::span(data.gaussians)
+                     .subspan(chunk * chunk_size, std::min(chunk_size, data.size() - chunk * chunk_size))) {
                 out = std::copy_n(point.mean.data(), 3, out);
                 out = std::copy_n(point.scale.data(), 3, out);
                 out = std::copy_n(point.rotation.coeffs().data(), 4, out);
@@ -133,7 +134,10 @@ void TaskContext::set(const io::Json& config, Resource resource, bool inherit_gr
         }
     } else if (config.contains("inputs")) {
         const auto signature = geometry_hash(*std::get<SplatPtr>(resource));
-        auto [entry, inserted] = this->read_sources_.try_emplace(ordered_input_key(config.at("inputs"), this->paths), ReadSource { this->next_source_, NO_LINEAGE, signature });
+        auto [entry, inserted] = this->read_sources_.try_emplace(
+            ordered_input_key(config.at("inputs"), this->paths),
+            ReadSource { this->next_source_, NO_LINEAGE, signature }
+        );
         if (inserted) {
             ++this->next_source_;
         }
@@ -151,7 +155,9 @@ void TaskContext::set(const io::Json& config, Resource resource, bool inherit_gr
     if (lineage == this->parents_.size()) {
         this->parents_.push_back(parent);
     }
-    this->resources_.insert_or_assign(config.at("output").get<std::string>(), Entry { std::move(resource), source, lineage });
+    this->resources_.insert_or_assign(
+        config.at("output").get<std::string>(), Entry { std::move(resource), source, lineage }
+    );
 }
 const voxel::Occupancy* TaskContext::find_grid(const io::Json& config, voxel::GridSpec requested) const {
     const auto& input = this->resources_.at(config.at("input").get<std::string>());
@@ -185,7 +191,9 @@ const voxel::Occupancy& TaskContext::store_grid(const io::Json& config, voxel::O
             return entry->occupancy;
         }
     }
-    const auto& entry = cached_grids.emplace_back(std::make_unique<CachedVoxelGrid>(CachedVoxelGrid { input.lineage, std::move(grid) }));
+    const auto& entry = cached_grids.emplace_back(
+        std::make_unique<CachedVoxelGrid>(CachedVoxelGrid { input.lineage, std::move(grid) })
+    );
     return entry->occupancy;
 }
 void TaskContext::begin_task(const io::Json& releases) {
@@ -206,7 +214,10 @@ void TaskContext::record_voxel(const io::Json& config) {
     this->update_lod_metadata();
 }
 void TaskContext::record_lod_metadata(const io::Json& config, const std::filesystem::path& path) {
-    this->lod_outputs_.insert_or_assign(std::filesystem::absolute(path).lexically_normal(), this->resources_.at(config.at("input").get<std::string>()).source);
+    this->lod_outputs_.insert_or_assign(
+        std::filesystem::absolute(path).lexically_normal(),
+        this->resources_.at(config.at("input").get<std::string>()).source
+    );
     this->update_lod_metadata();
 }
 void TaskContext::update_lod_metadata() {

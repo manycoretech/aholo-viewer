@@ -12,7 +12,9 @@
 namespace splat_transform::codec {
 inline float signed_log(float value) { return std::copysign(std::log1p(std::abs(value)), value); }
 inline float signed_exp(float value) { return std::copysign(std::expm1(std::abs(value)), value); }
-inline std::byte quantize_byte(float value) { return static_cast<std::byte>(std::clamp(std::floor(value + 0.5f), 0.0f, 255.0f)); }
+inline std::byte quantize_byte(float value) {
+    return static_cast<std::byte>(std::clamp(std::floor(value + 0.5f), 0.0f, 255.0f));
+}
 // Each degree l has 2l + 1 RGB coefficients. Build the steps once per output.
 inline std::array<float, 15> sh_quantization_steps(std::span<const int32_t, 3> bits) {
     std::array<float, 15> steps;
@@ -79,12 +81,19 @@ inline std::array<std::byte, 3> encode_exp_quaternion(const Eigen::Quaternionf& 
     }
     rotation.coeffs() *= (rotation.w() < 0 ? -1.0f : 1.0f) / length;
     const float radius = rotation.vec().norm();
-    const float scale = radius > 1e-12f ? std::atan2(radius, rotation.w()) / radius * 2 / std::numbers::pi_v<float> : 2 / std::numbers::pi_v<float>;
-    return { quantize_byte(rotation.x() * scale * 127 + 128), quantize_byte(rotation.y() * scale * 127 + 128), quantize_byte(rotation.z() * scale * 127 + 128) };
+    const float scale = radius > 1e-12f ? std::atan2(radius, rotation.w()) / radius * 2 / std::numbers::pi_v<float>
+                                        : 2 / std::numbers::pi_v<float>;
+    return {
+        quantize_byte(rotation.x() * scale * 127 + 128),
+        quantize_byte(rotation.y() * scale * 127 + 128),
+        quantize_byte(rotation.z() * scale * 127 + 128),
+    };
 }
 inline Eigen::Quaternionf decode_exp_quaternion(std::span<const std::byte> bytes) {
-    const Eigen::Vector3f point((std::to_integer<int32_t>(bytes[0]) - 128) / 127.0f,
-        (std::to_integer<int32_t>(bytes[1]) - 128) / 127.0f, (std::to_integer<int32_t>(bytes[2]) - 128) / 127.0f);
+    const Eigen::Vector3f point(
+        (std::to_integer<int32_t>(bytes[0]) - 128) / 127.0f, (std::to_integer<int32_t>(bytes[1]) - 128) / 127.0f,
+        (std::to_integer<int32_t>(bytes[2]) - 128) / 127.0f
+    );
     const float radius = point.norm();
     const float angle = radius * std::numbers::pi_v<float> / 2;
     const float scale = radius > 1e-12f ? std::sin(angle) / radius : std::numbers::pi_v<float> / 2;

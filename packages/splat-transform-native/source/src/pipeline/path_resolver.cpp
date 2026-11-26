@@ -5,7 +5,8 @@
 
 namespace splat_transform::pipeline {
 PathResolver::PathResolver(const io::Json& config, const std::filesystem::path& pipeline_file)
-    : work_dir_(std::filesystem::current_path()), pipeline_dir_(pipeline_file.empty() ? this->work_dir_ : std::filesystem::absolute(pipeline_file).parent_path()) {
+    : work_dir_(std::filesystem::current_path()),
+      pipeline_dir_(pipeline_file.empty() ? this->work_dir_ : std::filesystem::absolute(pipeline_file).parent_path()) {
     auto version = config.value("version", 2);
     if (version != 1 && version != 2) {
         utility::logger().warn("Unrecognized pipeline version ", version, ". Using version 2.");

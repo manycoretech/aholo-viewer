@@ -4,7 +4,9 @@
 namespace splat_transform::io {
 class SogFile final : public IFile {
 public:
-    explicit SogFile(int32_t version = 2, size_t palette_size = 0, double color_error = FileOptions::default_color_error);
+    explicit SogFile(
+        int32_t version = 2, size_t palette_size = 0, double color_error = FileOptions::default_color_error
+    );
     std::string_view name() const noexcept override { return "SOG"; }
     splat::Splat read(const FileInput& input) const override;
     Bytes write(const splat::Splat& splat, std::span<const uint32_t> indices) const override;

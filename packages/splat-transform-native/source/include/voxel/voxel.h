@@ -67,6 +67,8 @@ struct GridSpec {
 };
 struct Occupancy;
 bool requires_gpu(BackendType backend);
-void write(const splat::Splat& data, const std::filesystem::path& directory, const Options& options = {},
-    const std::function<void(Occupancy&&)>& cache_grid = {});
+void write(
+    const splat::Splat& data, const std::filesystem::path& directory, const Options& options = {},
+    const std::function<void(Occupancy&&)>& cache_grid = {}
+);
 } // namespace splat_transform::voxel

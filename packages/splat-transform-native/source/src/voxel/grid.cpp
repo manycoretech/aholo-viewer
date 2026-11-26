@@ -20,13 +20,17 @@ Grid::Grid(Eigen::Vector3i dimensions) : size(dimensions) {
     }
     this->masks = Storage(this->blocks);
 }
-uint32_t Grid::block_index(Eigen::Vector3i p) const { return p[0] + p[1] * this->blocks[0] + static_cast<uint64_t>(p[2]) * this->blocks[0] * this->blocks[1]; }
+uint32_t Grid::block_index(Eigen::Vector3i p) const {
+    return p[0] + p[1] * this->blocks[0] + static_cast<uint64_t>(p[2]) * this->blocks[0] * this->blocks[1];
+}
 Eigen::Vector3i Grid::block_point(uint32_t index) const {
     return { static_cast<int32_t>(index % this->blocks[0]),
         static_cast<int32_t>((index / this->blocks[0]) % this->blocks[1]),
         static_cast<int32_t>(index / (static_cast<uint64_t>(this->blocks[0]) * this->blocks[1])) };
 }
-uint64_t Grid::block_count() const { return static_cast<uint64_t>(this->blocks[0]) * this->blocks[1] * this->blocks[2]; }
+uint64_t Grid::block_count() const {
+    return static_cast<uint64_t>(this->blocks[0]) * this->blocks[1] * this->blocks[2];
+}
 uint64_t Grid::mask(uint32_t index) const { return this->masks.get(this->block_point(index)); }
 void Grid::set_mask(uint32_t index, uint64_t value) { this->masks.set(this->block_point(index), value); }
 void Grid::or_mask(Eigen::Vector3i block, uint64_t value) {
@@ -108,7 +112,9 @@ Grid flood(const Grid& allowed, const std::vector<Eigen::Vector3i>& seeds, bool 
     };
     for (auto p : seeds) {
         if (allowed.contains(p)) {
-            enqueue({ p[0] / 4, p[1] / 4, p[2] / 4 }, uint64_t { 1 } << ((p[0] & 3) + 4 * (p[1] & 3) + 16 * (p[2] & 3)));
+            enqueue(
+                { p[0] / 4, p[1] / 4, p[2] / 4 }, uint64_t { 1 } << ((p[0] & 3) + 4 * (p[1] & 3) + 16 * (p[2] & 3))
+            );
         }
     }
     if (boundary) {
@@ -231,7 +237,9 @@ void crop_grid(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, bool n
     }
     grid = grid.crop(minimum, maximum);
 }
-void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const Navigation& options, const Backend& backend) {
+void navigate(
+    Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const Navigation& options, const Backend& backend
+) {
     auto& logger = utility::logger();
     auto seed_cell = [&] {
         Eigen::Vector3i p = Eigen::Vector3i::Zero();
@@ -250,7 +258,10 @@ void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const N
             grid = unite(grid, backend.dilate(outside, { radius, radius, radius }));
             crop_grid(grid, bounds, resolution, true, 1);
         } else {
-            logger.info(grid.contains(seed) ? "fillExteriorMap: seed reachable from outside, skipping" : "fillExteriorMap: seed outside grid bounds, skipping exterior fill");
+            logger.info(
+                grid.contains(seed) ? "fillExteriorMap: seed reachable from outside, skipping"
+                                    : "fillExteriorMap: seed outside grid bounds, skipping exterior fill"
+            );
         }
     }
     if (options.floor_fill) {
@@ -269,13 +280,17 @@ void navigate(Grid& grid, Eigen::AlignedBox3f& bounds, float resolution, const N
     }
     if (options.capsule_height > 0 && options.seed) {
         auto elapsed = logger.time("Carve nav");
-        const int32_t rx = static_cast<int32_t>(std::ceil(options.capsule_radius / resolution)), ry = static_cast<int32_t>(std::ceil(options.capsule_height * 0.5f / resolution));
+        const int32_t rx = static_cast<int32_t>(std::ceil(options.capsule_radius / resolution)),
+                      ry = static_cast<int32_t>(std::ceil(options.capsule_height * 0.5f / resolution));
         if (options.capsule_radius < 0) {
             throw std::runtime_error("navCapsule.radius must be nonnegative");
         }
         auto seed = seed_cell();
         if (!grid.contains(seed)) {
-            logger.warn("carve: seed (", (*options.seed)[0], ", ", (*options.seed)[1], ", ", (*options.seed)[2], ") outside grid, skipping");
+            logger.warn(
+                "carve: seed (", (*options.seed)[0], ", ", (*options.seed)[1], ", ", (*options.seed)[2],
+                ") outside grid, skipping"
+            );
             return;
         }
         auto allowed = backend.dilate(grid, { rx, ry, rx }).inverted();

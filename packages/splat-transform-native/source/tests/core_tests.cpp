@@ -30,7 +30,10 @@ void lowercase_strings() {
 }
 
 template<typename Transform>
-concept AcceptsQuantization = requires(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& matrix, std::span<const splat::AttributeView> fields, Transform&& transform) {
+concept AcceptsQuantization = requires(
+    const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& matrix,
+    std::span<const splat::AttributeView> fields, Transform&& transform
+) {
     { spatial::quantize_1d(matrix, std::forward<Transform>(transform)) } -> std::same_as<spatial::Quantization>;
     { spatial::quantize_1d(fields, std::forward<Transform>(transform)) } -> std::same_as<spatial::Quantization>;
 };
@@ -66,7 +69,13 @@ void device_registry() {
     rejects(0);
     // Separate backend batches may report the same hardware. Neither hardware
     // identifiers nor preexisting indices may merge entries or reset numbering.
-    const gpu::DeviceInfo shared { .index = 99, .name = "shared adapter", .api = gpu::ApiType::Vulkan, .api_version = 4211045, .vendor_id = 4318, .device_id = 12036, .uuid = "shared-id" };
+    const gpu::DeviceInfo shared { .index = 99,
+        .name = "shared adapter",
+        .api = gpu::ApiType::Vulkan,
+        .api_version = 4211045,
+        .vendor_id = 4318,
+        .device_id = 12036,
+        .uuid = "shared-id" };
     registry.append({ shared, shared }, first);
     registry.append({}, second);
     registry.append({ shared, shared }, second);
@@ -149,7 +158,8 @@ void quantization() {
     }
     const auto expected = spatial::quantize_1d(transformed);
     const auto actual = spatial::quantize_1d(matrix, transform);
-    if (calls != static_cast<size_t>(matrix.size()) || actual.centroids != expected.centroids || actual.labels != expected.labels) {
+    if (calls != static_cast<size_t>(matrix.size()) || actual.centroids != expected.centroids ||
+        actual.labels != expected.labels) {
         throw std::runtime_error("Template quantization lost a captured or move-only transform");
     }
     splat::Splat data(static_cast<size_t>(matrix.rows()), 0);
@@ -158,16 +168,19 @@ void quantization() {
             data.gaussians[i].scale[c] = matrix(i, c);
         }
     }
-    const std::array fields { splat::AttributeView(data, splat::ScaleX), splat::AttributeView(data, splat::ScaleY), splat::AttributeView(data, splat::ScaleZ) };
+    const std::array fields { splat::AttributeView(data, splat::ScaleX), splat::AttributeView(data, splat::ScaleY),
+        splat::AttributeView(data, splat::ScaleZ) };
     const auto attributes = spatial::quantize_1d(fields, std::move(transform));
     if (attributes.centroids != expected.centroids || attributes.labels != expected.labels) {
         throw std::runtime_error("Attribute and matrix quantization disagree");
     }
-    const auto constant = spatial::quantize_1d(Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>::Constant(4, 2, 1));
+    const auto constant =
+        spatial::quantize_1d(Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>::Constant(4, 2, 1));
     if (!constant.labels.isZero() || !std::ranges::all_of(constant.centroids, [](float value) { return value == 1; })) {
         throw std::runtime_error("Constant quantization changed its zero-bin convention");
     }
-    if (spatial::quantize_1d(Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>(0, 3)).labels.size() != 0) {
+    if (spatial::quantize_1d(Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>(0, 3))
+            .labels.size() != 0) {
         throw std::runtime_error("Empty quantization produced labels");
     }
     Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> shifted(512, 1);
@@ -188,7 +201,8 @@ void codec_numeric() {
             throw std::runtime_error("Signed log/exp lost float precision");
         }
     }
-    for (size_t count : { size_t { 0 }, size_t { 1 }, size_t { 17 }, size_t { 0x1000001 }, static_cast<size_t>(std::numeric_limits<uint32_t>::max()) }) {
+    for (size_t count : { size_t { 0 }, size_t { 1 }, size_t { 17 }, size_t { 0x1000001 },
+             static_cast<size_t>(std::numeric_limits<uint32_t>::max()) }) {
         const auto [width, height] = codec::texture_size(count);
         if (width % 4 || height % 4 || static_cast<uint64_t>(width) * height < count) {
             throw std::runtime_error("Texture dimensions do not cover the integer point count");
@@ -225,8 +239,10 @@ void image_codecs() {
 int main() {
     try {
         using namespace splat_transform;
-        const io::Bytes input { std::byte {}, std::byte { 1 }, std::byte { 2 }, std::byte { 255 }, std::byte {}, std::byte { 3 }, std::byte { 17 }, std::byte { 42 } };
-        if (codec::gunzip(codec::gzip(input)) != input || codec::zstd_decompress(codec::zstd_compress(input)) != input) {
+        const io::Bytes input { std::byte {}, std::byte { 1 }, std::byte { 2 }, std::byte { 255 }, std::byte {},
+            std::byte { 3 }, std::byte { 17 }, std::byte { 42 } };
+        if (codec::gunzip(codec::gzip(input)) != input ||
+            codec::zstd_decompress(codec::zstd_compress(input)) != input) {
             throw std::runtime_error("Compression roundtrip failed");
         }
         io::Bytes large(9 * 1024 * 1024 + 117);

@@ -50,12 +50,17 @@ struct FileStream::Impl {
 #if defined(_WIN32)
                 // Asio's path overload is narrow; preserve filesystem::path's
                 // Unicode semantics when opening Windows handles.
-                HANDLE handle = CreateFileW(path.c_str(), mode == Access::Read ? GENERIC_READ : GENERIC_WRITE,
-                    FILE_SHARE_READ, nullptr, mode == Access::Read ? OPEN_EXISTING : CREATE_ALWAYS,
-                    FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+                HANDLE handle = CreateFileW(
+                    path.c_str(), mode == Access::Read ? GENERIC_READ : GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                    mode == Access::Read ? OPEN_EXISTING : CREATE_ALWAYS,
+                    FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED | FILE_FLAG_SEQUENTIAL_SCAN, nullptr
+                );
                 if (handle == INVALID_HANDLE_VALUE) {
                     const auto error = GetLastError();
-                    throw std::system_error(static_cast<int32_t>(error), std::system_category(), "Cannot open input/output file: " + path.string());
+                    throw std::system_error(
+                        static_cast<int32_t>(error), std::system_category(),
+                        "Cannot open input/output file: " + path.string()
+                    );
                 }
                 boost::system::error_code error;
                 this->native->assign(handle, error);
@@ -64,7 +69,12 @@ struct FileStream::Impl {
                     throw boost::system::system_error(error);
                 }
 #else
-                this->native->open(path.string(), mode == Access::Read ? boost::asio::file_base::read_only : boost::asio::file_base::write_only | boost::asio::file_base::create | boost::asio::file_base::truncate);
+                this->native->open(
+                    path.string(), mode == Access::Read
+                                       ? boost::asio::file_base::read_only
+                                       : boost::asio::file_base::write_only | boost::asio::file_base::create |
+                                             boost::asio::file_base::truncate
+                );
 #endif
                 const auto size = this->native->size();
                 if (size > std::numeric_limits<size_t>::max()) {
@@ -80,7 +90,9 @@ struct FileStream::Impl {
             }
         }
 #endif
-        this->fallback.open(path, std::ios::binary | (mode == Access::Read ? std::ios::in : std::ios::out | std::ios::trunc));
+        this->fallback.open(
+            path, std::ios::binary | (mode == Access::Read ? std::ios::in : std::ios::out | std::ios::trunc)
+        );
         if (!this->fallback) {
             throw std::runtime_error("Cannot open input/output file: " + path.string());
         }
@@ -93,7 +105,8 @@ struct FileStream::Impl {
         }
     }
 };
-FileStream::FileStream(const std::filesystem::path& path, Access access, Backend backend) : impl_(std::make_unique<Impl>(path, access, backend)) {}
+FileStream::FileStream(const std::filesystem::path& path, Access access, Backend backend)
+    : impl_(std::make_unique<Impl>(path, access, backend)) {}
 FileStream::~FileStream() = default;
 size_t FileStream::size() const { return this->impl_->length; }
 bool FileStream::uses_native_backend() const noexcept {
@@ -115,7 +128,9 @@ size_t FileStream::read(std::span<std::byte> target) {
 #if defined(BOOST_ASIO_HAS_FILE)
     if (this->impl_->native) {
         boost::system::error_code error;
-        count = boost::asio::read_at(*this->impl_->native, this->impl_->offset, boost::asio::buffer(target.data(), target.size()), error);
+        count = boost::asio::read_at(
+            *this->impl_->native, this->impl_->offset, boost::asio::buffer(target.data(), target.size()), error
+        );
         if (error && error != boost::asio::error::eof) {
             throw boost::system::system_error(error);
         }
@@ -123,7 +138,9 @@ size_t FileStream::read(std::span<std::byte> target) {
 #endif
     {
         count = blocking_file_operation([&] {
-            this->impl_->fallback.read(reinterpret_cast<char*>(target.data()), static_cast<std::streamsize>(target.size()));
+            this->impl_->fallback.read(
+                reinterpret_cast<char*>(target.data()), static_cast<std::streamsize>(target.size())
+            );
             if (this->impl_->fallback.bad() || (this->impl_->fallback.fail() && !this->impl_->fallback.eof())) {
                 throw std::runtime_error("Cannot read input file");
             }
@@ -142,12 +159,16 @@ void FileStream::write(std::span<const std::byte> bytes) {
     }
 #if defined(BOOST_ASIO_HAS_FILE)
     if (this->impl_->native) {
-        boost::asio::write_at(*this->impl_->native, this->impl_->offset, boost::asio::buffer(bytes.data(), bytes.size()));
+        boost::asio::write_at(
+            *this->impl_->native, this->impl_->offset, boost::asio::buffer(bytes.data(), bytes.size())
+        );
     } else
 #endif
     {
         blocking_file_operation([&] {
-            this->impl_->fallback.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            this->impl_->fallback.write(
+                reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())
+            );
             if (!this->impl_->fallback) {
                 throw std::runtime_error("Cannot write output file");
             }

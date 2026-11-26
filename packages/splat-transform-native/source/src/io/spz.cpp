@@ -15,7 +15,9 @@ constexpr uint32_t SPZ_MAGIC = 0x5053474e;
 constexpr float COLOR_SCALE = splat::SH_C0 / 0.15f;
 } // namespace
 namespace {
-void read_attribute(StreamReader& input, splat::Splat& result, uint32_t degree, uint32_t version, uint32_t fractional_bits, size_t field) {
+void read_attribute(
+    StreamReader& input, splat::Splat& result, uint32_t degree, uint32_t version, uint32_t fractional_bits, size_t field
+) {
     const size_t sh_count = splat::SH_COUNTS.at(degree);
     const std::array<size_t, 6> strides { version == 1 ? 6u : 9u, 1, 3, 3, version < 3 ? 3u : 4u, sh_count };
     if (!strides[field]) {
@@ -26,66 +28,71 @@ void read_attribute(StreamReader& input, splat::Splat& result, uint32_t degree, 
         return;
     }
     const float fraction = std::ldexp(1.0f, -static_cast<int32_t>(fractional_bits));
-    decode_records(input, result.size(), strides[field], [&](std::span<const std::byte> bytes, size_t first, size_t count) {
-        ByteReader reader(bytes);
-        for (size_t i = first; i < first + count; ++i) {
-            auto& point = result.gaussians[i];
-            if (field == 0) {
-                for (size_t axis = 0; axis < 3; ++axis) {
-                    if (version == 1) {
-                        point.attribute(axis) = from_half(reader.read<uint16_t>());
-                    } else {
-                        const auto value = reader.take(3);
-                        const uint32_t bits = std::to_integer<uint32_t>(value[0]) | (std::to_integer<uint32_t>(value[1]) << 8) | (std::to_integer<uint32_t>(value[2]) << 16);
-                        const int32_t scalar = static_cast<int32_t>(bits) - ((bits & 0x800000) ? 0x1000000 : 0);
-                        point.attribute(axis) = static_cast<float>(scalar * fraction);
-                    }
-                }
-            } else if (field == 1) {
-                point.opacity = static_cast<float>(reader.read<uint8_t>() / 255.0f);
-            } else if (field == 2) {
-                for (size_t c = 0; c < 3; ++c) {
-                    point.attribute(splat::Red + c) = ((reader.read<uint8_t>() / 255.0f - 0.5f) * COLOR_SCALE + 0.5f);
-                }
-            } else if (field == 3) {
-                for (size_t c = 0; c < 3; ++c) {
-                    point.scale[c] = std::exp(reader.read<uint8_t>() / 16.0f - 10);
-                }
-            } else if (field == 4) {
-                auto& rotation = point.rotation.coeffs();
-                float sum = 0;
-                if (version < 3) {
-                    for (size_t c = 0; c < 3; ++c) {
-                        rotation[c] = reader.read<uint8_t>() / 127.5f - 1;
-                        sum += rotation[c] * rotation[c];
-                    }
-                    rotation[3] = std::sqrt(std::max(0.0f, 1 - sum));
-                } else {
-                    auto packed = reader.read<uint32_t>();
-                    const auto largest = packed >> 30;
-                    for (int32_t c = 3; c >= 0; --c) {
-                        if (static_cast<uint32_t>(c) == largest) {
-                            continue;
+    decode_records(
+        input, result.size(), strides[field], [&](std::span<const std::byte> bytes, size_t first, size_t count) {
+            ByteReader reader(bytes);
+            for (size_t i = first; i < first + count; ++i) {
+                auto& point = result.gaussians[i];
+                if (field == 0) {
+                    for (size_t axis = 0; axis < 3; ++axis) {
+                        if (version == 1) {
+                            point.attribute(axis) = from_half(reader.read<uint16_t>());
+                        } else {
+                            const auto value = reader.take(3);
+                            const uint32_t bits = std::to_integer<uint32_t>(value[0]) |
+                                                  (std::to_integer<uint32_t>(value[1]) << 8) |
+                                                  (std::to_integer<uint32_t>(value[2]) << 16);
+                            const int32_t scalar = static_cast<int32_t>(bits) - ((bits & 0x800000) ? 0x1000000 : 0);
+                            point.attribute(axis) = static_cast<float>(scalar * fraction);
                         }
-                        const auto magnitude = packed & 0x1ff;
-                        const auto sign = (packed >> 9) & 1;
-                        packed >>= 10;
-                        rotation[c] = std::sqrt(0.5f) * (static_cast<float>(magnitude) / 511) * (sign ? -1 : 1);
-                        sum += rotation[c] * rotation[c];
                     }
-                    rotation[largest] = std::sqrt(std::max(0.0f, 1 - sum));
-                }
-                point.rotation.normalize();
-            } else {
-                for (size_t c = 0; c < sh_count; ++c) {
-                    const auto value = (static_cast<int32_t>(reader.read<uint8_t>()) - 128) / 128.0f;
-                    if (c < result.sh_count()) {
-                        point.sh[c + 3] = value;
+                } else if (field == 1) {
+                    point.opacity = static_cast<float>(reader.read<uint8_t>() / 255.0f);
+                } else if (field == 2) {
+                    for (size_t c = 0; c < 3; ++c) {
+                        point.attribute(splat::Red + c) =
+                            ((reader.read<uint8_t>() / 255.0f - 0.5f) * COLOR_SCALE + 0.5f);
+                    }
+                } else if (field == 3) {
+                    for (size_t c = 0; c < 3; ++c) {
+                        point.scale[c] = std::exp(reader.read<uint8_t>() / 16.0f - 10);
+                    }
+                } else if (field == 4) {
+                    auto& rotation = point.rotation.coeffs();
+                    float sum = 0;
+                    if (version < 3) {
+                        for (size_t c = 0; c < 3; ++c) {
+                            rotation[c] = reader.read<uint8_t>() / 127.5f - 1;
+                            sum += rotation[c] * rotation[c];
+                        }
+                        rotation[3] = std::sqrt(std::max(0.0f, 1 - sum));
+                    } else {
+                        auto packed = reader.read<uint32_t>();
+                        const auto largest = packed >> 30;
+                        for (int32_t c = 3; c >= 0; --c) {
+                            if (static_cast<uint32_t>(c) == largest) {
+                                continue;
+                            }
+                            const auto magnitude = packed & 0x1ff;
+                            const auto sign = (packed >> 9) & 1;
+                            packed >>= 10;
+                            rotation[c] = std::sqrt(0.5f) * (static_cast<float>(magnitude) / 511) * (sign ? -1 : 1);
+                            sum += rotation[c] * rotation[c];
+                        }
+                        rotation[largest] = std::sqrt(std::max(0.0f, 1 - sum));
+                    }
+                    point.rotation.normalize();
+                } else {
+                    for (size_t c = 0; c < sh_count; ++c) {
+                        const auto value = (static_cast<int32_t>(reader.read<uint8_t>()) - 128) / 128.0f;
+                        if (c < result.sh_count()) {
+                            point.sh[c + 3] = value;
+                        }
                     }
                 }
             }
         }
-    });
+    );
 }
 splat::Splat read_spz_stream(StreamReader& source, uint32_t max_sh_degree) {
     std::optional<StreamReader> decompressed;
@@ -116,9 +123,9 @@ splat::Splat read_spz_stream(StreamReader& source, uint32_t max_sh_degree) {
             throw std::runtime_error("Invalid SPZ TOC");
         }
         input.skip(toc_offset - 20);
-        const std::array<size_t, 6> expected { static_cast<size_t>(count) * 9, count,
-            static_cast<size_t>(count) * 3, static_cast<size_t>(count) * 3,
-            static_cast<size_t>(count) * 4, static_cast<size_t>(count) * splat::SH_COUNTS[degree] };
+        const std::array<size_t, 6> expected { static_cast<size_t>(count) * 9, count, static_cast<size_t>(count) * 3,
+            static_cast<size_t>(count) * 3, static_cast<size_t>(count) * 4,
+            static_cast<size_t>(count) * splat::SH_COUNTS[degree] };
         std::array<size_t, 6> compressed_sizes {};
         for (size_t field = 0; field < streams; ++field) {
             const auto compressed = input.read<uint64_t>();
@@ -153,8 +160,12 @@ splat::Splat SpzFile::read(const std::filesystem::path& path, uint32_t max_sh_de
 namespace {
 class SpzWriter {
 public:
-    SpzWriter(const splat::Splat& data, std::span<const uint32_t> indices, int32_t version, int32_t level, const ShBits& sh_bits)
-        : data_(data), indices_(indices), version_(version), level_(level), sh_steps_(codec::sh_quantization_steps(sh_bits)), strides_ { 9, 1, 3, 3, 4, data.sh_count() } {
+    SpzWriter(
+        const splat::Splat& data, std::span<const uint32_t> indices, int32_t version, int32_t level,
+        const ShBits& sh_bits
+    )
+        : data_(data), indices_(indices), version_(version), level_(level),
+          sh_steps_(codec::sh_quantization_steps(sh_bits)), strides_ { 9, 1, 3, 3, 4, data.sh_count() } {
         if (version != 3 && version != 4) {
             throw std::runtime_error("Unsupported SPZ output version");
         }
@@ -209,7 +220,9 @@ public:
         for (size_t field = 0; field < streams; ++field) {
             const auto size = this->offsets_[field + 1] - this->offsets_[field];
             const size_t start = position;
-            const auto read = [&](size_t offset, std::span<std::byte> bytes) { this->encode(this->offsets_[field] + offset, bytes, true); };
+            const auto read = [&](size_t offset, std::span<std::byte> bytes) {
+                this->encode(this->offsets_[field] + offset, bytes, true);
+            };
             const auto write = [&](std::span<const std::byte> bytes) {
                 output(bytes);
                 position += bytes.size();
@@ -230,7 +243,9 @@ private:
             const auto& point = this->data_.gaussians[this->indices_[first + row]];
             if (field == 0) {
                 for (size_t c = 0; c < 3; ++c) {
-                    const auto value = static_cast<uint32_t>(static_cast<int32_t>(std::clamp(static_cast<float>(point.attribute(c)) * 4096, -8388607.0f, 8388607.0f)));
+                    const auto value = static_cast<uint32_t>(static_cast<int32_t>(
+                        std::clamp(static_cast<float>(point.attribute(c)) * 4096, -8388607.0f, 8388607.0f)
+                    ));
                     output[c * 3] = static_cast<std::byte>(value & 255);
                     output[c * 3 + 1] = static_cast<std::byte>((value >> 8) & 255);
                     output[c * 3 + 2] = static_cast<std::byte>((value >> 16) & 255);
@@ -239,7 +254,8 @@ private:
                 output[0] = codec::quantize_byte(point.attribute(splat::Alpha) * 255);
             } else if (field == 2) {
                 for (size_t c = 0; c < 3; ++c) {
-                    output[c] = codec::quantize_byte(((point.attribute(splat::Red + c) - 0.5f) / COLOR_SCALE + 0.5f) * 255);
+                    output[c] =
+                        codec::quantize_byte(((point.attribute(splat::Red + c) - 0.5f) / COLOR_SCALE + 0.5f) * 255);
                 }
             } else if (field == 3) {
                 for (size_t c = 0; c < 3; ++c) {
@@ -259,7 +275,8 @@ private:
                         continue;
                     }
                     const uint32_t sign = (rotation[c] < 0) != (rotation[largest] < 0);
-                    const auto magnitude = static_cast<uint32_t>(std::floor(511 * (std::abs(rotation[c]) / std::sqrt(0.5f)) + 0.5f));
+                    const auto magnitude =
+                        static_cast<uint32_t>(std::floor(511 * (std::abs(rotation[c]) / std::sqrt(0.5f)) + 0.5f));
                     packed = (packed << 10) | (sign << 9) | magnitude;
                 }
                 for (size_t c = 0; c < 4; ++c) {
@@ -285,7 +302,9 @@ private:
         }
         const size_t rows = bytes.size() / stride;
         if (rows) {
-            const auto run = [&](size_t begin, size_t end) { this->encode_rows(field, first + begin, end - begin, bytes.data() + begin * stride); };
+            const auto run = [&](size_t begin, size_t end) {
+                this->encode_rows(field, first + begin, end - begin, bytes.data() + begin * stride);
+            };
             if (parallel) {
                 parallel_rows(rows, run);
             } else {
@@ -301,7 +320,8 @@ private:
     }
     void encode(size_t offset, std::span<std::byte> bytes, bool parallel) const {
         while (!bytes.empty()) {
-            const size_t field = std::upper_bound(this->offsets_.begin(), this->offsets_.end(), offset) - this->offsets_.begin() - 1;
+            const size_t field =
+                std::upper_bound(this->offsets_.begin(), this->offsets_.end(), offset) - this->offsets_.begin() - 1;
             const size_t count = std::min(bytes.size(), this->offsets_[field + 1] - offset);
             this->encode_field(field, offset - this->offsets_[field], bytes.first(count), parallel);
             offset += count;
@@ -327,13 +347,18 @@ Bytes SpzFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             std::copy(bytes.begin(), bytes.end(), output.begin() + position);
             position += bytes.size();
         },
-        [&](size_t offset) { position = offset; });
+        [&](size_t offset) { position = offset; }
+    );
     return output;
 }
-void SpzFile::write(const std::filesystem::path& path, const splat::Splat& data, std::span<const uint32_t> indices) const {
+void SpzFile::write(
+    const std::filesystem::path& path, const splat::Splat& data, std::span<const uint32_t> indices
+) const {
     SpzWriter writer(data, indices, this->version_, this->compression_level_, this->sh_bits_);
     FileStream output(path, FileStream::Access::Write);
-    writer.write([&](std::span<const std::byte> bytes) { output.write(bytes); }, [&](size_t offset) { output.seek(offset); });
+    writer.write(
+        [&](std::span<const std::byte> bytes) { output.write(bytes); }, [&](size_t offset) { output.seek(offset); }
+    );
     output.close();
 }
 } // namespace splat_transform::io

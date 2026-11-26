@@ -32,9 +32,9 @@ struct RefSplat {
     }
 
     void compute_need_split(const Eigen::AlignedBox3f& parent_box, size_t max_block_size) {
-        this->need_split = this->gaussians.size() > max_block_size &&
-                           ((this->box.min() - parent_box.min()).norm() > 0.001f ||
-                               (this->box.max() - parent_box.max()).norm() > 0.001f);
+        this->need_split =
+            this->gaussians.size() > max_block_size && ((this->box.min() - parent_box.min()).norm() > 0.001f ||
+                                                           (this->box.max() - parent_box.max()).norm() > 0.001f);
     }
 
     splat::Splat to_owned() {
@@ -58,14 +58,10 @@ struct RefSplat {
 // Eigen's CornerType is dim bit encoded.
 // bit_n indicates max(1) or min(0) on dim_n.
 constexpr std::array<Eigen::AlignedBox3f::CornerType, 8> BOX_CORNERS = {
-    Eigen::AlignedBox3f::CornerType::BottomLeftFloor,
-    Eigen::AlignedBox3f::CornerType::BottomRightFloor,
-    Eigen::AlignedBox3f::CornerType::TopLeftFloor,
-    Eigen::AlignedBox3f::CornerType::TopRightFloor,
-    Eigen::AlignedBox3f::CornerType::BottomLeftCeil,
-    Eigen::AlignedBox3f::CornerType::BottomRightCeil,
-    Eigen::AlignedBox3f::CornerType::TopLeftCeil,
-    Eigen::AlignedBox3f::CornerType::TopRightCeil
+    Eigen::AlignedBox3f::CornerType::BottomLeftFloor, Eigen::AlignedBox3f::CornerType::BottomRightFloor,
+    Eigen::AlignedBox3f::CornerType::TopLeftFloor, Eigen::AlignedBox3f::CornerType::TopRightFloor,
+    Eigen::AlignedBox3f::CornerType::BottomLeftCeil, Eigen::AlignedBox3f::CornerType::BottomRightCeil,
+    Eigen::AlignedBox3f::CornerType::TopLeftCeil, Eigen::AlignedBox3f::CornerType::TopRightCeil
 };
 
 std::vector<Eigen::AlignedBox3f> split_box(const Eigen::AlignedBox3f& box, splat::block::SplitNormal normal) {
@@ -88,16 +84,19 @@ std::vector<Eigen::AlignedBox3f> split_box(const Eigen::AlignedBox3f& box, splat
         // construct splitted from min on dim corner, and max on dim corner.
         // for input dim SplitNormal.X.
         // the filtered corner was [BottomRightFloor, TopRightFloor, BottomRightCeil, TopRightCeil].
-        std::ranges::transform(BOX_CORNERS | std::views::filter([flag](Eigen::AlignedBox3f::CornerType corner_type) {
-            return (corner_type & flag) != 0;
-        }),
-            std::back_inserter(result), create_box);
+        std::ranges::transform(
+            BOX_CORNERS | std::views::filter([flag](Eigen::AlignedBox3f::CornerType corner_type) {
+                return (corner_type & flag) != 0;
+            }),
+            std::back_inserter(result), create_box
+        );
     }
     return result;
 }
 
 std::vector<std::pair<size_t, size_t>> find_mergeable_pairs(
-    const std::vector<RefSplat>& splats, size_t max_block_size) {
+    const std::vector<RefSplat>& splats, size_t max_block_size
+) {
     std::vector<bool> unavailable(splats.size(), false);
     std::vector<std::pair<size_t, size_t>> current;
     std::vector<std::pair<size_t, size_t>> best;

@@ -18,10 +18,16 @@ void require(bool condition, const char* message) {
 void center_bounds() {
     const auto empty = splat::bounds(splat::Splat());
     require(empty.min().isZero(0) && empty.max().isZero(0), "Empty center bounds must remain the origin");
-    require(io::bounds_json(empty).dump() == "{\"min\":[0.0,0.0,0.0],\"max\":[0.0,0.0,0.0]}", "Bounds JSON changed its array schema");
+    require(
+        io::bounds_json(empty).dump() == "{\"min\":[0.0,0.0,0.0],\"max\":[0.0,0.0,0.0]}",
+        "Bounds JSON changed its array schema"
+    );
     constexpr std::array levels { splat::lod::SplatLevelParameters { 1.0f, 1.0f } };
     const auto lod = splat::lod::generate_blocked_lod({}, levels, 1, splat::block::SplitNormal::None);
-    require(lod.blocks.size() == 1 && lod.blocks[0].bounds.min().isZero(0) && lod.blocks[0].bounds.max().isZero(0), "Empty LOD metadata must keep zero bounds");
+    require(
+        lod.blocks.size() == 1 && lod.blocks[0].bounds.min().isZero(0) && lod.blocks[0].bounds.max().isZero(0),
+        "Empty LOD metadata must keep zero bounds"
+    );
     splat::Splat data(5, 0);
     data.gaussians[0].mean = { -2, 3, 7 };
     data.gaussians[1].mean = { 4, -1, 5 };
@@ -29,20 +35,38 @@ void center_bounds() {
     data.gaussians[3].mean = { 100, 100, 100 };
     data.gaussians[4].mean = { -1, 1, 2 };
     const auto all = splat::bounds(data);
-    require(all.min() == Eigen::Vector3f(-2, -1, -3) && all.max() == Eigen::Vector3f::Constant(100), "Center bounds lost an extremum");
+    require(
+        all.min() == Eigen::Vector3f(-2, -1, -3) && all.max() == Eigen::Vector3f::Constant(100),
+        "Center bounds lost an extremum"
+    );
     const std::array<uint32_t, 3> indices { 4, 1, 4 };
     const auto subset = splat::bounds(data, indices);
-    require(subset.min() == Eigen::Vector3f(-1, -1, 2) && subset.max() == Eigen::Vector3f(4, 1, 5), "Subset bounds include an unselected point");
+    require(
+        subset.min() == Eigen::Vector3f(-1, -1, 2) && subset.max() == Eigen::Vector3f(4, 1, 5),
+        "Subset bounds include an unselected point"
+    );
     const auto none = splat::bounds(data, {});
     require(none.min().isZero(0) && none.max().isZero(0), "Empty subset bounds must remain the origin");
-    require(splat::dense_bounds(data, 1).min() == all.min() && splat::dense_bounds(data, 1).max() == all.max(), "Full-density bounds changed");
+    require(
+        splat::dense_bounds(data, 1).min() == all.min() && splat::dense_bounds(data, 1).max() == all.max(),
+        "Full-density bounds changed"
+    );
     data.gaussians[3].mean.setConstant(std::numeric_limits<float>::quiet_NaN());
     const auto finite = splat::bounds(data);
-    require(finite.min() == Eigen::Vector3f(-2, -1, -3) && finite.max() == Eigen::Vector3f(4, 3, 7), "NaN centers changed min/max accumulation");
+    require(
+        finite.min() == Eigen::Vector3f(-2, -1, -3) && finite.max() == Eigen::Vector3f(4, 3, 7),
+        "NaN centers changed min/max accumulation"
+    );
     data.gaussians[0].mean.x() = -std::numeric_limits<float>::infinity();
     data.gaussians[1].mean.x() = std::numeric_limits<float>::infinity();
-    require(std::isinf(splat::bounds(data).min().x()) && std::isinf(splat::bounds(data).max().x()), "Infinite center bounds were narrowed");
-    require(splat::morton_order(data) == std::vector<uint32_t> { 0, 1, 2, 3, 4 }, "Nonfinite Morton ranges must preserve input order");
+    require(
+        std::isinf(splat::bounds(data).min().x()) && std::isinf(splat::bounds(data).max().x()),
+        "Infinite center bounds were narrowed"
+    );
+    require(
+        splat::morton_order(data) == std::vector<uint32_t> { 0, 1, 2, 3, 4 },
+        "Nonfinite Morton ranges must preserve input order"
+    );
     splat::Splat ties(4, 0);
     ties.gaussians[0].mean.x() = 1;
     ties.gaussians[2].mean.x() = 1;
@@ -54,30 +78,42 @@ void gaussian_bounds() {
     point.scale = { -1, 2, -3 };
     point.rotation.setIdentity();
     const auto identity = point.bounding_box();
-    require(identity.min() == point.mean - Eigen::Vector3f(3, 6, 9) && identity.max() == point.mean + Eigen::Vector3f(3, 6, 9),
-        "Identity Gaussian bounds must use absolute scales and the default three-sigma extent");
+    require(
+        identity.min() == point.mean - Eigen::Vector3f(3, 6, 9) &&
+            identity.max() == point.mean + Eigen::Vector3f(3, 6, 9),
+        "Identity Gaussian bounds must use absolute scales and the default three-sigma extent"
+    );
 
     const float pi = std::acos(-1.0f);
     point.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(pi / 2, Eigen::Vector3f::UnitZ()));
     const auto quarter_turn = point.bounding_box();
-    require(quarter_turn.min().isApprox(point.mean - Eigen::Vector3f(6, 3, 9), 1e-6f) &&
-                quarter_turn.max().isApprox(point.mean + Eigen::Vector3f(6, 3, 9), 1e-6f),
-        "Quarter-turn Gaussian bounds must swap the X and Y extents");
+    require(
+        quarter_turn.min().isApprox(point.mean - Eigen::Vector3f(6, 3, 9), 1e-6f) &&
+            quarter_turn.max().isApprox(point.mean + Eigen::Vector3f(6, 3, 9), 1e-6f),
+        "Quarter-turn Gaussian bounds must swap the X and Y extents"
+    );
 
     point.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(pi / 4, Eigen::Vector3f::UnitZ()));
     const Eigen::Vector3f expected_extent(2 * std::sqrt(2.5f), 2 * std::sqrt(2.5f), 6);
     const auto oblique = point.bounding_box(2);
-    require(oblique.min().isApprox(point.mean - expected_extent, 1e-6f) && oblique.max().isApprox(point.mean + expected_extent, 1e-6f),
-        "Oblique Gaussian bounds must tightly enclose the ellipsoid, not its rotated local box");
+    require(
+        oblique.min().isApprox(point.mean - expected_extent, 1e-6f) &&
+            oblique.max().isApprox(point.mean + expected_extent, 1e-6f),
+        "Oblique Gaussian bounds must tightly enclose the ellipsoid, not its rotated local box"
+    );
     const auto zero = point.bounding_box(0);
-    require(zero.min() == point.mean && zero.max() == point.mean, "Zero-sigma bounds must collapse to the Gaussian center");
+    require(
+        zero.min() == point.mean && zero.max() == point.mean, "Zero-sigma bounds must collapse to the Gaussian center"
+    );
 
     point.scale.setConstant(2);
     point.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(0.73f, Eigen::Vector3f(1, 2, 3).normalized()));
     const auto sphere = point.bounding_box();
-    require(sphere.min().isApprox(point.mean - Eigen::Vector3f::Constant(6), 1e-6f) &&
-                sphere.max().isApprox(point.mean + Eigen::Vector3f::Constant(6), 1e-6f),
-        "Isotropic Gaussian bounds must not expand under rotation");
+    require(
+        sphere.min().isApprox(point.mean - Eigen::Vector3f::Constant(6), 1e-6f) &&
+            sphere.max().isApprox(point.mean + Eigen::Vector3f::Constant(6), 1e-6f),
+        "Isotropic Gaussian bounds must not expand under rotation"
+    );
 }
 void compact_block_bounds() {
     for (const auto normal : { splat::block::SplitNormal::None, splat::block::SplitNormal::Y }) {
@@ -99,9 +135,11 @@ void compact_block_bounds() {
             require(block.size() == 20, "Block splitting changed the cluster membership");
             const auto& center = block.gaussians.front().mean;
             const Eigen::Vector3f expected_extent(3 * std::sqrt(0.025f), 3 * std::sqrt(0.025f), 0.15f);
-            require(block.bounding_box.min().isApprox(center - expected_extent, 1e-6f) &&
-                        block.bounding_box.max().isApprox(center + expected_extent, 1e-6f),
-                "Compact block bounds must use the rotated extents of the retained ninety-five percent");
+            require(
+                block.bounding_box.min().isApprox(center - expected_extent, 1e-6f) &&
+                    block.bounding_box.max().isApprox(center + expected_extent, 1e-6f),
+                "Compact block bounds must use the rotated extents of the retained ninety-five percent"
+            );
             size_t outside = 0;
             for (const auto& point : block.gaussians) {
                 outside += !block.bounding_box.contains(point.bounding_box());
@@ -116,7 +154,8 @@ void voxel_geometry() {
     point.opacity = 1;
     point.rotation.setIdentity();
     require(voxel::extents(point) == Eigen::Vector3f(3, 6, 9), "Identity voxel extents changed");
-    point.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(static_cast<float>(std::acos(-1.0) / 2), Eigen::Vector3f::UnitZ()));
+    point.rotation =
+        Eigen::Quaternionf(Eigen::AngleAxisf(static_cast<float>(std::acos(-1.0) / 2), Eigen::Vector3f::UnitZ()));
     require(voxel::extents(point).isApprox(Eigen::Vector3f(6, 3, 9), 1e-6f), "Voxel extents lost the rotation");
     point.opacity = voxel::ALPHA_THRESHOLD;
     point.scale.x() = std::numeric_limits<float>::infinity();
@@ -125,8 +164,15 @@ void voxel_geometry() {
     invalid.gaussians[0] = point;
     invalid.gaussians[0].opacity = 1;
     const auto prepared = voxel::prepare(invalid);
-    require(prepared.invalid_extents.size() == 1 && prepared.scene.isEmpty(), "Invalid voxel extents changed the scene bounds");
-    require(prepared.gaussians[0].values[11] == 0 && prepared.gaussians[0].values[12] == 0 && prepared.gaussians[0].values[13] == 0, "Invalid extents must be packed as zero");
+    require(
+        prepared.invalid_extents.size() == 1 && prepared.scene.isEmpty(),
+        "Invalid voxel extents changed the scene bounds"
+    );
+    require(
+        prepared.gaussians[0].values[11] == 0 && prepared.gaussians[0].values[12] == 0 &&
+            prepared.gaussians[0].values[13] == 0,
+        "Invalid extents must be packed as zero"
+    );
 
     voxel::Gaussian packed;
     packed.values[4] = point.rotation.w();
@@ -136,15 +182,27 @@ void voxel_geometry() {
     packed.values[8] = 1;
     packed.values[9] = 2;
     packed.values[10] = 3;
-    require(std::abs(voxel::distance_squared(packed, { 4, 3, 6 }) - 17) < 1e-5f, "Packed wxyz rotation changed the Gaussian distance");
+    require(
+        std::abs(voxel::distance_squared(packed, { 4, 3, 6 }) - 17) < 1e-5f,
+        "Packed wxyz rotation changed the Gaussian distance"
+    );
     packed.values[4] = packed.values[5] = packed.values[6] = packed.values[7] = 0;
-    require(std::abs(voxel::distance_squared(packed, { 1, 2, 3 }) - 3) < 1e-6f, "Zero quaternion distance convention changed");
+    require(
+        std::abs(voxel::distance_squared(packed, { 1, 2, 3 }) - 3) < 1e-6f,
+        "Zero quaternion distance convention changed"
+    );
     packed.values[8] = -1;
     packed.values[9] = 0;
     packed.values[10] = 1e-10f;
-    require(std::abs(voxel::distance_squared(packed, Eigen::Vector3f::Constant(1e-8f)) - 3) < 1e-6f, "Distance scale floor changed");
+    require(
+        std::abs(voxel::distance_squared(packed, Eigen::Vector3f::Constant(1e-8f)) - 3) < 1e-6f,
+        "Distance scale floor changed"
+    );
     packed.values[8] = std::numeric_limits<float>::quiet_NaN();
-    require(std::isnan(voxel::distance_squared(packed, Eigen::Vector3f::Ones())), "Distance no longer propagates a NaN scale");
+    require(
+        std::isnan(voxel::distance_squared(packed, Eigen::Vector3f::Ones())),
+        "Distance no longer propagates a NaN scale"
+    );
 }
 void voxel_selection() {
     for (uint32_t degree = 0; degree <= 3; ++degree) {
@@ -164,31 +222,49 @@ void voxel_selection() {
         }
         source.gaussians[10].opacity = voxel::ALPHA_THRESHOLD;
         const auto original = source;
-        for (const std::vector<uint32_t> indices : { std::vector<uint32_t> {}, { 0, 3, 5, 7, 11 }, { 1, 2, 4, 6, 8, 9, 10 }, { 0, 2, 3, 4, 7, 10, 11 } }) {
+        for (const std::vector<uint32_t> indices :
+            { std::vector<uint32_t> {}, { 0, 3, 5, 7, 11 }, { 1, 2, 4, 6, 8, 9, 10 }, { 0, 2, 3, 4, 7, 10, 11 } }) {
             auto actual = voxel::prepare(source);
             const auto* allocation = actual.gaussians.data();
             const auto expected = voxel::prepare(source.select(indices));
             actual.select(indices);
             require(actual.gaussians.data() == allocation, "Voxel selection must reuse its geometry allocation");
-            require(actual.gaussians.size() == expected.gaussians.size() && actual.invalid_extents == expected.invalid_extents,
-                "Voxel selection lost indices or invalid-extent accounting");
-            require(actual.scene.min() == expected.scene.min() && actual.scene.max() == expected.scene.max(), "Voxel selection changed scene bounds");
+            require(
+                actual.gaussians.size() == expected.gaussians.size() &&
+                    actual.invalid_extents == expected.invalid_extents,
+                "Voxel selection lost indices or invalid-extent accounting"
+            );
+            require(
+                actual.scene.min() == expected.scene.min() && actual.scene.max() == expected.scene.max(),
+                "Voxel selection changed scene bounds"
+            );
             for (size_t i = 0; i < actual.gaussians.size(); ++i) {
-                require(actual.gaussians[i].values == expected.gaussians[i].values, "Voxel selection changed packed geometry or input order");
+                require(
+                    actual.gaussians[i].values == expected.gaussians[i].values,
+                    "Voxel selection changed packed geometry or input order"
+                );
             }
             // Repeated compaction must also remap the sparse invalid indices.
             if (actual.gaussians.size() > 2) {
                 const std::array<uint32_t, 2> subset { 1, 2 };
                 actual.select(subset);
                 const auto twice = voxel::prepare(source.select(indices).select(subset));
-                require(actual.invalid_extents == twice.invalid_extents && actual.scene.min() == twice.scene.min() && actual.scene.max() == twice.scene.max(),
-                    "Repeated voxel selection changed invalid-extent bounds");
+                require(
+                    actual.invalid_extents == twice.invalid_extents && actual.scene.min() == twice.scene.min() &&
+                        actual.scene.max() == twice.scene.max(),
+                    "Repeated voxel selection changed invalid-extent bounds"
+                );
             }
         }
         for (size_t i = 0; i < source.size(); ++i) {
-            require(source.gaussians[i].mean == original.gaussians[i].mean, "Voxel selection mutated shared input positions");
+            require(
+                source.gaussians[i].mean == original.gaussians[i].mean, "Voxel selection mutated shared input positions"
+            );
             for (size_t j = 0; j < source.gaussians[i].sh.size(); ++j) {
-                require(source.gaussians[i].sh[j] == original.gaussians[i].sh[j], "Voxel selection mutated shared SH coefficients");
+                require(
+                    source.gaussians[i].sh[j] == original.gaussians[i].sh[j],
+                    "Voxel selection mutated shared SH coefficients"
+                );
             }
         }
     }
@@ -228,7 +304,10 @@ void sh_rotation() {
     exceptional[3] = std::numeric_limits<float>::quiet_NaN();
     identity.apply(exceptional);
     for (size_t i = 1; i < 16; ++i) {
-        require(std::isnan(exceptional[i * 3]) && exceptional[i * 3 + 1] == 0 && exceptional[i * 3 + 2] == 0, "SH nonfinite propagation changed channel or band behavior");
+        require(
+            std::isnan(exceptional[i * 3]) && exceptional[i * 3 + 1] == 0 && exceptional[i * 3 + 2] == 0,
+            "SH nonfinite propagation changed channel or band behavior"
+        );
     }
 }
 float area(const voxel::Mesh& mesh) {
@@ -252,7 +331,10 @@ void coplanar_mesh() {
             }
         }
         const auto simplified = voxel::merge_coplanar(mesh, 0.05f);
-        require(simplified.positions.size() == 12 && simplified.indices.size() == 6, "Coplanar merge did not remove the interior vertex");
+        require(
+            simplified.positions.size() == 12 && simplified.indices.size() == 6,
+            "Coplanar merge did not remove the interior vertex"
+        );
         require(std::abs(area(simplified) - area(mesh)) < 1e-5f, "Coplanar merge changed the projected polygon");
     }
 }

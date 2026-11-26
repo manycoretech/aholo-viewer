@@ -18,10 +18,8 @@ public:
         static const Eigen::Matrix<float, 5, 9> projection2 = [] {
             const float h = std::sqrt(0.5f), q = std::sqrt(1.0f / 6);
             return Eigen::Matrix<float, 5, 9> {
-                { 0, 0, h, 0, 0, 0, h, 0, 0 },
-                { 0, h, 0, h, 0, 0, 0, 0, 0 },
-                { -q, 0, 0, 0, 2 * q, 0, 0, 0, -q },
-                { 0, 0, 0, 0, 0, h, 0, h, 0 },
+                { 0, 0, h, 0, 0, 0, h, 0, 0 }, { 0, h, 0, h, 0, 0, 0, 0, 0 },
+                { -q, 0, 0, 0, 2 * q, 0, 0, 0, -q }, { 0, 0, 0, 0, 0, h, 0, h, 0 },
                 { -h, 0, 0, 0, 0, 0, 0, 0, h }
             };
         }();
@@ -30,15 +28,9 @@ public:
             // Keep the original middle-column z^2 embedding; subtracting its
             // trace would only be equivalent for exactly orthogonal input matrices.
             return Eigen::Matrix<float, 9, 5> {
-                { 0, 0, 0, 0, -h },
-                { 0, h, 0, 0, 0 },
-                { h, 0, 0, 0, 0 },
-                { 0, h, 0, 0, 0 },
-                { 0, 0, q, 0, 0 },
-                { 0, 0, 0, h, 0 },
-                { h, 0, 0, 0, 0 },
-                { 0, 0, 0, h, 0 },
-                { 0, 0, 0, 0, h }
+                { 0, 0, 0, 0, -h }, { 0, h, 0, 0, 0 }, { h, 0, 0, 0, 0 },
+                { 0, h, 0, 0, 0 }, { 0, 0, q, 0, 0 }, { 0, 0, 0, h, 0 },
+                { h, 0, 0, 0, 0 }, { 0, 0, 0, h, 0 }, { 0, 0, 0, 0, h }
             };
         }();
         static const Eigen::Matrix<float, 7, 15> projection3 = [] {
@@ -104,7 +96,9 @@ public:
 
 private:
     template<int32_t Size>
-    static void rotate_band(splat::ShCoefficients& sh, size_t offset, const Eigen::Matrix<float, Size, Size>& rotation) {
+    static void rotate_band(
+        splat::ShCoefficients& sh, size_t offset, const Eigen::Matrix<float, Size, Size>& rotation
+    ) {
         // Rows are coefficients, columns are RGB. Evaluate before overwriting input.
         Eigen::Map<Eigen::Matrix<float, Size, 3, Eigen::RowMajor>> coefficients(sh.data() + offset * 3);
         coefficients = (rotation * coefficients).eval();

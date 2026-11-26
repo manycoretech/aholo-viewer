@@ -19,11 +19,16 @@ void SplitTask::exec(const Json& config, TaskContext& context) const {
     logger.info("splitting splat");
     auto elapsed = logger.time("split elapsed");
     constexpr std::array levels { splat::lod::SplatLevelParameters { 1.0f, 1.0f } };
-    auto blocked = splat::lod::generate_blocked_lod(std::move(data), levels, count ? std::min(1.0f, max_count / count) : 1, split_normal(config));
+    auto blocked = splat::lod::generate_blocked_lod(
+        std::move(data), levels, count ? std::min(1.0f, max_count / count) : 1, split_normal(config)
+    );
     elapsed.finish();
     std::vector<SingleFile> files;
     for (size_t i = 0; i < blocked.splats.size(); ++i) {
-        files.push_back({ "block_" + std::to_string(i) + "." + config.at("type").get<std::string>(), std::make_shared<splat::Splat>(std::move(blocked.splats[i])) });
+        files.push_back(
+            { "block_" + std::to_string(i) + "." + config.at("type").get<std::string>(),
+                std::make_shared<splat::Splat>(std::move(blocked.splats[i])) }
+        );
     }
     context.set(config, std::move(files));
 }

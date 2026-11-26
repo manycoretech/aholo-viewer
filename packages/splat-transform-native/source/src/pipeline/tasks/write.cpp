@@ -22,7 +22,10 @@ struct SplatWrite {
     io::FileOptions options;
     void operator()() const { io::write_splat(this->path, *this->data, this->options); }
 };
-void write_resource(const Resource& resource, const std::filesystem::path& path, const io::FileOptions& options, const PathResolver& paths) {
+void write_resource(
+    const Resource& resource, const std::filesystem::path& path, const io::FileOptions& options,
+    const PathResolver& paths
+) {
     const auto output = path.string();
     auto& logger = utility::logger();
     if (const auto* data = std::get_if<SplatPtr>(&resource)) {
@@ -33,7 +36,8 @@ void write_resource(const Resource& resource, const std::filesystem::path& path,
     }
     if (std::filesystem::exists(path)) {
         const auto directory = std::filesystem::canonical(path);
-        if (directory == directory.root_path() || std::filesystem::equivalent(directory, paths.work_dir()) || std::filesystem::equivalent(directory, paths.pipeline_dir())) {
+        if (directory == directory.root_path() || std::filesystem::equivalent(directory, paths.work_dir()) ||
+            std::filesystem::equivalent(directory, paths.pipeline_dir())) {
             throw std::runtime_error("Refusing to replace the root, working directory, or pipeline directory");
         }
         std::filesystem::remove_all(path);
@@ -100,10 +104,16 @@ void WriteTask::exec(const Json& config, TaskContext& context) const {
 bool WriteTask::requires_gpu(const Json& config, const TaskContext& context) const {
     const auto& resource = context.input(config);
     if (std::holds_alternative<SplatPtr>(resource)) {
-        return io::create_file(context.paths.resolve(config.at("output").get<std::string>()).extension().string(), {}, io::FileOperation::Write)->requires_gpu();
+        return io::create_file(
+            context.paths.resolve(config.at("output").get<std::string>()).extension().string(), {},
+            io::FileOperation::Write
+        )
+            ->requires_gpu();
     }
     for (const auto& file : std::get<std::vector<SingleFile>>(resource)) {
-        if (std::holds_alternative<SplatPtr>(file.content) && io::create_file(io::utf8_path(file.name).extension().string(), {}, io::FileOperation::Write)->requires_gpu()) {
+        if (std::holds_alternative<SplatPtr>(file.content) &&
+            io::create_file(io::utf8_path(file.name).extension().string(), {}, io::FileOperation::Write)
+                ->requires_gpu()) {
             return true;
         }
     }

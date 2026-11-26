@@ -8,12 +8,11 @@
 
 namespace splat_transform::voxel {
 Mesh marching_cubes(const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
-    constexpr std::array<int32_t, 3> CORNERS[8] { { 0, 0, 0 }, { 1, 0, 0 }, { 1, 1, 0 }, { 0, 1, 0 }, { 0, 0, 1 }, { 1, 0, 1 }, { 1, 1, 1 }, { 0, 1, 1 } };
-    constexpr std::array<int32_t, 4> EDGES[12] {
-        { 0, 0, 0, 0 }, { 1, 0, 0, 1 }, { 0, 1, 0, 0 }, { 0, 0, 0, 1 },
-        { 0, 0, 1, 0 }, { 1, 0, 1, 1 }, { 0, 1, 1, 0 }, { 0, 0, 1, 1 },
-        { 0, 0, 0, 2 }, { 1, 0, 0, 2 }, { 1, 1, 0, 2 }, { 0, 1, 0, 2 }
-    };
+    constexpr std::array<int32_t, 3> CORNERS[8] { { 0, 0, 0 }, { 1, 0, 0 }, { 1, 1, 0 }, { 0, 1, 0 }, { 0, 0, 1 },
+        { 1, 0, 1 }, { 1, 1, 1 }, { 0, 1, 1 } };
+    constexpr std::array<int32_t, 4> EDGES[12] { { 0, 0, 0, 0 }, { 1, 0, 0, 1 }, { 0, 1, 0, 0 }, { 0, 0, 0, 1 },
+        { 0, 0, 1, 0 }, { 1, 0, 1, 1 }, { 0, 1, 1, 0 }, { 0, 0, 1, 1 }, { 0, 0, 0, 2 }, { 1, 0, 0, 2 }, { 1, 1, 0, 2 },
+        { 0, 1, 0, 2 } };
     // Vertex numbering sets the processing order of the greedy coplanar merger.
     std::set<uint32_t> active;
     for (auto index : grid.active_blocks()) {
@@ -85,7 +84,11 @@ Mesh marching_cubes(const Grid& grid, const Eigen::AlignedBox3f& bounds, float r
                         }
                     }
                     for (int32_t i = 0; i < 16 && TRI_TABLE[cube][i] >= 0; i += 3) {
-                        output.indices.insert(output.indices.end(), { edge_vertices[TRI_TABLE[cube][i]], edge_vertices[TRI_TABLE[cube][i + 2]], edge_vertices[TRI_TABLE[cube][i + 1]] });
+                        output.indices.insert(
+                            output.indices.end(),
+                            { edge_vertices[TRI_TABLE[cube][i]], edge_vertices[TRI_TABLE[cube][i + 2]],
+                                edge_vertices[TRI_TABLE[cube][i + 1]] }
+                        );
                     }
                 }
             }

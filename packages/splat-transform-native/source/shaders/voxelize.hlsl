@@ -54,20 +54,23 @@ float evaluate(float3 center, float half_size, Gaussian g) {
     if (block_id >= batch.nx * batch.ny * batch.nz) {
         return;
     }
-    uint3 position = uint3((local_id & 1) | ((local_id >> 2) & 2),
-        ((local_id >> 1) & 1) | ((local_id >> 3) & 2),
-        ((local_id >> 2) & 1) | ((local_id >> 4) & 2));
+    uint3 position = uint3(
+        (local_id & 1) | ((local_id >> 2) & 2), ((local_id >> 1) & 1) | ((local_id >> 3) & 2),
+        ((local_id >> 2) & 1) | ((local_id >> 4) & 2)
+    );
     uint3 block = uint3(block_id % batch.nx, (block_id / batch.nx) % batch.ny, block_id / (batch.nx * batch.ny));
     // Keep the original block/voxel addition order instead of folding offsets.
     precise float3 block_offset = float3(block) * 4.0 * parameters.resolution;
-    precise float3 center = float3(batch.x, batch.y, batch.z) + block_offset + (float3(position) + 0.5) * parameters.resolution;
+    precise float3 center =
+        float3(batch.x, batch.y, batch.z) + block_offset + (float3(position) + 0.5) * parameters.resolution;
     if (local_id < 2) {
         masks[local_id] = 0;
     }
     GroupMemoryBarrierWithGroupSync();
     uint result_stride = VOXEL_MODE != 0 && parameters.accumulation != 0 ? 64 : 2;
     uint result_base = (batch_id * parameters.max_blocks + group_id.x) * result_stride;
-    precise float total = VOXEL_MODE != 0 && (parameters.accumulation & 1) != 0 ? asfloat(results[result_base + local_id]) : 0.0;
+    precise float total =
+        VOXEL_MODE != 0 && (parameters.accumulation & 1) != 0 ? asfloat(results[result_base + local_id]) : 0.0;
     for (uint start = 0; start < batch.count; start += 64) {
         uint count = min(64u, batch.count - start);
         if (local_id < count) {

@@ -39,7 +39,9 @@ splat::Splat skeleton(const splat::Splat& data, const Json& config) {
     ratio /= target * 0.1f;
     std::vector<std::vector<uint32_t>> merged;
     for (auto& block : groups) {
-        const size_t size = std::max<size_t>(1, static_cast<size_t>(std::ceil(std::pow(static_cast<float>(block.size()), 1.3f) / ratio)));
+        const size_t size = std::max<size_t>(
+            1, static_cast<size_t>(std::ceil(std::pow(static_cast<float>(block.size()), 1.3f) / ratio))
+        );
         if (size == 1) {
             merged.push_back(std::move(block));
             continue;
@@ -66,7 +68,8 @@ splat::Splat skeleton(const splat::Splat& data, const Json& config) {
         output.gaussians[i].attribute(splat::QuatW) = 1;
         // Preserve the existing loading-LOD data layout, including its zero Y scale.
         for (size_t c : { static_cast<size_t>(splat::X), static_cast<size_t>(splat::Y), static_cast<size_t>(splat::Z),
-                 static_cast<size_t>(splat::Red), static_cast<size_t>(splat::Green), static_cast<size_t>(splat::Blue), static_cast<size_t>(splat::Alpha) }) {
+                 static_cast<size_t>(splat::Red), static_cast<size_t>(splat::Green), static_cast<size_t>(splat::Blue),
+                 static_cast<size_t>(splat::Alpha) }) {
             float sum = 0;
             for (auto index : merged[i]) {
                 sum += data.gaussians[index].attribute(c);

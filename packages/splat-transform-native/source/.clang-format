@@ -7,8 +7,10 @@ TabWidth: 4
 BreakBeforeBraces: Attach
 InsertBraces: true
 AllowShortIfStatementsOnASingleLine: false
+AllowShortEnumsOnASingleLine: false
 IndentCaseLabels: false
 ColumnLimit: 0
+PenaltyReturnTypeOnItsOwnLine: 1000
 AccessModifierOffset: -4
 PointerAlignment: Left
 SpaceAfterTemplateKeyword: false
@@ -17,9 +19,9 @@ SpaceBeforeCpp11BracedList: true
 AlignAfterOpenBracket: DontAlign
 ContinuationIndentWidth: 4
 InsertNewlineAtEOF: true
-# BreakAfterOpenBracketBracedList: true
-# BreakAfterOpenBracketFunction: true
-# BreakAfterOpenBracketIf: true
-# BreakBeforeCloseBracketBracedList: true
-# BreakBeforeCloseBracketFunction: true
-# BreakBeforeCloseBracketIf: true
+BreakAfterOpenBracketBracedList: true
+BreakAfterOpenBracketFunction: true
+BreakAfterOpenBracketIf: true
+BreakBeforeCloseBracketBracedList: true
+BreakBeforeCloseBracketFunction: true
+BreakBeforeCloseBracketIf: true

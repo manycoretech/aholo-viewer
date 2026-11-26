@@ -21,16 +21,21 @@ void require(bool condition, const char* message) {
 
 // Independent voxel-first reference: double precision matrix rotation and a
 // serial scan of every Gaussian, without spatial bins, jobs, or early exit.
-voxel::Grid reference(const voxel::PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff) {
-    voxel::Grid output({ static_cast<int32_t>(std::lround(bounds.sizes().x() / resolution)),
-        static_cast<int32_t>(std::lround(bounds.sizes().y() / resolution)),
-        static_cast<int32_t>(std::lround(bounds.sizes().z() / resolution)) });
+voxel::Grid reference(
+    const voxel::PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff
+) {
+    voxel::Grid output(
+        { static_cast<int32_t>(std::lround(bounds.sizes().x() / resolution)),
+            static_cast<int32_t>(std::lround(bounds.sizes().y() / resolution)),
+            static_cast<int32_t>(std::lround(bounds.sizes().z() / resolution)) }
+    );
     const double threshold = -std::log1p(-std::min(static_cast<double>(cutoff), 1.0 - 1e-8));
     for (int32_t z = 0; z < output.size[2]; ++z) {
         for (int32_t y = 0; y < output.size[1]; ++y) {
             for (int32_t x = 0; x < output.size[0]; ++x) {
                 const Eigen::Vector3i cell { x, y, z };
-                const Eigen::Vector3d center = bounds.min().cast<double>() + (Eigen::Vector3d(x, y, z).array() + 0.5).matrix() * resolution;
+                const Eigen::Vector3d center =
+                    bounds.min().cast<double>() + (Eigen::Vector3d(x, y, z).array() + 0.5).matrix() * resolution;
                 float density = 0;
                 bool touched = false;
                 for (const auto& gaussian : data.gaussians) {
@@ -47,9 +52,12 @@ voxel::Grid reference(const voxel::PreparedData& data, const Eigen::AlignedBox3f
                         continue;
                     }
                     const Eigen::Vector3d mean(g[0], g[1], g[2]);
-                    const Eigen::Vector3d difference = mean.cwiseMax((center.array() - resolution * 0.5).matrix()).cwiseMin((center.array() + resolution * 0.5).matrix()) - mean;
+                    const Eigen::Vector3d difference = mean.cwiseMax((center.array() - resolution * 0.5).matrix())
+                                                           .cwiseMin((center.array() + resolution * 0.5).matrix()) -
+                                                       mean;
                     const Eigen::Quaterniond rotation(g[4], g[5], g[6], g[7]);
-                    const Eigen::Vector3d local = (rotation.toRotationMatrix().transpose() * difference).cwiseQuotient(Eigen::Vector3d(g[8], g[9], g[10]).cwiseMax(1e-8));
+                    const Eigen::Vector3d local = (rotation.toRotationMatrix().transpose() * difference)
+                                                      .cwiseQuotient(Eigen::Vector3d(g[8], g[9], g[10]).cwiseMax(1e-8));
                     const double distance = local.squaredNorm();
                     if (distance <= -2 * std::log(static_cast<double>(voxel::ALPHA_THRESHOLD) / g[3])) {
                         density += static_cast<float>(g[3] * std::exp(-0.5 * distance));
@@ -75,7 +83,8 @@ void numerical_contracts() {
             static_cast<float>(static_cast<int32_t>(i % 5) - 2) * 0.3125f };
         g.scale = { 0.125f, 0.25f, 0.1875f };
         g.opacity = 0.05f + static_cast<float>(i % 4) * 0.15f;
-        g.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(static_cast<float>(i) * 0.2f, Eigen::Vector3f(1, 2, 3).normalized()));
+        g.rotation =
+            Eigen::Quaternionf(Eigen::AngleAxisf(static_cast<float>(i) * 0.2f, Eigen::Vector3f(1, 2, 3).normalized()));
     }
     const auto prepared = voxel::prepare(source);
     for (float cutoff : { 0.0f, 0.1f, 0.7f, 1.0f }) {
@@ -92,26 +101,36 @@ void numerical_contracts() {
         g.opacity = 0.06f;
     }
     const Eigen::AlignedBox3f unit(Eigen::Vector3f::Zero(), Eigen::Vector3f::Constant(1));
-    require(voxel::cpu_backend()->voxelize(voxel::prepare(weak), unit, 0.125f, 0.1f).get({ 3, 3, 3 }),
-        "Small CPU input lost the accumulated contribution of weak Gaussians");
+    require(
+        voxel::cpu_backend()->voxelize(voxel::prepare(weak), unit, 0.125f, 0.1f).get({ 3, 3, 3 }),
+        "Small CPU input lost the accumulated contribution of weak Gaussians"
+    );
     splat::Splat opaque(32, 0);
     for (auto& g : opaque.gaussians) {
         g = weak.gaussians.front();
         g.opacity = 1;
     }
-    require(voxel::cpu_backend()->voxelize(voxel::prepare(opaque), unit, 0.125f, 1).get({ 3, 3, 3 }),
-        "CPU cutoff=1 inherited the GPU density cap");
+    require(
+        voxel::cpu_backend()->voxelize(voxel::prepare(opaque), unit, 0.125f, 1).get({ 3, 3, 3 }),
+        "CPU cutoff=1 inherited the GPU density cap"
+    );
     for (auto& g : opaque.gaussians) {
         g.opacity = voxel::ALPHA_THRESHOLD;
     }
-    require(voxel::cpu_backend()->voxelize(voxel::prepare(opaque), unit, 0.125f, 0).voxel_count() == 0,
-        "CPU alpha threshold must exclude negligible Gaussians");
+    require(
+        voxel::cpu_backend()->voxelize(voxel::prepare(opaque), unit, 0.125f, 0).voxel_count() == 0,
+        "CPU alpha threshold must exclude negligible Gaussians"
+    );
     opaque.gaussians[0].opacity = 1;
     opaque.gaussians[0].scale.x() = std::numeric_limits<float>::quiet_NaN();
-    require(voxel::cpu_backend()->voxelize(voxel::prepare(opaque), unit, 0.125f, 0).voxel_count() == 0,
-        "CPU candidate generation accepted nonfinite geometry");
-    require(voxel::cpu_backend()->voxelize(voxel::prepare({}), unit, 0.125f, 0.1f).voxel_count() == 0,
-        "Empty CPU input generated occupied voxels");
+    require(
+        voxel::cpu_backend()->voxelize(voxel::prepare(opaque), unit, 0.125f, 0).voxel_count() == 0,
+        "CPU candidate generation accepted nonfinite geometry"
+    );
+    require(
+        voxel::cpu_backend()->voxelize(voxel::prepare({}), unit, 0.125f, 0.1f).voxel_count() == 0,
+        "Empty CPU input generated occupied voxels"
+    );
 
     // The origin is in cell 10 at 0.1f resolution, closer to cell 11 than to cell 8.
     const Eigen::AlignedBox3f island_bounds(Eigen::Vector3f(-1.0f, 0, 0), Eigen::Vector3f(0.6f, 0.4f, 0.4f));
@@ -121,15 +140,18 @@ void numerical_contracts() {
     splat::Splat points(2, 0);
     points.gaussians[0].mean = { -0.15f, 0.05f, 0.05f };
     points.gaussians[1].mean = { 0.15f, 0.05f, 0.05f };
-    require(voxel::filter_indices(points, islands, 0.1f, true) == std::vector<uint32_t> { 1 },
-        "Cluster seed must use the same float cell coordinates as Gaussian centers");
+    require(
+        voxel::filter_indices(points, islands, 0.1f, true) == std::vector<uint32_t> { 1 },
+        "Cluster seed must use the same float cell coordinates as Gaussian centers"
+    );
 }
 
 void scheduling_contracts() {
     splat::Splat source(8201, 0);
     for (size_t i = 0; i < source.size(); ++i) {
         auto& g = source.gaussians[i];
-        g.mean = { static_cast<float>(i % 31) * 0.125f, static_cast<float>(i % 13) * 0.125f, static_cast<float>(i % 17) * 0.125f };
+        g.mean = { static_cast<float>(i % 31) * 0.125f, static_cast<float>(i % 13) * 0.125f,
+            static_cast<float>(i % 17) * 0.125f };
         g.scale.setConstant(0.0625f);
         g.opacity = 0.08f;
         g.rotation.setIdentity();
@@ -164,11 +186,17 @@ void pipeline_contracts(const std::filesystem::path& directory) {
     }
     const Eigen::AlignedBox3f box(Eigen::Vector3f::Constant(-1), Eigen::Vector3f::Constant(4));
     auto prepared = voxel::prepare(source);
-    const io::Json selection { { "seed", { { "x", 2.25 }, { "y", 2.25 }, { "z", 2.25 } } }, { "voxelResolution", 0.25 }, { "opacityCutoff", 0.8 }, { "minContribution", 0.2 } };
-    const voxel::FilterClusterOptions cluster { .voxel_resolution = 0.25f, .opacity_cutoff = 0.8f, .min_contribution = 0.2f, .seed = Eigen::Vector3f::Constant(2.25f) };
+    const io::Json selection { { "seed", { { "x", 2.25 }, { "y", 2.25 }, { "z", 2.25 } } }, { "voxelResolution", 0.25 },
+        { "opacityCutoff", 0.8 }, { "minContribution", 0.2 } };
+    const voxel::FilterClusterOptions cluster { .voxel_resolution = 0.25f,
+        .opacity_cutoff = 0.8f,
+        .min_contribution = 0.2f,
+        .seed = Eigen::Vector3f::Constant(2.25f) };
     voxel::filter_cluster(prepared, cluster, box, *voxel::cpu_backend());
-    require(prepared.gaussians.size() == 16 && prepared.gaussians.front().values[0] == 2.25f,
-        "CPU cluster filtering did not use the requested component");
+    require(
+        prepared.gaussians.size() == 16 && prepared.gaussians.front().values[0] == 2.25f,
+        "CPU cluster filtering did not use the requested component"
+    );
     pipeline::TaskContext context;
     pipeline::VoxelTask task;
     require(task.requires_gpu(io::Json::object(), context), "Voxel default backend must remain GPU");
@@ -181,14 +209,26 @@ void pipeline_contracts(const std::filesystem::path& directory) {
         const auto direct = directory / (name + "-direct");
         voxel::write(decoded, direct, options);
         const auto expected = io::read_json(direct / "voxel-meta.json");
-        require(io::read_json(directory / name / "voxel-meta.json") == expected, "Pipeline options changed voxel metadata");
+        require(
+            io::read_json(directory / name / "voxel-meta.json") == expected, "Pipeline options changed voxel metadata"
+        );
         for (const auto& file : expected.at("files")) {
             const auto filename = file.get<std::filesystem::path>();
-            require(io::read_bytes(directory / name / filename) == io::read_bytes(direct / filename), "Pipeline options changed voxel occupancy or encoding");
+            require(
+                io::read_bytes(directory / name / filename) == io::read_bytes(direct / filename),
+                "Pipeline options changed voxel occupancy or encoding"
+            );
         }
-        require(std::filesystem::exists(directory / name / "collision.glb") == std::filesystem::exists(direct / "collision.glb"), "Pipeline changed collision mesh enablement");
+        require(
+            std::filesystem::exists(directory / name / "collision.glb") ==
+                std::filesystem::exists(direct / "collision.glb"),
+            "Pipeline changed collision mesh enablement"
+        );
         if (std::filesystem::exists(direct / "collision.glb")) {
-            require(io::read_bytes(directory / name / "collision.glb") == io::read_bytes(direct / "collision.glb"), "Pipeline options changed navigation or collision mesh");
+            require(
+                io::read_bytes(directory / name / "collision.glb") == io::read_bytes(direct / "collision.glb"),
+                "Pipeline options changed navigation or collision mesh"
+            );
         }
     };
     context.set({ { "output", "source" } }, std::make_shared<splat::Splat>(decoded));
@@ -204,35 +244,59 @@ void pipeline_contracts(const std::filesystem::path& directory) {
             options.auto_dense_box.reset();
             options.filter_cluster = cluster;
             options.node_encoding = encoding == "raw" ? voxel::NodeEncoding::Raw : voxel::NodeEncoding::Compact;
-            options.compression = compression == "none" ? voxel::Compression::None : compression == "gzip" ? voxel::Compression::Gzip
-                                                                                                           : voxel::Compression::Zstd;
+            options.compression = compression == "none"   ? voxel::Compression::None
+                                  : compression == "gzip" ? voxel::Compression::Gzip
+                                                          : voxel::Compression::Zstd;
             options.collision_mesh = encoding == "raw" ? voxel::CollisionMesh::Faces : voxel::CollisionMesh::Smooth;
-            options.navigation = { .floor_fill = true, .floor_dilation = 0.125f, .exterior_radius = 0.125f, .capsule_height = 0.125f, .capsule_radius = 0.125f, .seed = Eigen::Vector3f::Constant(2) };
+            options.navigation = { .floor_fill = true,
+                .floor_dilation = 0.125f,
+                .exterior_radius = 0.125f,
+                .capsule_height = 0.125f,
+                .capsule_radius = 0.125f,
+                .seed = Eigen::Vector3f::Constant(2) };
             io::Json config { { "input", "source" }, { "output", path(name) }, { "backend", "cpu" },
                 { "voxelResolution", 0.125 }, { "filterCluster", selection }, { "autoDenseBox", false },
                 { "box", { { "minCorner", { -1, -1, -1 } }, { "maxCorner", { 4, 4, 4 } } } },
-                { "nodeEncoding", encoding }, { "compression", compression }, { "collisionMesh", encoding == "raw" ? "faces" : "smooth" },
-                { "floorFill", true }, { "floorFillDilation", 0.125 }, { "navExteriorRadius", 0.125 },
+                { "nodeEncoding", encoding }, { "compression", compression },
+                { "collisionMesh", encoding == "raw" ? "faces" : "smooth" }, { "floorFill", true },
+                { "floorFillDilation", 0.125 }, { "navExteriorRadius", 0.125 },
                 { "navSeed", { { "x", 2 }, { "y", 2 }, { "z", 2 } } },
                 { "navCapsule", { { "height", 0.125 }, { "radius", 0.125 } } } };
             if (compression == "gzip") {
                 config["autoDenseBox"] = true;
                 options.auto_dense_box.emplace();
             } else if (compression == "zstd") {
-                config["autoDenseBox"] = { { "minimumAxisInflation", 0.5 }, { "minimumVolumeInflation", 0.5 }, { "targetCenterKeepRatio", 0.9 }, { "minimumCenterKeepRatio", 0.8 } };
+                config["autoDenseBox"] = { { "minimumAxisInflation", 0.5 }, { "minimumVolumeInflation", 0.5 },
+                    { "targetCenterKeepRatio", 0.9 }, { "minimumCenterKeepRatio", 0.8 } };
                 options.auto_dense_box = voxel::DenseBoxOptions { 0.5f, 0.5f, 0.9f, 0.8f };
                 config["collisionMesh"] = true;
                 options.collision_mesh = voxel::CollisionMesh::Smooth;
             }
-            pipeline::run({ { "version", 1 }, { "gpu", std::numeric_limits<uint32_t>::max() },
-                { "tasks", io::Json::array({ { { "type", "Read" }, { "config", { { "inputs", { path("source.ply") } }, { "output", "source" } } } },
-                               { { "type", "Voxel" }, { "id", "cpu" }, { "config", config } },
-                               { { "type", "Write" }, { "config", { { "input", "source" }, { "output", path("after.ply") }, { "enableMortonSort", false } } } } }) } });
-            require(io::read_bytes(directory / "after.ply") == io::read_bytes(directory / "source.ply"), "CPU voxel processing mutated its source resource");
+            pipeline::run(
+                { { "version", 1 }, { "gpu", std::numeric_limits<uint32_t>::max() },
+                    { "tasks", io::Json::array(
+                                   { { { "type", "Read" }, { "config", { { "inputs", { path("source.ply") } },
+                                                                           { "output", "source" } } } },
+                                       { { "type", "Voxel" }, { "id", "cpu" }, { "config", config } },
+                                       { { "type", "Write" },
+                                           { "config", { { "input", "source" }, { "output", path("after.ply") },
+                                                           { "enableMortonSort", false } } } } }
+                               ) } }
+            );
+            require(
+                io::read_bytes(directory / "after.ply") == io::read_bytes(directory / "source.ply"),
+                "CPU voxel processing mutated its source resource"
+            );
             const auto metadata = io::read_json(directory / name / "voxel-meta.json");
-            require(metadata.at("nodeEncoding") == encoding && metadata.at("compression") == compression, "CPU voxel output options were lost");
-            require(metadata.at("nodeCount").get<size_t>() > 0 && std::filesystem::exists(directory / name / metadata.at("files")[0].get<std::string>()),
-                "CPU pipeline did not write a nonempty octree");
+            require(
+                metadata.at("nodeEncoding") == encoding && metadata.at("compression") == compression,
+                "CPU voxel output options were lost"
+            );
+            require(
+                metadata.at("nodeCount").get<size_t>() > 0 &&
+                    std::filesystem::exists(directory / name / metadata.at("files")[0].get<std::string>()),
+                "CPU pipeline did not write a nonempty octree"
+            );
             equal_output(name, options);
         }
     }
@@ -247,7 +311,9 @@ void pipeline_contracts(const std::filesystem::path& directory) {
 } // namespace
 
 int main() {
-    const auto directory = std::filesystem::temp_directory_path() / ("splat-voxel-cpu-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto directory =
+        std::filesystem::temp_directory_path() /
+        ("splat-voxel-cpu-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::create_directories(directory);
     try {
         numerical_contracts();

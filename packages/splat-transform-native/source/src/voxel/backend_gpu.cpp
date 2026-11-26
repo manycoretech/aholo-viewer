@@ -37,16 +37,23 @@ void sort_candidates(CandidateBins& candidates) {
     }
     threading::parallel_chunks(bins, grain, sort);
 }
-Batches build_batches(VoxelSession& session, const PreparedData& data, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution) {
+Batches build_batches(
+    VoxelSession& session, const PreparedData& data, const Grid& grid, const Eigen::AlignedBox3f& bounds,
+    float resolution
+) {
     Eigen::Vector3i count;
     for (int32_t a = 0; a < 3; ++a) {
         count[a] = (grid.blocks[a] + BATCH_BLOCKS - 1) / BATCH_BLOCKS;
     }
     const float batch_size = Grid::Storage::voxel_side * resolution;
     auto candidates_time = utility::logger().time("Voxel GPU candidates");
-    auto candidates = session.candidates(data.gaussians,
-        { static_cast<float>(bounds.min()[0]), static_cast<float>(bounds.min()[1]), static_cast<float>(bounds.min()[2]) }, static_cast<float>(batch_size),
-        { static_cast<uint32_t>(count[0]), static_cast<uint32_t>(count[1]), static_cast<uint32_t>(count[2]) });
+    auto candidates = session.candidates(
+        data.gaussians,
+        { static_cast<float>(bounds.min()[0]), static_cast<float>(bounds.min()[1]),
+            static_cast<float>(bounds.min()[2]) },
+        static_cast<float>(batch_size),
+        { static_cast<uint32_t>(count[0]), static_cast<uint32_t>(count[1]), static_cast<uint32_t>(count[2]) }
+    );
     candidates_time.finish();
     auto sort_time = utility::logger().time("Voxel GPU candidate sorting");
     // Each bin owns a disjoint range. Parallel sorting preserves the exact
@@ -74,25 +81,31 @@ class GpuBackend final : public Backend {
 public:
     std::string_view name() const noexcept override { return "GPU"; }
     bool requires_gpu() const noexcept override { return true; }
-    Grid voxelize(const PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff) const override {
+    Grid voxelize(
+        const PreparedData& data, const Eigen::AlignedBox3f& bounds, float resolution, float cutoff
+    ) const override {
         auto output = make_grid(bounds, resolution);
         const auto [batches, indices] = build_batches(this->session_, data, output, bounds, resolution);
         std::vector<VoxelBatch> specs;
         specs.reserve(batches.size());
         for (const auto& b : batches) {
-            specs.push_back({ b.offset, b.count, static_cast<uint32_t>(b.dimensions[0]), static_cast<uint32_t>(b.dimensions[1]), static_cast<uint32_t>(b.dimensions[2]),
-                static_cast<float>(bounds.min()[0] + b.origin[0] * 4 * resolution),
-                static_cast<float>(bounds.min()[1] + b.origin[1] * 4 * resolution),
-                static_cast<float>(bounds.min()[2] + b.origin[2] * 4 * resolution) });
+            specs.push_back(
+                { b.offset, b.count, static_cast<uint32_t>(b.dimensions[0]), static_cast<uint32_t>(b.dimensions[1]),
+                    static_cast<uint32_t>(b.dimensions[2]),
+                    static_cast<float>(bounds.min()[0] + b.origin[0] * 4 * resolution),
+                    static_cast<float>(bounds.min()[1] + b.origin[1] * 4 * resolution),
+                    static_cast<float>(bounds.min()[2] + b.origin[2] * 4 * resolution) }
+            );
         }
         // The voxel session splits for device storage/dispatch limits and retains the
         // full Gaussian input across splits. Fixed 256-batch calls re-uploaded the
         // entire scene on every call, even though only the batch descriptors changed.
         auto dispatch_time = utility::logger().time("Voxel GPU dispatch");
-        const auto masks = this->session_.voxelize(data.gaussians, indices, specs, resolution, cutoff, Grid::Storage::block_capacity);
+        const auto masks =
+            this->session_.voxelize(data.gaussians, indices, specs, resolution, cutoff, Grid::Storage::block_capacity);
         dispatch_time.finish();
-        output.masks.assign_bricks(batches.size(),
-            [&](size_t i) { return output.masks.brick_index(batches[i].origin); },
+        output.masks.assign_bricks(
+            batches.size(), [&](size_t i) { return output.masks.brick_index(batches[i].origin); },
             [&](size_t i) {
                 Grid::Storage::Masks brick {};
                 const auto& dims = batches[i].dimensions;
@@ -106,13 +119,15 @@ public:
                 for (int32_t z = 0; z < dims.z(); ++z) {
                     for (int32_t y = 0; y < dims.y(); ++y) {
                         for (int32_t x = 0; x < dims.x(); ++x) {
-                            brick[x + BATCH_BLOCKS * (y + BATCH_BLOCKS * z)] = static_cast<uint64_t>(words[0]) | (static_cast<uint64_t>(words[1]) << 32);
+                            brick[x + BATCH_BLOCKS * (y + BATCH_BLOCKS * z)] =
+                                static_cast<uint64_t>(words[0]) | (static_cast<uint64_t>(words[1]) << 32);
                             words += 2;
                         }
                     }
                 }
                 return brick;
-            });
+            }
+        );
         return output;
     }
     Grid dilate(const Grid& grid, Eigen::Vector3i radius) const override {
@@ -123,11 +138,17 @@ public:
             const auto bits = grid.mask(index);
             packed.insert(packed.end(), { index, static_cast<uint32_t>(bits), static_cast<uint32_t>(bits >> 32) });
         }
-        const auto masks = this->session_.dilate_blocks(packed, { static_cast<uint32_t>(grid.size[0]), static_cast<uint32_t>(grid.size[1]), static_cast<uint32_t>(grid.size[2]) },
-            { static_cast<uint32_t>(radius[0]), static_cast<uint32_t>(radius[1]), static_cast<uint32_t>(radius[2]) });
+        const auto masks = this->session_.dilate_blocks(
+            packed,
+            { static_cast<uint32_t>(grid.size[0]), static_cast<uint32_t>(grid.size[1]),
+                static_cast<uint32_t>(grid.size[2]) },
+            { static_cast<uint32_t>(radius[0]), static_cast<uint32_t>(radius[1]), static_cast<uint32_t>(radius[2]) }
+        );
         Grid output(grid.size);
         for (uint32_t index = 0; index < grid.block_count(); ++index) {
-            output.set_mask(index, static_cast<uint64_t>(masks[index * 2]) | (static_cast<uint64_t>(masks[index * 2 + 1]) << 32));
+            output.set_mask(
+                index, static_cast<uint64_t>(masks[index * 2]) | (static_cast<uint64_t>(masks[index * 2 + 1]) << 32)
+            );
         }
         return output;
     }
@@ -137,7 +158,5 @@ private:
 };
 } // namespace
 
-std::unique_ptr<Backend> gpu_backend() {
-    return std::make_unique<GpuBackend>();
-}
+std::unique_ptr<Backend> gpu_backend() { return std::make_unique<GpuBackend>(); }
 } // namespace splat_transform::voxel

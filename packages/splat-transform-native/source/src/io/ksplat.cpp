@@ -27,10 +27,8 @@ splat::Splat KsplatFile::read(const FileInput& source) const {
         degree = std::max(degree, static_cast<uint32_t>(input.read_at<uint16_t>(4096 + s * 1024 + 40)));
     }
     splat::Splat result(count, source.retained_degree(degree));
-    constexpr std::array<size_t, 45> SH_INDEX {
-        0, 3, 6, 1, 4, 7, 2, 5, 8, 9, 14, 19, 10, 15, 20, 11, 16, 21, 12, 17, 22, 13, 18, 23,
-        24, 31, 38, 25, 32, 39, 26, 33, 40, 27, 34, 41, 28, 35, 42, 29, 36, 43, 30, 37, 44
-    };
+    constexpr std::array<size_t, 45> SH_INDEX { 0, 3, 6, 1, 4, 7, 2, 5, 8, 9, 14, 19, 10, 15, 20, 11, 16, 21, 12, 17,
+        22, 13, 18, 23, 24, 31, 38, 25, 32, 39, 26, 33, 40, 27, 34, 41, 28, 35, 42, 29, 36, 43, 30, 37, 44 };
     size_t section_base = 4096 + static_cast<size_t>(section_count) * 1024;
     size_t output = 0;
     for (size_t s = 0; s < section_count; ++s) {
@@ -84,24 +82,32 @@ splat::Splat KsplatFile::read(const FileInput& source) const {
             }
             ByteReader reader(bytes.subspan(record_offset, stride));
             for (size_t axis = 0; axis < 3; ++axis) {
-                result.gaussians[output].attribute(axis) = compression == 0
-                    ? reader.read<float>()
-                    : static_cast<float>((static_cast<float>(reader.read<uint16_t>()) - range) * block_size / 2 / range +
-                          input.read_at<float>(bucket_base + (bucket * 3 + axis) * 4));
+                result.gaussians[output].attribute(axis) =
+                    compression == 0
+                        ? reader.read<float>()
+                        : static_cast<float>(
+                              (static_cast<float>(reader.read<uint16_t>()) - range) * block_size / 2 / range +
+                              input.read_at<float>(bucket_base + (bucket * 3 + axis) * 4)
+                          );
             }
             for (size_t axis = 0; axis < 3; ++axis) {
-                result.gaussians[output].attribute(splat::ScaleX + axis) = compression == 0 ? reader.read<float>() : from_half(reader.read<uint16_t>());
+                result.gaussians[output].attribute(splat::ScaleX + axis) =
+                    compression == 0 ? reader.read<float>() : from_half(reader.read<uint16_t>());
             }
             for (size_t c = 0; c < 4; ++c) {
-                result.gaussians[output].attribute(c == 0 ? splat::QuatW : splat::QuatX + c - 1) = compression == 0 ? reader.read<float>() : from_half(reader.read<uint16_t>());
+                result.gaussians[output].attribute(c == 0 ? splat::QuatW : splat::QuatX + c - 1) =
+                    compression == 0 ? reader.read<float>() : from_half(reader.read<uint16_t>());
             }
             for (size_t c = 0; c < 4; ++c) {
-                result.gaussians[output].attribute(c == 3 ? splat::Alpha : splat::Red + c) = static_cast<float>(reader.read<uint8_t>() / 255.0f);
+                result.gaussians[output].attribute(c == 3 ? splat::Alpha : splat::Red + c) =
+                    static_cast<float>(reader.read<uint8_t>() / 255.0f);
             }
             const ByteReader sh(reader.take(sh_count * sh_bytes));
             for (size_t c = 0; c < std::min(sh_count, result.sh_count()); ++c) {
-                result.gaussians[output].attribute(splat::ShOffset + c) = compression == 0 ? sh.read_at<float>(SH_INDEX[c] * 4) : compression == 1 ? from_half(sh.read_at<uint16_t>(SH_INDEX[c] * 2))
-                                                                                                                                                   : (sh_min + sh.read_at<uint8_t>(SH_INDEX[c]) / 255.0f * (sh_max - sh_min));
+                result.gaussians[output].attribute(splat::ShOffset + c) =
+                    compression == 0   ? sh.read_at<float>(SH_INDEX[c] * 4)
+                    : compression == 1 ? from_half(sh.read_at<uint16_t>(SH_INDEX[c] * 2))
+                                       : (sh_min + sh.read_at<uint8_t>(SH_INDEX[c]) / 255.0f * (sh_max - sh_min));
             }
             result.gaussians[output].rotation.normalize();
         }

@@ -76,14 +76,19 @@ splat::Splat SogFile::read(const FileInput& source) const {
     for (size_t i = 0; i < count; ++i) {
         for (size_t c = 0; c < 3; ++c) {
             const float min = means.at("mins").at(c).get<float>(), max = means.at("maxs").at(c).get<float>();
-            const uint32_t value = std::to_integer<uint32_t>(images[0].rgba[i * 4 + c]) | (std::to_integer<uint32_t>(images[1].rgba[i * 4 + c]) << 8);
+            const uint32_t value = std::to_integer<uint32_t>(images[0].rgba[i * 4 + c]) |
+                                   (std::to_integer<uint32_t>(images[1].rgba[i * 4 + c]) << 8);
             output.gaussians[i].attribute(c) = codec::signed_exp(min + (max - min) / 65535 * value);
             const auto scale = std::to_integer<uint8_t>(images[2].rgba[i * 4 + c]);
             const auto color = std::to_integer<uint8_t>(images[4].rgba[i * 4 + c]);
             float decoded_scale, decoded_color;
             if (version == 1) {
-                decoded_scale = scales.at("mins").at(c).get<float>() + (scales.at("maxs").at(c).get<float>() - scales.at("mins").at(c).get<float>()) / 255 * scale;
-                decoded_color = colors.at("mins").at(c).get<float>() + (colors.at("maxs").at(c).get<float>() - colors.at("mins").at(c).get<float>()) / 255 * color;
+                decoded_scale =
+                    scales.at("mins").at(c).get<float>() +
+                    (scales.at("maxs").at(c).get<float>() - scales.at("mins").at(c).get<float>()) / 255 * scale;
+                decoded_color =
+                    colors.at("mins").at(c).get<float>() +
+                    (colors.at("maxs").at(c).get<float>() - colors.at("mins").at(c).get<float>()) / 255 * color;
             } else {
                 decoded_scale = scales.at("codebook").at(scale).get<float>();
                 decoded_color = colors.at("codebook").at(color).get<float>();
@@ -100,7 +105,11 @@ splat::Splat SogFile::read(const FileInput& source) const {
         const auto alpha = images[4].rgba[i * 4 + 3];
         float opacity = version == 3 ? codec::decode_sog_opacity(alpha) : std::to_integer<uint8_t>(alpha) / 255.0f;
         if (version == 1) {
-            opacity = 1 / (1 + std::exp(-(colors.at("mins").at(3).get<float>() + (colors.at("maxs").at(3).get<float>() - colors.at("mins").at(3).get<float>()) * opacity)));
+            opacity =
+                1 / (1 + std::exp(-(
+                             colors.at("mins").at(3).get<float>() +
+                             (colors.at("maxs").at(3).get<float>() - colors.at("mins").at(3).get<float>()) * opacity
+                         )));
         }
         output.gaussians[i].attribute(splat::Alpha) = opacity;
     }
@@ -109,16 +118,23 @@ splat::Splat SogFile::read(const FileInput& source) const {
         const size_t coefficients = splat::SH_COUNTS.at(degree) / 3;
         const size_t palette_count = version == 1 ? images[5].rgba.size() / (15 * 4) : sh.at("count").get<size_t>();
         for (size_t i = 0; i < count; ++i) {
-            const size_t label = std::to_integer<uint32_t>(images[6].rgba[i * 4]) | (std::to_integer<uint32_t>(images[6].rgba[i * 4 + 1]) << 8) |
+            const size_t label = std::to_integer<uint32_t>(images[6].rgba[i * 4]) |
+                                 (std::to_integer<uint32_t>(images[6].rgba[i * 4 + 1]) << 8) |
                                  (version == 3 ? std::to_integer<uint32_t>(images[6].rgba[i * 4 + 2]) << 16 : 0);
-            const size_t offset = version == 1 ? ((label >> 6) * images[5].width + (label & 63) * 15) * 4 : label * coefficients * 4;
-            if (label >= palette_count || offset > images[5].rgba.size() || coefficients * 4 > images[5].rgba.size() - offset) {
+            const size_t offset =
+                version == 1 ? ((label >> 6) * images[5].width + (label & 63) * 15) * 4 : label * coefficients * 4;
+            if (label >= palette_count || offset > images[5].rgba.size() ||
+                coefficients * 4 > images[5].rgba.size() - offset) {
                 throw std::runtime_error("Invalid SOG label");
             }
             for (size_t j = 0; j < output.sh_count() / 3; ++j) {
                 for (size_t c = 0; c < 3; ++c) {
                     const auto encoded = std::to_integer<uint8_t>(images[5].rgba[offset + j * 4 + c]);
-                    output.gaussians[i].attribute(splat::ShOffset + j * 3 + c) = static_cast<float>(version == 1 ? sh.at("mins").get<float>() + (sh.at("maxs").get<float>() - sh.at("mins").get<float>()) / 255 * encoded : sh.at("codebook").at(encoded).get<float>());
+                    output.gaussians[i].attribute(splat::ShOffset + j * 3 + c) = static_cast<float>(
+                        version == 1 ? sh.at("mins").get<float>() +
+                                           (sh.at("maxs").get<float>() - sh.at("mins").get<float>()) / 255 * encoded
+                                     : sh.at("codebook").at(encoded).get<float>()
+                    );
                 }
             }
         }
@@ -151,7 +167,9 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             result.metadata["means"]["maxs"].push_back(max);
             const float scale = 65535 / std::max(max - min, 1e-9f);
             for (size_t i = 0; i < indices.size(); ++i) {
-                const auto value = static_cast<uint32_t>(std::clamp((codec::signed_log(data.gaussians[indices[i]].attribute(c)) - min) * scale, 0.0f, 65535.0f));
+                const auto value = static_cast<uint32_t>(std::clamp(
+                    (codec::signed_log(data.gaussians[indices[i]].attribute(c)) - min) * scale, 0.0f, 65535.0f
+                ));
                 low[i * 4 + c] = static_cast<std::byte>(value & 255);
                 high[i * 4 + c] = static_cast<std::byte>((value >> 8) & 255);
             }
@@ -185,8 +203,9 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             for (size_t c = 0; c < 3; ++c) {
                 fields.emplace_back(data, (group == 0 ? splat::ScaleX : splat::Red) + c);
             }
-            const auto quantized = group == 0 ? spatial::quantize_1d(fields, [](float value) { return std::log(value); })
-                                              : spatial::quantize_1d(fields, [](float value) { return (value - 0.5f) / splat::SH_C0; });
+            const auto quantized =
+                group == 0 ? spatial::quantize_1d(fields, [](float value) { return std::log(value); })
+                           : spatial::quantize_1d(fields, [](float value) { return (value - 0.5f) / splat::SH_C0; });
             Bytes pixels(image_size);
             for (size_t i = 0; i < indices.size(); ++i) {
                 for (size_t c = 0; c < 3; ++c) {
@@ -196,7 +215,9 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
                     pixels[i * 4 + 3] = std::byte { 255 };
                 } else {
                     const float opacity = data.gaussians[indices[i]].opacity;
-                    pixels[i * 4 + 3] = this->version_ == 3 ? codec::encode_sog_opacity(opacity) : static_cast<std::byte>(std::clamp(opacity * 255, 0.0f, 255.0f));
+                    pixels[i * 4 + 3] = this->version_ == 3
+                                            ? codec::encode_sog_opacity(opacity)
+                                            : static_cast<std::byte>(std::clamp(opacity * 255, 0.0f, 255.0f));
                 }
             }
             const std::string name = group == 0 ? "scales" : "sh0";
@@ -215,7 +236,8 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
     };
     Archive files;
     // Preserve ordered_json's legacy key order while merging worker results.
-    Json meta { { "version", this->version_ }, { "count", indices.size() }, { "means", Json::object() }, { "scales", Json::object() } };
+    Json meta { { "version", this->version_ }, { "count", indices.size() }, { "means", Json::object() },
+        { "scales", Json::object() } };
     meta["quats"] = { { "files", { "quats.webp" } } };
     meta["sh0"] = Json::object();
     if (this->version_ == 3 && codec::decode_sog_opacity(maximum_opacity) > 1) {
@@ -230,8 +252,10 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         // Coordinate Vulkan work on the caller while CPU texture jobs use the
         // shared pool; no extra coordinator thread or per-SOG pool is needed.
         auto clustering_time = logger.time("SOG " + sh_name + " clustering");
-        auto clustering = this->palette_size_ ? spatial::k_means(spatial::FeatureView(data), std::min(this->palette_size_, data.size()))
-                                              : spatial::cluster_sh_to_color_error(data, palette_limit(this->version_), this->color_error_);
+        auto clustering =
+            this->palette_size_
+                ? spatial::k_means(spatial::FeatureView(data), std::min(this->palette_size_, data.size()))
+                : spatial::cluster_sh_to_color_error(data, palette_limit(this->version_), this->color_error_);
         clustering_time.finish();
         auto quantized = spatial::quantize_1d(clustering.centroids);
         const size_t centroid_count = static_cast<size_t>(clustering.centroids.rows());
@@ -241,7 +265,8 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         for (size_t i = 0; i < centroid_count; ++i) {
             for (size_t j = 0; j < coefficients; ++j) {
                 for (size_t c = 0; c < 3; ++c) {
-                    centroids[(i * coefficients + j) * 4 + c] = static_cast<std::byte>(quantized.labels(i, c * coefficients + j));
+                    centroids[(i * coefficients + j) * 4 + c] =
+                        static_cast<std::byte>(quantized.labels(i, c * coefficients + j));
                 }
             }
         }
@@ -254,7 +279,8 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             pixels[i * 4 + 2] = this->version_ == 3 ? static_cast<std::byte>((label >> 16) & 255) : std::byte { 0 };
         }
         encode_image("shN_labels.webp", std::move(pixels), width, height);
-        meta["shN"] = { { "count", centroid_count }, { "bands", data.sh_degree }, { "codebook", quantized.centroids }, { "files", { "shN_centroids.webp", "shN_labels.webp" } } };
+        meta["shN"] = { { "count", centroid_count }, { "bands", data.sh_degree }, { "codebook", quantized.centroids },
+            { "files", { "shN_centroids.webp", "shN_labels.webp" } } };
     }
     for (size_t i = attribute_textures; i < textures.size(); ++i) {
         files.merge(textures.get(i).files);

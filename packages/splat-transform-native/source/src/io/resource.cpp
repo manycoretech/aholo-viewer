@@ -3,8 +3,8 @@
 #include <curl/curl.h>
 #include <io/resource.h>
 #include <unordered_map>
-#include <utility>
 #include <utility/string.h>
+#include <utility>
 
 namespace splat_transform::io {
 bool is_archive_metadata(const std::string& entry, std::string_view format) {
@@ -20,7 +20,8 @@ struct Resources::Impl {
     std::unique_ptr<ZipArchive> archive;
     std::unordered_map<std::u8string, std::string> entries;
 };
-Resources::Resources(const std::filesystem::path& path, std::span<const std::byte> bytes, const std::string& format) : impl_(std::make_unique<Impl>()) {
+Resources::Resources(const std::filesystem::path& path, std::span<const std::byte> bytes, const std::string& format)
+    : impl_(std::make_unique<Impl>()) {
     if (bytes.size() >= 4 && bytes[0] == std::byte { 'P' } && bytes[1] == std::byte { 'K' }) {
         this->impl_->archive = std::make_unique<ZipArchive>(bytes);
         std::vector<std::string> candidates;
@@ -52,7 +53,8 @@ std::string Resources::resolve(const std::string& name) const {
     const auto by_filename = this->impl_->directory / relative.filename();
     if (this->impl_->archive) {
         for (const auto& candidate : { path, relative, by_filename }) {
-            const auto entry = this->impl_->entries.find(utility::lower(candidate.lexically_normal().generic_u8string()));
+            const auto entry =
+                this->impl_->entries.find(utility::lower(candidate.lexically_normal().generic_u8string()));
             if (entry != this->impl_->entries.end()) {
                 return entry->second;
             }
@@ -95,13 +97,18 @@ Bytes Resources::read(const std::string& name) const {
         curl_easy_setopt(handle.get(), CURLOPT_PROTOCOLS_STR, "http,https");
         curl_easy_setopt(handle.get(), CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
         curl_easy_setopt(handle.get(), CURLOPT_WRITEDATA, &result);
-        curl_easy_setopt(handle.get(), CURLOPT_WRITEFUNCTION, +[](char* data, size_t size, size_t count, void* user) -> size_t {
-            auto& output = *static_cast<Bytes*>(user);
-            try {
-                const auto bytes = std::as_bytes(std::span(data, size * count));
-                output.insert(output.end(), bytes.begin(), bytes.end());
-                return size * count;
-            } catch (...) { return 0; } });
+        curl_easy_setopt(
+            handle.get(), CURLOPT_WRITEFUNCTION, +[](char* data, size_t size, size_t count, void* user) -> size_t {
+                auto& output = *static_cast<Bytes*>(user);
+                try {
+                    const auto bytes = std::as_bytes(std::span(data, size * count));
+                    output.insert(output.end(), bytes.begin(), bytes.end());
+                    return size * count;
+                } catch (...) {
+                    return 0;
+                }
+            }
+        );
         const auto status = curl_easy_perform(handle.get());
         if (status != CURLE_OK) {
             throw std::runtime_error(curl_easy_strerror(status));

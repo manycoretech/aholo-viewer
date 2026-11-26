@@ -37,7 +37,10 @@ void coefficient_ownership() {
         moved.resize(3);
         moved.resize(48);
         for (size_t i = 0; i < 48; ++i) {
-            require(moved[i] == (i < std::min(size, static_cast<size_t>(3)) ? static_cast<float>(i + 1) : 0.0f), "SH resize did not preserve/zero bands");
+            require(
+                moved[i] == (i < std::min(size, static_cast<size_t>(3)) ? static_cast<float>(i + 1) : 0.0f),
+                "SH resize did not preserve/zero bands"
+            );
         }
         splat::ShCoefficients rgb(3);
         rgb[0] = 9;
@@ -55,14 +58,20 @@ void context_ownership() {
     auto* original = context.splat_ptr(input)->gaussians.data();
     auto* coefficients = original[0].sh.data();
     auto retained = context.take_splat({ { "input", "source" }, { "output", "copy" } });
-    require(retained.gaussians.data() != original && context.splat_ptr(input)->size() == 3, "Retained task input was consumed");
+    require(
+        retained.gaussians.data() != original && context.splat_ptr(input)->size() == 3,
+        "Retained task input was consumed"
+    );
     auto alias = context.splat_ptr(input);
     auto aliased = context.take_splat({ { "input", "source" }, { "output", "source" } });
     require(aliased.gaussians.data() != original && alias->size() == 3, "Aliased task input was consumed");
     alias.reset();
     context.begin_task(io::Json::array({ "source" }));
     auto consumed = context.take_splat({ { "input", "source" }, { "output", "result" } });
-    require(consumed.gaussians.data() == original && consumed.gaussians[0].sh.data() == coefficients, "Released task input was copied");
+    require(
+        consumed.gaussians.data() == original && consumed.gaussians[0].sh.data() == coefficients,
+        "Released task input was copied"
+    );
     context.set({ { "output", "result" } }, std::make_shared<splat::Splat>(std::move(consumed)));
     context.finish_task();
     auto replacement = context.take_splat({ { "input", "result" }, { "output", "result" } });
@@ -75,8 +84,14 @@ void context_ownership() {
     parts.push_back(std::move(selected));
     parts.emplace_back(1, 1);
     auto combined = splat::combine(std::move(parts));
-    require(combined.size() == 3 && combined.sh_degree == 3 && combined.gaussians[1].sh.data() == last_sh, "Combine copied SH storage");
-    require(combined.block_offsets == std::vector<size_t> { 0, 2 } && combined.block_counts == std::vector<size_t> { 2, 1 }, "Combine lost input block metadata");
+    require(
+        combined.size() == 3 && combined.sh_degree == 3 && combined.gaussians[1].sh.data() == last_sh,
+        "Combine copied SH storage"
+    );
+    require(
+        combined.block_offsets == std::vector<size_t> { 0, 2 } && combined.block_counts == std::vector<size_t> { 2, 1 },
+        "Combine lost input block metadata"
+    );
     for (size_t i = 12; i < combined.gaussians[2].sh.size(); ++i) {
         require(combined.gaussians[2].sh[i] == 0, "Combine did not zero additional SH bands");
     }
@@ -92,7 +107,11 @@ void native_rotation() {
     spatial::ShRotation(rotation).apply(sh);
     for (size_t c = 0; c < 3; ++c) {
         require(sh[c] == static_cast<float>(c + 1), "SH rotation changed DC color");
-        require(sh[3 + c] == static_cast<float>(10 + c) && sh[6 + c] == static_cast<float>(7 + c) && sh[9 + c] == -static_cast<float>(4 + c), "SH rotation changed native coefficient/channel order");
+        require(
+            sh[3 + c] == static_cast<float>(10 + c) && sh[6 + c] == static_cast<float>(7 + c) &&
+                sh[9 + c] == -static_cast<float>(4 + c),
+            "SH rotation changed native coefficient/channel order"
+        );
     }
     const splat::AttributeView view(cloud, splat::ShOffset);
     require(&view[0] == &sh[3], "Attribute access created a copied column");
@@ -111,22 +130,33 @@ void gaussian_rotation() {
     gaussian.rotation = Eigen::Quaternionf(4, 1, 2, 3);
     const auto& view = gaussian;
     for (size_t c = 0; c < 4; ++c) {
-        require(view.attribute(splat::QuatX + c) == static_cast<float>(c + 1), "Rotation attributes changed xyzw order");
+        require(
+            view.attribute(splat::QuatX + c) == static_cast<float>(c + 1), "Rotation attributes changed xyzw order"
+        );
         gaussian.attribute(splat::QuatX + c) = -static_cast<float>(c + 1);
     }
-    require(gaussian.rotation.x() == -1 && gaussian.rotation.y() == -2 && gaussian.rotation.z() == -3 && gaussian.rotation.w() == -4,
-        "Rotation attribute writes do not update the quaternion");
+    require(
+        gaussian.rotation.x() == -1 && gaussian.rotation.y() == -2 && gaussian.rotation.z() == -3 &&
+            gaussian.rotation.w() == -4,
+        "Rotation attribute writes do not update the quaternion"
+    );
 
     gaussian.rotation = Eigen::Quaternionf(-4, 3, 0, 0);
     gaussian.rotation.normalize();
-    require(gaussian.rotation.coeffs().isApprox(Eigen::Vector4f(0.6f, 0, 0, -0.8f)), "Rotation normalization changed unit length or component signs");
+    require(
+        gaussian.rotation.coeffs().isApprox(Eigen::Vector4f(0.6f, 0, 0, -0.8f)),
+        "Rotation normalization changed unit length or component signs"
+    );
     gaussian.scale = Eigen::Vector3f(1, 2, 3);
     const auto covariance = gaussian.covariance();
     const auto bounds = gaussian.bounding_box();
     gaussian.rotation.coeffs() *= -1;
     require(gaussian.covariance().isApprox(covariance, 1e-6f), "Quaternion sign changed covariance");
     const auto opposite_bounds = gaussian.bounding_box();
-    require(opposite_bounds.min().isApprox(bounds.min(), 1e-6f) && opposite_bounds.max().isApprox(bounds.max(), 1e-6f), "Quaternion sign changed Gaussian bounds");
+    require(
+        opposite_bounds.min().isApprox(bounds.min(), 1e-6f) && opposite_bounds.max().isApprox(bounds.max(), 1e-6f),
+        "Quaternion sign changed Gaussian bounds"
+    );
     splat::Gaussian restored;
     restored.set_covariance(covariance);
     require(restored.covariance().isApprox(covariance, 1e-5f), "Quaternion covariance round trip changed geometry");
@@ -147,19 +177,30 @@ void formats() {
     }
     for (const auto extension : { ".ply", ".spz", ".uspz", ".esz" }) {
         for (bool variant : { false, true }) {
-            auto file = io::create_file(extension, { .version = variant ? 4 : 3, .high_precision = variant }, io::FileOperation::Write);
+            auto file = io::create_file(
+                extension, { .version = variant ? 4 : 3, .high_precision = variant }, io::FileOperation::Write
+            );
             const auto bytes = file->write(source, indices);
             const auto full = file->read({ {}, bytes, 3 });
             for (size_t i = 0; i < source.size(); ++i) {
-                require(full.gaussians[i].rotation.angularDistance(source.gaussians[i].rotation) < 0.025f, "Format changed a negative-w rotation");
+                require(
+                    full.gaussians[i].rotation.angularDistance(source.gaussians[i].rotation) < 0.025f,
+                    "Format changed a negative-w rotation"
+                );
             }
             for (uint32_t degree : { 0u, 1u, 2u }) {
                 const auto limited = file->read({ {}, bytes, degree });
                 require(limited.sh_degree == degree && limited.size() == source.size(), "Format ignored maxShDegree");
                 for (size_t i = 0; i < limited.size(); ++i) {
-                    require(limited.gaussians[i].sh.size() == splat::SH_COUNTS[degree] + 3, "Format allocated discarded SH bands");
+                    require(
+                        limited.gaussians[i].sh.size() == splat::SH_COUNTS[degree] + 3,
+                        "Format allocated discarded SH bands"
+                    );
                     for (size_t c = 0; c < limited.attribute_count(); ++c) {
-                        require(limited.gaussians[i].attribute(c) == full.gaussians[i].attribute(c), "Limited SH decode changed retained attributes");
+                        require(
+                            limited.gaussians[i].attribute(c) == full.gaussians[i].attribute(c),
+                            "Limited SH decode changed retained attributes"
+                        );
                     }
                 }
             }
@@ -189,7 +230,8 @@ void packed_ply_fields() {
         io::append(payload, 0.0f);
         io::append(payload, 1.0f);
     }
-    header += "element vertex 1\nproperty uint packed_position\nproperty uint packed_rotation\nproperty uint packed_scale\nproperty uint packed_color\nend_header\n";
+    header += "element vertex 1\nproperty uint packed_position\nproperty uint packed_rotation\nproperty uint "
+              "packed_scale\nproperty uint packed_color\nend_header\n";
     for (const uint32_t field : { 0xa5a5a5a5u, 0xe0080201u, 0x12345678u, 0x89abcdefu }) {
         io::append(payload, field);
     }
@@ -199,10 +241,15 @@ void packed_ply_fields() {
     const auto decoded = io::PlyFile().read({ {}, bytes, 0 });
     const auto& point = decoded.gaussians.at(0);
     require(point.mean.z() == static_cast<float>(0xa5a5a5a5u & 2047) / 2047, "Packed PLY position lost integer bits");
-    require(point.opacity == 239.0f / 255 && point.sh[0] == 137.0f / 255 && point.sh[2] == 205.0f / 255, "Packed PLY color lost integer bits");
+    require(
+        point.opacity == 239.0f / 255 && point.sh[0] == 137.0f / 255 && point.sh[2] == 205.0f / 255,
+        "Packed PLY color lost integer bits"
+    );
 }
 void float_ply_layouts() {
-    const auto path = std::filesystem::temp_directory_path() / ("splat-ply-layouts-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".PLY");
+    const auto path =
+        std::filesystem::temp_directory_path() /
+        ("splat-ply-layouts-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".PLY");
     struct Cleanup {
         std::filesystem::path path;
         ~Cleanup() {
@@ -210,12 +257,12 @@ void float_ply_layouts() {
             std::filesystem::remove(this->path, error);
         }
     } cleanup { path };
-    const std::array<std::string, 14> fields {
-        "x", "y", "z", "scale_0", "scale_1", "scale_2", "rot_1", "rot_2", "rot_3", "rot_0", "f_dc_0", "f_dc_1", "f_dc_2", "opacity"
-    };
+    const std::array<std::string, 14> fields { "x", "y", "z", "scale_0", "scale_1", "scale_2", "rot_1", "rot_2",
+        "rot_3", "rot_0", "f_dc_0", "f_dc_1", "f_dc_2", "opacity" };
     const auto make_file = [&](size_t count, uint32_t degree, bool native_endian, bool mixed) {
         const bool little = native_endian == (std::endian::native == std::endian::little);
-        std::string header = "ply\nformat binary_" + std::string(little ? "little" : "big") + "_endian 1.0\nelement vertex " + std::to_string(count) + '\n';
+        std::string header = "ply\nformat binary_" + std::string(little ? "little" : "big") +
+                             "_endian 1.0\nelement vertex " + std::to_string(count) + '\n';
         // Deliberately reorder the fields and keep an unused property in every
         // record. The big-endian/mixed files exercise the generic decoder.
         std::vector<std::string> names(fields.rbegin(), fields.rend());
@@ -263,12 +310,24 @@ void float_ply_layouts() {
                 const auto generic = io::PlyFile().read({ {}, *generic_bytes, retained });
                 io::write_bytes(path, *generic_bytes);
                 const auto streamed = io::read_splat(path, retained);
-                require(fast.size() == generic.size() && fast.sh_degree == generic.sh_degree, "Fast PLY layout changed shape");
-                require(streamed.size() == fast.size() && streamed.sh_degree == fast.sh_degree, "Streamed PLY layout changed shape");
+                require(
+                    fast.size() == generic.size() && fast.sh_degree == generic.sh_degree,
+                    "Fast PLY layout changed shape"
+                );
+                require(
+                    streamed.size() == fast.size() && streamed.sh_degree == fast.sh_degree,
+                    "Streamed PLY layout changed shape"
+                );
                 for (size_t row = 0; row < count; ++row) {
                     for (size_t c = 0; c < fast.attribute_count(); ++c) {
-                        require(fast.gaussians[row].attribute(c) == generic.gaussians[row].attribute(c), "Fast PLY decode differs from generic numeric conversion");
-                        require(streamed.gaussians[row].attribute(c) == generic.gaussians[row].attribute(c), "Streamed PLY decode differs from memory input");
+                        require(
+                            fast.gaussians[row].attribute(c) == generic.gaussians[row].attribute(c),
+                            "Fast PLY decode differs from generic numeric conversion"
+                        );
+                        require(
+                            streamed.gaussians[row].attribute(c) == generic.gaussians[row].attribute(c),
+                            "Streamed PLY decode differs from memory input"
+                        );
                     }
                 }
             }

@@ -11,17 +11,17 @@ void AutoLodTask::exec(const Json& config, TaskContext& context) const {
     auto& logger = utility::logger();
     logger.info("loaded -> \"", config.at("input").get<std::string>(), '"');
     const auto target = target_count(data, config, 0.3f, std::numeric_limits<float>::infinity());
-    const std::array levels {
-        splat::lod::SplatLevelParameters { 1.0f, 1.0f },
-        splat::lod::SplatLevelParameters { data.size() ? static_cast<float>(target) / data.size() : 0, 1.0f }
-    };
+    const std::array levels { splat::lod::SplatLevelParameters { 1.0f, 1.0f },
+        splat::lod::SplatLevelParameters { data.size() ? static_cast<float>(target) / data.size() : 0, 1.0f } };
     auto blocked = splat::lod::generate_blocked_lod(std::move(data), levels, 0.2f, split_normal(config));
     std::vector<splat::Splat> parts;
     for (const auto& block : blocked.blocks) {
         parts.push_back(std::move(blocked.splats[block.references[1]]));
     }
     auto result = std::make_shared<splat::Splat>(splat::combine(std::move(parts)));
-    logger.info("result -> ", result->size(), '(', utility::fixed(static_cast<float>(result->size()) / target * 100), "%)");
+    logger.info(
+        "result -> ", result->size(), '(', utility::fixed(static_cast<float>(result->size()) / target * 100), "%)"
+    );
     context.set(config, std::move(result), false);
     logger.info("stored -> key=\"", config.at("output").get<std::string>(), '"');
 }

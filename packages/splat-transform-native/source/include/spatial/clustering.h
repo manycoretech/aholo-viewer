@@ -42,12 +42,16 @@ Quantization quantize_1d(std::span<const splat::AttributeView> fields, Transform
 }
 
 template<QuantizationTransform Transform = std::identity>
-Quantization quantize_1d(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& fields, Transform&& transform = {}) {
+Quantization quantize_1d(
+    const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& fields, Transform&& transform = {}
+) {
     std::vector<splat::AttributeView> attributes;
     attributes.reserve(static_cast<size_t>(fields.cols()));
     const std::span values(fields.data(), static_cast<size_t>(fields.size()));
     for (Eigen::Index c = 0; c < fields.cols(); ++c) {
-        attributes.emplace_back(values.empty() ? values : values.subspan(static_cast<size_t>(c)), static_cast<size_t>(fields.cols()));
+        attributes.emplace_back(
+            values.empty() ? values : values.subspan(static_cast<size_t>(c)), static_cast<size_t>(fields.cols())
+        );
     }
     return quantize_1d(attributes, std::forward<Transform>(transform));
 }

@@ -71,8 +71,11 @@ double color_error(FeatureView points, const Clustering& palette, std::span<cons
 
 size_t batch_size(size_t points, size_t count, size_t dimensions, size_t epochs) {
     const bool quality = dimensions <= 16;
-    const double estimate = (quality ? 0.00439175 : 0.035134) * std::pow(count, 0.134749) * std::pow(points, 0.876473) * std::pow(epochs, 0.813344);
-    auto round_power = [](double value) { return static_cast<size_t>(std::exp2(std::round(std::log2(std::max(1.0, value))))); };
+    const double estimate = (quality ? 0.00439175 : 0.035134) * std::pow(count, 0.134749) * std::pow(points, 0.876473) *
+                            std::pow(epochs, 0.813344);
+    auto round_power = [](double value) {
+        return static_cast<size_t>(std::exp2(std::round(std::log2(std::max(1.0, value)))));
+    };
     return std::min(round_power(estimate), quality ? points / 2 : round_power(points / 2.0));
 }
 
@@ -109,7 +112,8 @@ struct Trainer {
 
     Centers seed(size_t count) const {
         Centers centers(count, this->points.dimensions());
-        const size_t start = std::uniform_int_distribution<size_t>(0, this->order.size() - 1)(utility::default_random());
+        const size_t start =
+            std::uniform_int_distribution<size_t>(0, this->order.size() - 1)(utility::default_random());
         for (size_t entry = 0; entry < count; ++entry) {
             copy_point(this->points, this->order[(start + entry) % this->order.size()], centers, entry);
         }
@@ -120,7 +124,11 @@ struct Trainer {
         const size_t count = static_cast<size_t>(centers.rows()), rows = this->points.rows();
         const size_t batch = batch_size(rows, count, this->points.dimensions(), epochs);
         const size_t steps = epochs * ((rows + batch - 1) / batch);
-        const double initial = std::clamp(0.8244 * std::pow(count, -0.4617) * std::pow(batch, 0.9003) * std::pow(rows, -0.4498) * std::pow(epochs, -0.1057), 1e-4, 1.0);
+        const double initial = std::clamp(
+            0.8244 * std::pow(count, -0.4617) * std::pow(batch, 0.9003) * std::pow(rows, -0.4498) *
+                std::pow(epochs, -0.1057),
+            1e-4, 1.0
+        );
         this->session.begin(centers);
         std::vector<float> usage(count);
         size_t step = 0;
@@ -130,7 +138,8 @@ struct Trainer {
             for (size_t begin = 0; begin < rows; begin += batch) {
                 const size_t length = std::min(batch, rows - begin);
                 const size_t first = (start + begin) % rows;
-                const float alpha = static_cast<float>(initial * (0.55 + 0.45 * std::cos(std::numbers::pi * step / steps)));
+                const float alpha =
+                    static_cast<float>(initial * (0.55 + 0.45 * std::cos(std::numbers::pi * step / steps)));
                 this->session.batch(first, length, alpha, closing);
                 if (++step % 5 == 0) {
                     this->session.revive(usage, choose_splits);
@@ -164,7 +173,8 @@ struct Trainer {
         std::uniform_int_distribution<size_t> random_row(0, this->points.rows() - 1);
         for (size_t entry = count; entry < next; ++entry) {
             const size_t rank = entry - count;
-            const size_t row = rank < count && errors[entries[rank]] > 0 ? samples[entries[rank]] : random_row(utility::default_random());
+            const size_t row = rank < count && errors[entries[rank]] > 0 ? samples[entries[rank]]
+                                                                         : random_row(utility::default_random());
             copy_point(this->points, row, centers, entry);
         }
         return centers;
@@ -184,7 +194,9 @@ Clustering search_palette(const splat::Splat& data, size_t max_count, bool exact
     EmeansGpu session(points, weights, order, max_count);
     Trainer trainer { points, weights, order, session };
     auto align = [&](double count) {
-        return static_cast<size_t>(std::clamp(std::ceil(count / PaletteRow) * PaletteRow, static_cast<double>(PaletteRow), static_cast<double>(max_count)));
+        return static_cast<size_t>(std::clamp(
+            std::ceil(count / PaletteRow) * PaletteRow, static_cast<double>(PaletteRow), static_cast<double>(max_count)
+        ));
     };
     auto measure = [&](const Clustering& palette) {
         Probe probe { static_cast<size_t>(palette.centroids.rows()), color_error(points, palette, weights) };
@@ -216,7 +228,8 @@ Clustering search_palette(const splat::Splat& data, size_t max_count, bool exact
         const double ratio = fitted ? std::pow(target / best.error, 1 / slope) : 0;
         double next = best.count / 4.0;
         if (failing.count) {
-            const double guess = fitted ? best.count * ratio : std::sqrt(static_cast<double>(best.count) * failing.count);
+            const double guess =
+                fitted ? best.count * ratio : std::sqrt(static_cast<double>(best.count) * failing.count);
             next = std::min(best.count / 1.05, std::max(failing.count * 1.05, guess));
         } else if (fitted) {
             next = best.count * std::clamp(std::pow(ratio, 0.7), 1 / 16.0, 1 / 1.2);
@@ -248,7 +261,8 @@ Clustering cluster_sh_to_color_error(const splat::Splat& data, size_t limit, dou
         return detail::point_palette(points);
     }
     constexpr size_t ResidentBytes = size_t { 2 } * 1024 * 1024 * 1024;
-    if (rows <= ResidentBytes / sizeof(float) / points.dimensions() && rows <= gpu::ComputeDevice().limits().storage_buffer_bytes / sizeof(uint32_t)) {
+    if (rows <= ResidentBytes / sizeof(float) / points.dimensions() &&
+        rows <= gpu::ComputeDevice().limits().storage_buffer_bytes / sizeof(uint32_t)) {
         try {
             return search_palette(data, max_count, exact_allowed, target);
         } catch (const gpu::AllocationFailure& error) {

@@ -14,7 +14,8 @@ int main(int argc, char** argv) {
         app.set_version_flag("--version", splat_transform::VERSION);
         std::string pipeline_file;
         bool list_gpu = false;
-        auto* input = app.add_option("pipeline", pipeline_file, "Pipeline JSON file, or '-' to read from stdin")->type_name("FILE");
+        auto* input = app.add_option("pipeline", pipeline_file, "Pipeline JSON file, or '-' to read from stdin")
+                          ->type_name("FILE");
         app.add_flag("--list-gpu", list_gpu, "List GPU devices and API information as JSON")
             ->excludes(input)
             ->disable_flag_override()
@@ -33,9 +34,17 @@ int main(int argc, char** argv) {
         if (list_gpu) {
             auto devices = splat_transform::io::Json::array();
             for (const auto& device : splat_transform::gpu::enumerate_devices()) {
-                devices.push_back({ { "index", device.index }, { "name", device.name },
-                    { "api", static_cast<uint32_t>(device.api) }, { "apiVersion", device.api_version },
-                    { "vendorId", device.vendor_id }, { "deviceId", device.device_id }, { "uuid", device.uuid } });
+                devices.push_back(
+                    {
+                        { "index", device.index },
+                        { "name", device.name },
+                        { "api", static_cast<uint32_t>(device.api) },
+                        { "apiVersion", device.api_version },
+                        { "vendorId", device.vendor_id },
+                        { "deviceId", device.device_id },
+                        { "uuid", device.uuid },
+                    }
+                );
             }
             std::cout << devices.dump() << '\n';
             return 0;
@@ -50,7 +59,9 @@ int main(int argc, char** argv) {
         }
         return 0;
     } catch (const std::filesystem::filesystem_error& error) {
-        splat_transform::utility::logger().error("splat-transform: ", splat_transform::io::filesystem_error_message(error));
+        splat_transform::utility::logger().error(
+            "splat-transform: ", splat_transform::io::filesystem_error_message(error)
+        );
         return 1;
     } catch (const std::exception& error) {
         splat_transform::utility::logger().error("splat-transform: ", error.what());

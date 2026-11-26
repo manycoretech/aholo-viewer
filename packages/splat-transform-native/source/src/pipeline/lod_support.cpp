@@ -34,8 +34,10 @@ size_t target_count(const splat::Splat& data, const Json& config, float ratio, f
     if (!std::isfinite(target) || target < 0 || target > data.size()) {
         throw std::runtime_error("Invalid LOD target count");
     }
-    utility::logger().info("expected -> ", static_cast<size_t>(target), '(', utility::fixed(target / data.size() * 100),
-        "%) | ratio=", ratio, " counts=", utility::fixed(count, 0));
+    utility::logger().info(
+        "expected -> ", static_cast<size_t>(target), '(', utility::fixed(target / data.size() * 100),
+        "%) | ratio=", ratio, " counts=", utility::fixed(count, 0)
+    );
     return static_cast<size_t>(target);
 }
 } // namespace splat_transform::pipeline

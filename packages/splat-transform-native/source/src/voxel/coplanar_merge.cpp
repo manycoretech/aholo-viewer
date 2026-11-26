@@ -15,7 +15,9 @@ struct Triangle {
     float plane = 0;
     bool alive = true;
 };
-std::vector<std::array<uint32_t, 3>> triangulate(const std::vector<uint32_t>& polygon, const std::vector<Eigen::Vector2f>& points) {
+std::vector<std::array<uint32_t, 3>> triangulate(
+    const std::vector<uint32_t>& polygon, const std::vector<Eigen::Vector2f>& points
+) {
     const size_t n = polygon.size();
     if (n < 3) {
         return {};
@@ -36,11 +38,16 @@ std::vector<std::array<uint32_t, 3>> triangulate(const std::vector<uint32_t>& po
         next[i] = (i + 1) % n;
     }
     auto convex = [&](size_t a, size_t b, size_t c) {
-        return (points[b][0] - points[a][0]) * (points[c][1] - points[a][1]) - (points[b][1] - points[a][1]) * (points[c][0] - points[a][0]) > 0;
+        return (points[b][0] - points[a][0]) * (points[c][1] - points[a][1]) -
+                   (points[b][1] - points[a][1]) * (points[c][0] - points[a][0]) >
+               0;
     };
     auto inside = [&](size_t p, size_t a, size_t b, size_t c) {
         const auto point = points[p];
-        auto cross = [&](size_t u, size_t v) { return (point[0] - points[v][0]) * (points[u][1] - points[v][1]) - (points[u][0] - points[v][0]) * (point[1] - points[v][1]); };
+        auto cross = [&](size_t u, size_t v) {
+            return (point[0] - points[v][0]) * (points[u][1] - points[v][1]) -
+                   (points[u][0] - points[v][0]) * (point[1] - points[v][1]);
+        };
         const float d1 = cross(a, b), d2 = cross(b, c), d3 = cross(c, a);
         return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
     };
@@ -78,7 +85,9 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
     if (mesh.indices.empty()) {
         return {};
     }
-    auto position = [&](uint32_t index) -> Eigen::Vector3f { return { mesh.positions[index * 3], mesh.positions[index * 3 + 1], mesh.positions[index * 3 + 2] }; };
+    auto position = [&](uint32_t index) -> Eigen::Vector3f {
+        return { mesh.positions[index * 3], mesh.positions[index * 3 + 1], mesh.positions[index * 3 + 2] };
+    };
     std::vector<Triangle> triangles;
     std::vector<std::vector<uint32_t>> incident(count);
     auto append = [&](Triangle triangle) {
@@ -92,7 +101,8 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
     };
     for (size_t i = 0; i < mesh.indices.size(); i += 3) {
         Triangle triangle { { mesh.indices[i], mesh.indices[i + 1], mesh.indices[i + 2] } };
-        const Eigen::Vector3f a = position(triangle.vertices[0]), b = position(triangle.vertices[1]), c = position(triangle.vertices[2]);
+        const Eigen::Vector3f a = position(triangle.vertices[0]), b = position(triangle.vertices[1]),
+                              c = position(triangle.vertices[2]);
         Eigen::Vector3f normal = (b - a).cross(c - a);
         const float length = normal.norm();
         if (length < 1e-12f) {
@@ -108,7 +118,8 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
         const auto& first = triangles[a];
         const auto& second = triangles[b];
         const float dot = first.normal.dot(second.normal);
-        return dot >= 1 - 1e-3f && std::abs(first.plane - second.plane) <= 1e-3f * (resolution + std::max(std::abs(first.plane), std::abs(second.plane)));
+        return dot >= 1 - 1e-3f && std::abs(first.plane - second.plane) <=
+                                       1e-3f * (resolution + std::max(std::abs(first.plane), std::abs(second.plane)));
     };
     std::deque<uint32_t> queue;
     std::vector<bool> queued(count, true);
@@ -182,12 +193,15 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
             if (transitions.size() != 2) {
                 continue;
             }
-            const Eigen::Vector3f a = position(ring[transitions[0]]) - position(vertex), b = position(ring[transitions[1]]) - position(vertex);
+            const Eigen::Vector3f a = position(ring[transitions[0]]) - position(vertex),
+                                  b = position(ring[transitions[1]]) - position(vertex);
             if (a.norm() < 1e-12f || b.norm() < 1e-12f || a.dot(b) / (a.norm() * b.norm()) > -1 + 1e-3f) {
                 continue;
             }
             arcs.push_back({ transitions[0], transitions[1] - transitions[0] + 1, ordered[transitions[0]] });
-            arcs.push_back({ transitions[1], ring.size() - (transitions[1] - transitions[0]) + 1, ordered[transitions[1]] });
+            arcs.push_back(
+                { transitions[1], ring.size() - (transitions[1] - transitions[0]) + 1, ordered[transitions[1]] }
+            );
         }
         std::vector<Triangle> replacements;
         for (auto arc : arcs) {
@@ -256,7 +270,9 @@ Mesh merge_coplanar(const Mesh& mesh, float resolution) {
     for (size_t i = 0; i < count; ++i) {
         if (remap[i] != std::numeric_limits<uint32_t>::max()) {
             remap[i] = static_cast<uint32_t>(output.positions.size() / 3);
-            output.positions.insert(output.positions.end(), mesh.positions.begin() + i * 3, mesh.positions.begin() + i * 3 + 3);
+            output.positions.insert(
+                output.positions.end(), mesh.positions.begin() + i * 3, mesh.positions.begin() + i * 3 + 3
+            );
         }
     }
     for (const auto& triangle : triangles) {

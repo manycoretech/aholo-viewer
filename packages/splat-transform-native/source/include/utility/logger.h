@@ -51,17 +51,11 @@ public:
     Timer time(std::string label) { return Timer(*this, std::move(label)); }
 
     template<typename... Args>
-    void info(Args&&... args) {
-        this->emit(std::cout, false, std::forward<Args>(args)...);
-    }
+    void info(Args&&... args) { this->emit(std::cout, false, std::forward<Args>(args)...); }
     template<typename... Args>
-    void warn(Args&&... args) {
-        this->emit(std::cerr, false, std::forward<Args>(args)...);
-    }
+    void warn(Args&&... args) { this->emit(std::cerr, false, std::forward<Args>(args)...); }
     template<typename... Args>
-    void error(Args&&... args) {
-        this->emit(std::cerr, true, std::forward<Args>(args)...);
-    }
+    void error(Args&&... args) { this->emit(std::cerr, true, std::forward<Args>(args)...); }
     template<typename... Args>
     void progress(Args&&... args) {
         this->emit(std::cout, true, std::forward<Args>(args)...);

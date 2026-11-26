@@ -104,7 +104,8 @@ struct Module {
         require(static_cast<uint16_t>(type[0]) == TypeStruct, "Expected an ABI struct");
         size_t offsets = 0;
         for (const auto instruction : this->instructions) {
-            if (static_cast<uint16_t>(instruction[0]) != MemberDecorate || instruction[1] != id || instruction[3] != 35) {
+            if (static_cast<uint16_t>(instruction[0]) != MemberDecorate || instruction[1] != id ||
+                instruction[3] != 35) {
                 continue;
             }
             const auto member = instruction[2];
@@ -134,19 +135,39 @@ void pipeline_keys() {
     };
     static const std::vector<std::byte> copied_code(shader.code.bytes.begin(), shader.code.bytes.end());
     different([&](auto& other) { other.code.bytes = copied_code; }, "Different shader assets share pipeline identity");
-    different([](auto& other) { other.code.bytes = other.code.bytes.first(other.code.bytes.size() - 4); }, "Shader byte range was omitted from pipeline identity");
-    different([](auto& other) { std::ranges::reverse(other.bindings); }, "Binding order was omitted from pipeline identity");
+    different(
+        [](auto& other) { other.code.bytes = other.code.bytes.first(other.code.bytes.size() - 4); },
+        "Shader byte range was omitted from pipeline identity"
+    );
+    different(
+        [](auto& other) { std::ranges::reverse(other.bindings); }, "Binding order was omitted from pipeline identity"
+    );
     different([](auto& other) { other.bindings.pop_back(); }, "Binding count was omitted from pipeline identity");
-    different([](auto& other) { other.push_constant_bytes += 4; }, "Push constant size was omitted from pipeline identity");
-    different([](auto& other) { other.constants[0].value += 1; }, "Specialization value was omitted from pipeline identity");
+    different(
+        [](auto& other) { other.push_constant_bytes += 4; }, "Push constant size was omitted from pipeline identity"
+    );
+    different(
+        [](auto& other) { other.constants[0].value += 1; }, "Specialization value was omitted from pipeline identity"
+    );
     different([](auto& other) { other.constants[0].id = 2; }, "Specialization ID was omitted from pipeline identity");
-    different([](auto& other) { std::swap(other.constants[0].value, other.constants[1].value); }, "Specialization ID/value association was omitted from pipeline identity");
-    different([](auto& other) { other.constants.pop_back(); }, "Specialization count was omitted from pipeline identity");
-    different([](auto& other) { other.entry_point = "compute"; }, "Shader entry point was omitted from pipeline identity");
-    different([](auto& other) { other.constants.clear(); }, "Default and explicit specialization share pipeline identity");
+    different(
+        [](auto& other) { std::swap(other.constants[0].value, other.constants[1].value); },
+        "Specialization ID/value association was omitted from pipeline identity"
+    );
+    different(
+        [](auto& other) { other.constants.pop_back(); }, "Specialization count was omitted from pipeline identity"
+    );
+    different(
+        [](auto& other) { other.entry_point = "compute"; }, "Shader entry point was omitted from pipeline identity"
+    );
+    different(
+        [](auto& other) { other.constants.clear(); }, "Default and explicit specialization share pipeline identity"
+    );
 }
 
-void check(std::span<const std::byte> bytes, Words strides, uint32_t push_size, uint32_t local_size, uint32_t shared_size) {
+void check(
+    std::span<const std::byte> bytes, Words strides, uint32_t push_size, uint32_t local_size, uint32_t shared_size
+) {
     const Module module(bytes);
     std::vector<bool> bindings(strides.size());
     uint32_t shared = 0, pushes = 0, entries = 0, local_sizes = 0;
@@ -161,7 +182,9 @@ void check(std::span<const std::byte> bytes, Words strides, uint32_t push_size, 
             ++entries;
         }
         if (opcode == ExecutionMode && instruction[2] == 17) {
-            require(instruction[3] == local_size && instruction[4] == 1 && instruction[5] == 1, "Workgroup size mismatch");
+            require(
+                instruction[3] == local_size && instruction[4] == 1 && instruction[5] == 1, "Workgroup size mismatch"
+            );
             ++local_sizes;
         }
         if (opcode != Variable) {
@@ -181,7 +204,9 @@ void check(std::span<const std::byte> bytes, Words strides, uint32_t push_size, 
             require(module.decoration(instruction[2], 34) == 0, "Descriptor set mismatch");
             require(binding < strides.size() && !bindings[binding], "Descriptor binding mismatch");
             const auto block = module.types.at(type_id);
-            require(static_cast<uint16_t>(block[0]) == TypeStruct && block.size() == 3, "Expected a storage buffer block");
+            require(
+                static_cast<uint16_t>(block[0]) == TypeStruct && block.size() == 3, "Expected a storage buffer block"
+            );
             const auto array = module.types.at(block[2]);
             require(static_cast<uint16_t>(array[0]) == TypeRuntimeArray, "Expected a runtime storage array");
             require(module.decoration(array[1], 6) == strides[binding], "Storage buffer stride mismatch");
@@ -216,7 +241,8 @@ int main() {
         check(candidate_count.bytes, std::array { 64u, 4u }, 48, 128, 0);
         check(candidate_scatter.bytes, std::array { 64u, 4u, 4u, 4u }, 48, 128, 0);
         check(voxelize.bytes, std::array { 64u, 4u, 32u, 4u }, 20, 64, 64 * 64 + 8);
-        for (const auto shader : { std::span<const std::byte>(expand.bytes), std::span<const std::byte>(compact.bytes) }) {
+        for (const auto shader :
+            { std::span<const std::byte>(expand.bytes), std::span<const std::byte>(compact.bytes) }) {
             check(shader, std::array { 4u, 4u }, 20, 128, 0);
         }
         check(dilate.bytes, std::array { 4u, 4u }, 28, 128, 0);

@@ -26,7 +26,8 @@ float distance_squared(const Gaussian& gaussian, const Eigen::Vector3f& differen
     // The GPU layout stores wxyz; Eigen's coefficient buffer stores xyzw.
     const Eigen::Quaternionf rotation(g[4], g[5], g[6], g[7]);
     const Eigen::Map<const Eigen::Vector3f> scale(g.data() + 8);
-    const Eigen::Vector3f local = (rotation.conjugate() * difference).cwiseQuotient(scale.cwiseMax<Eigen::PropagateNaN>(1e-8f));
+    const Eigen::Vector3f local =
+        (rotation.conjugate() * difference).cwiseQuotient(scale.cwiseMax<Eigen::PropagateNaN>(1e-8f));
     return local.squaredNorm();
 }
 Gaussian pack_gaussian(const splat::Gaussian& point, Eigen::Vector3f extent) {
@@ -117,24 +118,30 @@ Eigen::AlignedBox3f align_bounds(Eigen::AlignedBox3f bounds, float resolution) {
 Grid make_grid(const Eigen::AlignedBox3f& bounds, float resolution) {
     Eigen::Vector3i dimensions;
     for (int32_t a = 0; a < 3; ++a) {
-        dimensions[a] = std::max(4, static_cast<int32_t>(std::llround((bounds.max()[a] - bounds.min()[a]) / resolution)));
+        dimensions[a] =
+            std::max(4, static_cast<int32_t>(std::llround((bounds.max()[a] - bounds.min()[a]) / resolution)));
     }
     return Grid(dimensions);
 }
 
-Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBox3f& scene, const Eigen::AlignedBox3f& box, const std::optional<DenseBoxOptions>& options) {
+Eigen::AlignedBox3f resolve_box(
+    const splat::Splat& data, const Eigen::AlignedBox3f& scene, const Eigen::AlignedBox3f& box,
+    const std::optional<DenseBoxOptions>& options
+) {
     if (!options || data.size() == 0) {
         return box;
     }
     const auto center = splat::bounds(data);
     float inflation = 0, center_volume = 1, scene_volume = 1;
     for (int32_t a = 0; a < 3; ++a) {
-        const float c = std::max(0.0f, center.max()[a] - center.min()[a]), s = std::max(0.0f, scene.max()[a] - scene.min()[a]);
+        const float c = std::max(0.0f, center.max()[a] - center.min()[a]),
+                    s = std::max(0.0f, scene.max()[a] - scene.min()[a]);
         inflation = std::max(inflation, s / std::max(c, 1e-6f));
         center_volume *= c;
         scene_volume *= s;
     }
-    if (inflation < options->minimum_axis_inflation && scene_volume / std::max(center_volume, 1e-6f) < options->minimum_volume_inflation) {
+    if (inflation < options->minimum_axis_inflation &&
+        scene_volume / std::max(center_volume, 1e-6f) < options->minimum_volume_inflation) {
         return box;
     }
     auto dense = splat::dense_bounds(data, 1 - options->target_center_keep_ratio);
@@ -149,18 +156,24 @@ Eigen::AlignedBox3f resolve_box(const splat::Splat& data, const Eigen::AlignedBo
     for (size_t i = 0; i < data.size(); ++i) {
         bool inside = true;
         for (int32_t a = 0; a < 3; ++a) {
-            inside &= data.gaussians[i].attribute(a) >= dense.min()[a] && data.gaussians[i].attribute(a) <= dense.max()[a];
+            inside &=
+                data.gaussians[i].attribute(a) >= dense.min()[a] && data.gaussians[i].attribute(a) <= dense.max()[a];
         }
         kept += inside;
     }
     if (static_cast<float>(kept) / data.size() < options->minimum_center_keep_ratio) {
         return box;
     }
-    utility::logger().info("autoDenseBox: applied, kept ", kept, '/', data.size(), " centers (", utility::fixed(static_cast<float>(kept) / data.size() * 100), "%)");
+    utility::logger().info(
+        "autoDenseBox: applied, kept ", kept, '/', data.size(), " centers (",
+        utility::fixed(static_cast<float>(kept) / data.size() * 100), "%)"
+    );
     return dense;
 }
 namespace {
-Grid seed_component(const Grid& occupied, const Eigen::AlignedBox3f& bounds, float resolution, const Eigen::Vector3f& seed) {
+Grid seed_component(
+    const Grid& occupied, const Eigen::AlignedBox3f& bounds, float resolution, const Eigen::Vector3f& seed
+) {
     Eigen::Vector3i seed_cell;
     for (int32_t a = 0; a < 3; ++a) {
         const float cell = std::max(0.0f, (seed[a] - bounds.min()[a]) / resolution);
@@ -176,7 +189,11 @@ Grid seed_component(const Grid& occupied, const Eigen::AlignedBox3f& bounds, flo
                 const int32_t bit = std::countr_zero(bits);
                 bits &= bits - 1;
                 Eigen::Vector3i cell { p[0] * 4 + bit % 4, p[1] * 4 + bit / 4 % 4, p[2] * 4 + bit / 16 };
-                std::array<int32_t, 4> order { std::max({ std::abs(cell[0] - seed_cell[0]), std::abs(cell[1] - seed_cell[1]), std::abs(cell[2] - seed_cell[2]) }), cell[2], cell[1], cell[0] };
+                std::array<int32_t, 4> order { std::max(
+                                                   { std::abs(cell[0] - seed_cell[0]), std::abs(cell[1] - seed_cell[1]),
+                                                       std::abs(cell[2] - seed_cell[2]) }
+                                               ),
+                    cell[2], cell[1], cell[0] };
                 if (order < best) {
                     best = order;
                     nearest = cell;
@@ -184,7 +201,10 @@ Grid seed_component(const Grid& occupied, const Eigen::AlignedBox3f& bounds, flo
             }
         });
         seed_cell = nearest;
-        utility::logger().warn("filterCluster seed is empty; using nearest occupied voxel (", seed_cell[0], ", ", seed_cell[1], ", ", seed_cell[2], ')');
+        utility::logger().warn(
+            "filterCluster seed is empty; using nearest occupied voxel (", seed_cell[0], ", ", seed_cell[1], ", ",
+            seed_cell[2], ')'
+        );
     }
     return flood(occupied, { seed_cell });
 }
@@ -197,8 +217,10 @@ Gaussian geometry_of(const splat::Gaussian& point) {
 }
 
 template<typename Row>
-std::vector<uint32_t> select_component(const std::vector<Row>& rows, const Grid& grid, const Eigen::AlignedBox3f& bounds,
-    float resolution, float min_contribution, bool check_coverage) {
+std::vector<uint32_t> select_component(
+    const std::vector<Row>& rows, const Grid& grid, const Eigen::AlignedBox3f& bounds, float resolution,
+    float min_contribution, bool check_coverage
+) {
     const Eigen::Vector3f grid_size = grid.size.cast<float>();
     const float block_size = 4.0f * resolution;
     return threading::select_indices(rows.size(), [&](size_t index) {
@@ -208,7 +230,8 @@ std::vector<uint32_t> select_component(const std::vector<Row>& rows, const Grid&
             return false;
         }
         const Eigen::Vector3f cell = (mean - bounds.min()) / resolution;
-        if ((cell.array() >= 0.0f).all() && (cell.array() < grid_size.array()).all() && grid.get(cell.cast<int32_t>())) {
+        if ((cell.array() >= 0.0f).all() && (cell.array() < grid_size.array()).all() &&
+            grid.get(cell.cast<int32_t>())) {
             return true;
         }
 
@@ -223,7 +246,9 @@ std::vector<uint32_t> select_component(const std::vector<Row>& rows, const Grid&
         if (!extent.allFinite()) {
             return false;
         }
-        const float hits_needed = check_coverage && extent.maxCoeff() > resolution ? std::max(1.0f, std::ceil(0.8f * (extent / resolution).prod())) : 1.0f;
+        const float hits_needed = check_coverage && extent.maxCoeff() > resolution
+                                      ? std::max(1.0f, std::ceil(0.8f * (extent / resolution).prod()))
+                                      : 1.0f;
         Eigen::Vector3i lo, hi;
         for (int32_t a = 0; a < 3; ++a) {
             const float low = std::floor((mean[a] - extent[a] - bounds.min()[a]) / block_size);
@@ -236,7 +261,8 @@ std::vector<uint32_t> select_component(const std::vector<Row>& rows, const Grid&
             hi[a] = high < block_count ? static_cast<int32_t>(high) : grid.blocks[a] - 1;
         }
         const Eigen::Quaternionf inverse_rotation(g[4], -g[5], -g[6], -g[7]);
-        const Eigen::Vector3f inverse_scale = Eigen::Map<const Eigen::Vector3f>(g.data() + 8).cwiseMax(1e-8f).cwiseInverse();
+        const Eigen::Vector3f inverse_scale =
+            Eigen::Map<const Eigen::Vector3f>(g.data() + 8).cwiseMax(1e-8f).cwiseInverse();
         size_t hits = 0;
         for (int32_t z = lo.z(); z <= hi.z(); ++z) {
             for (int32_t y = lo.y(); y <= hi.y(); ++y) {
@@ -245,11 +271,10 @@ std::vector<uint32_t> select_component(const std::vector<Row>& rows, const Grid&
                     while (bits) {
                         const int32_t b = std::countr_zero(bits);
                         bits &= bits - 1;
-                        const Eigen::Vector3f difference {
-                            bounds.min().x() + x * 4 * resolution + (b % 4 + 0.5f) * resolution - mean.x(),
+                        const Eigen::Vector3f difference { bounds.min().x() + x * 4 * resolution +
+                                                               (b % 4 + 0.5f) * resolution - mean.x(),
                             bounds.min().y() + y * 4 * resolution + (b / 4 % 4 + 0.5f) * resolution - mean.y(),
-                            bounds.min().z() + z * 4 * resolution + (b / 16 + 0.5f) * resolution - mean.z()
-                        };
+                            bounds.min().z() + z * 4 * resolution + (b / 16 + 0.5f) * resolution - mean.z() };
                         const float d2 = (inverse_rotation * difference).cwiseProduct(inverse_scale).squaredNorm();
                         if (g[3] * std::exp(-0.5f * d2) >= min_contribution && ++hits >= hits_needed) {
                             return true;
@@ -263,20 +288,31 @@ std::vector<uint32_t> select_component(const std::vector<Row>& rows, const Grid&
 }
 } // namespace
 
-std::vector<uint32_t> filter_indices(const splat::Splat& data, const Occupancy& occupancy, float min_contribution, bool cluster) {
+std::vector<uint32_t> filter_indices(
+    const splat::Splat& data, const Occupancy& occupancy, float min_contribution, bool cluster
+) {
     if (occupancy.grid.masks.empty() || !data.size()) {
         return {};
     }
     if (cluster) {
-        const auto component = seed_component(occupancy.grid, occupancy.bounds, occupancy.spec.voxel_resolution, Eigen::Vector3f::Zero());
-        return select_component(data.gaussians, component, occupancy.bounds, occupancy.spec.voxel_resolution, min_contribution, true);
+        const auto component =
+            seed_component(occupancy.grid, occupancy.bounds, occupancy.spec.voxel_resolution, Eigen::Vector3f::Zero());
+        return select_component(
+            data.gaussians, component, occupancy.bounds, occupancy.spec.voxel_resolution, min_contribution, true
+        );
     }
-    return select_component(data.gaussians, occupancy.grid, occupancy.bounds, occupancy.spec.voxel_resolution, min_contribution, false);
+    return select_component(
+        data.gaussians, occupancy.grid, occupancy.bounds, occupancy.spec.voxel_resolution, min_contribution, false
+    );
 }
-std::optional<Occupancy> filter_cluster(PreparedData& prepared, const FilterClusterOptions& options, const Eigen::AlignedBox3f& box, const Backend& backend) {
+std::optional<Occupancy> filter_cluster(
+    PreparedData& prepared, const FilterClusterOptions& options, const Eigen::AlignedBox3f& box, const Backend& backend
+) {
     auto& logger = utility::logger();
-    const float resolution = options.voxel_resolution, cutoff = options.opacity_cutoff, contribution = options.min_contribution;
-    if (!(resolution > 0) || !std::isfinite(resolution) || !std::isfinite(cutoff) || cutoff < 0 || cutoff > 1 || !std::isfinite(contribution) || contribution < 0) {
+    const float resolution = options.voxel_resolution, cutoff = options.opacity_cutoff,
+                contribution = options.min_contribution;
+    if (!(resolution > 0) || !std::isfinite(resolution) || !std::isfinite(cutoff) || cutoff < 0 || cutoff > 1 ||
+        !std::isfinite(contribution) || contribution < 0) {
         throw std::runtime_error("Invalid filterCluster options");
     }
     const auto count = prepared.gaussians.size();
@@ -297,7 +333,8 @@ std::optional<Occupancy> filter_cluster(PreparedData& prepared, const FilterClus
             return {};
         }
         if (bounds.max()[a] - bounds.min()[a] > 4096 * resolution) {
-            const float half = 2048 * resolution, center = std::clamp(seed[a], bounds.min()[a] + half, bounds.max()[a] - half);
+            const float half = 2048 * resolution,
+                        center = std::clamp(seed[a], bounds.min()[a] + half, bounds.max()[a] - half);
             bounds.min()[a] = center - half;
             bounds.max()[a] = center + half;
         }
@@ -333,10 +370,13 @@ std::optional<Occupancy> filter_cluster(PreparedData& prepared, const FilterClus
             while (remaining) {
                 const int32_t bit = std::countr_zero(remaining);
                 const auto p = occupied.block_point(index);
-                auto component = flood(occupied, { { p[0] * 4 + bit % 4, p[1] * 4 + bit / 4 % 4, p[2] * 4 + bit / 16 } });
+                auto component =
+                    flood(occupied, { { p[0] * 4 + bit % 4, p[1] * 4 + bit / 4 % 4, p[2] * 4 + bit / 16 } });
                 processed = unite(processed, component);
                 candidates.push_back(std::move(component));
-                std::stable_sort(candidates.begin(), candidates.end(), [](const Grid& a, const Grid& b) { return a.voxel_count() > b.voxel_count(); });
+                std::stable_sort(candidates.begin(), candidates.end(), [](const Grid& a, const Grid& b) {
+                    return a.voxel_count() > b.voxel_count();
+                });
                 if (candidates.size() > 5) {
                     candidates.pop_back();
                 }

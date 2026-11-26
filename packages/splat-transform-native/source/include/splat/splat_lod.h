@@ -30,6 +30,10 @@ struct BlockedSplat {
     std::vector<Block> blocks;
 };
 
-void generate_lod(size_t id, SplatLod& lod, std::span<const SplatLevelParameters> parameters, size_t min_size, size_t max_step);
-BlockedSplat generate_blocked_lod(Splat input, std::span<const SplatLevelParameters> parameters, float precision, block::SplitNormal normal);
+void generate_lod(
+    size_t id, SplatLod& lod, std::span<const SplatLevelParameters> parameters, size_t min_size, size_t max_step
+);
+BlockedSplat generate_blocked_lod(
+    Splat input, std::span<const SplatLevelParameters> parameters, float precision, block::SplitNormal normal
+);
 } // namespace splat_transform::splat::lod

@@ -36,11 +36,14 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Automatic CPU worker count changed");
         }
         // Reject malformed values before any task starts or the shared pool is created.
-        for (const auto& value : io::Json::array({ 0, -1, 1.5, true, false, nullptr, "4", io::Json::array(), io::Json::object() })) {
+        for (const auto& value :
+            io::Json::array({ 0, -1, 1.5, true, false, nullptr, "4", io::Json::array(), io::Json::object() })) {
             bool rejected = false;
             try {
-                pipeline::run({ { "version", 1 }, { "cpuWorkers", value },
-                    { "tasks", io::Json::array({ { { "type", "Read" }, { "config", io::Json::object() } } }) } });
+                pipeline::run(
+                    { { "version", 1 }, { "cpuWorkers", value },
+                        { "tasks", io::Json::array({ { { "type", "Read" }, { "config", io::Json::object() } } }) } }
+                );
             } catch (const std::runtime_error& error) {
                 rejected = std::string_view(error.what()) == "cpuWorkers must be a positive integer";
             }
@@ -132,10 +135,12 @@ int main(int argc, char** argv) {
                 stopped.set_value();
             });
             const auto status = cancelled.wait_for(std::chrono::seconds(5));
-            const bool returned_early = stop_completed.wait_for(std::chrono::milliseconds(20)) == std::future_status::ready;
+            const bool returned_early =
+                stop_completed.wait_for(std::chrono::milliseconds(20)) == std::future_status::ready;
             release.count_down();
             stopping.join();
-            if (returned_early || status != std::future_status::ready || running.wait_for(std::chrono::seconds(0)) != std::future_status::ready || running.get() != 7) {
+            if (returned_early || status != std::future_status::ready ||
+                running.wait_for(std::chrono::seconds(0)) != std::future_status::ready || running.get() != 7) {
                 throw std::runtime_error("Stopping did not cancel queued work before joining active tasks");
             }
             bool broken_promise = false;
@@ -239,7 +244,8 @@ int main(int argc, char** argv) {
         if (&threading::default_pool() != &pool) {
             throw std::runtime_error("Default pool was replaced between operations");
         }
-        std::cout << "Global lazy pool, nested scheduling, exception lifetime, and parallel compression passed with " << pool.thread_count() << " workers\n";
+        std::cout << "Global lazy pool, nested scheduling, exception lifetime, and parallel compression passed with "
+                  << pool.thread_count() << " workers\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

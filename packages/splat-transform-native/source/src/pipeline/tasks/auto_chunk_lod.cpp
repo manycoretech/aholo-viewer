@@ -10,10 +10,12 @@ namespace splat_transform::pipeline {
 using io::Json;
 namespace {
 std::vector<SingleFile> chunk_lod(splat::Splat source, const Json& config) {
-    const Json defaults = Json::array({ { { "precision", 1.0f }, { "scaleBoost", 1.0f } }, { { "precision", 0.5f }, { "scaleBoost", 1.0f } },
-        { { "precision", 0.25f }, { "scaleBoost", 1.0f } },
-        { { "precision", 0.05f }, { "scaleBoost", 1.01f }, { "permanent", true }, { "merged", true } },
-        { { "precision", 0.01f }, { "scaleBoost", 1.02f }, { "permanent", true }, { "merged", true } } });
+    const Json defaults = Json::array(
+        { { { "precision", 1.0f }, { "scaleBoost", 1.0f } }, { { "precision", 0.5f }, { "scaleBoost", 1.0f } },
+            { { "precision", 0.25f }, { "scaleBoost", 1.0f } },
+            { { "precision", 0.05f }, { "scaleBoost", 1.01f }, { "permanent", true }, { "merged", true } },
+            { { "precision", 0.01f }, { "scaleBoost", 1.02f }, { "permanent", true }, { "merged", true } } }
+    );
     const auto levels = config.value("levels", defaults);
     const auto type = config.at("type").get<std::string>();
     const auto max_count = number(config, "maxChunkCounts", 400000);
@@ -31,7 +33,9 @@ std::vector<SingleFile> chunk_lod(splat::Splat source, const Json& config) {
     for (const auto& level : levels) {
         parameters.push_back({ level.at("precision").get<float>(), level.value("scaleBoost", 1.0f) });
     }
-    auto blocked = splat::lod::generate_blocked_lod(std::move(source), parameters, source_count ? std::min(1.0f, max_count / source_count) : 1, split_normal(config));
+    auto blocked = splat::lod::generate_blocked_lod(
+        std::move(source), parameters, source_count ? std::min(1.0f, max_count / source_count) : 1, split_normal(config)
+    );
     elapsed.finish();
     struct Layout {
         size_t file;
@@ -63,14 +67,20 @@ std::vector<SingleFile> chunk_lod(splat::Splat source, const Json& config) {
             offset += part.size();
             parts.push_back(std::move(part));
         }
-        files.push_back({ "chunk_" + std::to_string(files.size()) + "." + type, std::make_shared<splat::Splat>(splat::combine(std::move(parts))), true });
+        files.push_back(
+            { "chunk_" + std::to_string(files.size()) + "." + type,
+                std::make_shared<splat::Splat>(splat::combine(std::move(parts))), true }
+        );
     }
     for (uint32_t ref = 0; ref < blocked.splats.size(); ++ref) {
         if (layout.contains(ref)) {
             continue;
         }
         layout.emplace(ref, Layout { files.size(), 0, blocked.splats[ref].size() });
-        files.push_back({ "chunk_" + std::to_string(files.size()) + "." + type, std::make_shared<splat::Splat>(std::move(blocked.splats[ref])) });
+        files.push_back(
+            { "chunk_" + std::to_string(files.size()) + "." + type,
+                std::make_shared<splat::Splat>(std::move(blocked.splats[ref])) }
+        );
     }
     Json tree = Json::array();
     std::unordered_set<size_t> permanent;
@@ -99,9 +109,12 @@ std::vector<SingleFile> chunk_lod(splat::Splat source, const Json& config) {
         }
         const auto count_text = std::to_string(count);
         count_width = std::max(count_width, count_text.size());
-        logger.info('\t', "Level ", level, std::setw(9), '(' + utility::fixed(levels[level].at("precision").get<float>() * 100) + "%)",
-            ": ", std::setw(static_cast<int32_t>(count_width)), count_text,
-            std::setw(9), '(' + utility::fixed(static_cast<float>(count) / source_count * 100) + "%)");
+        logger.info(
+            '\t', "Level ", level, std::setw(9),
+            '(' + utility::fixed(levels[level].at("precision").get<float>() * 100) + "%)", ": ",
+            std::setw(static_cast<int32_t>(count_width)), count_text, std::setw(9),
+            '(' + utility::fixed(static_cast<float>(count) / source_count * 100) + "%)"
+        );
     }
     Json meta { { "magicCode", 0x262834 }, { "type", "lod-splat" }, { "version", "1.0" }, { "counts", source_count },
         { "shDegree", source_degree }, { "levels", levels.size() }, { "forwardBox", io::bounds_json(forward) },

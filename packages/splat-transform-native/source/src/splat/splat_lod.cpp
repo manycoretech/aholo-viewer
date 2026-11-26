@@ -46,9 +46,8 @@ struct GaussianCache {
     double mass;
 };
 
-using KDTree = nanoflann::KDTreeSingleIndexAdaptor<
-    nanoflann::L2_Simple_Adaptor<float, GaussianCloud>,
-    GaussianCloud, 3>;
+using KDTree =
+    nanoflann::KDTreeSingleIndexAdaptor<nanoflann::L2_Simple_Adaptor<float, GaussianCloud>, GaussianCloud, 3>;
 
 // https://repo-sam.inria.fr/fungraph/hierarchical-3d-gaussians/
 static splat::Gaussian merge_gaussians(const splat::Splat& input, const std::vector<uint32_t>& idx, float scale_boost) {
@@ -97,7 +96,9 @@ static splat::Gaussian merge_gaussians(const splat::Splat& input, const std::vec
     return out;
 }
 
-static Eigen::Matrix3d sigma_from_rotation_variances(const Eigen::Matrix3d& rotation, const Eigen::Vector3d& variances) {
+static Eigen::Matrix3d sigma_from_rotation_variances(
+    const Eigen::Matrix3d& rotation, const Eigen::Vector3d& variances
+) {
     Eigen::Matrix3d s = Eigen::Matrix3d::Identity();
 
     s(0, 0) = variances.x();
@@ -118,14 +119,15 @@ static void build_cache(const splat::Splat& splat, std::vector<GaussianCache>& c
         Eigen::Vector3d v = scale.cwiseMax(1e-12f).cwiseSquare() + vector_eps;
         Eigen::Vector3d safe_v = v.cwiseMax(1e-30);
 
-        caches.push_back(GaussianCache {
-            .rotation = rotation,
-            .rotation_transpose = t,
-            .sigma = sigma_from_rotation_variances(rotation, v),
-            .variances = v,
-            .inv_diag = vector_one.array() / safe_v.array(),
-            .log_det = safe_v.array().log().sum(),
-            .mass = TWO_PI_POW_1_5 * gaussian.opacity * scale.prod() + 1e-12 });
+        caches.push_back(
+            GaussianCache { .rotation = rotation,
+                .rotation_transpose = t,
+                .sigma = sigma_from_rotation_variances(rotation, v),
+                .variances = v,
+                .inv_diag = vector_one.array() / safe_v.array(),
+                .log_det = safe_v.array().log().sum(),
+                .mass = TWO_PI_POW_1_5 * gaussian.opacity * scale.prod() + 1e-12 }
+        );
     }
 }
 
@@ -154,7 +156,10 @@ std::vector<Eigen::Vector3d> make_gaussian_samples(size_t n, uint32_t seed) {
     return result;
 }
 
-static double gauss_log_pdf_diagrot(const Eigen::Vector3d& v, const Eigen::Vector3d& m, const Eigen::Matrix3d& r, const Eigen::Vector3d& inv, double log_det) {
+static double gauss_log_pdf_diagrot(
+    const Eigen::Vector3d& v, const Eigen::Vector3d& m, const Eigen::Matrix3d& r, const Eigen::Vector3d& inv,
+    double log_det
+) {
     Eigen::Vector3d d = v - m;
     Eigen::Vector3d y = r * d;
     double quad = y.cwiseSquare().transpose() * inv;
@@ -173,7 +178,10 @@ static double log_add_exp(double a, double b) {
 };
 
 // https://saliteta.github.io/NanoGS/
-static double compute_edge_cost(const splat::Splat& splat, const std::vector<GaussianCache>& caches, const std::vector<Eigen::Vector3d>& samples, std::tuple<uint32_t, uint32_t>& edge) {
+static double compute_edge_cost(
+    const splat::Splat& splat, const std::vector<GaussianCache>& caches, const std::vector<Eigen::Vector3d>& samples,
+    std::tuple<uint32_t, uint32_t>& edge
+) {
     auto [i, j] = edge;
     auto& u = splat.gaussians[i];
     auto& v = splat.gaussians[j];
@@ -227,13 +235,17 @@ static double compute_edge_cost(const splat::Splat& splat, const std::vector<Gau
         Eigen::Vector3d xj = v_mean + cache_j.rotation * tj;
 
         // Evaluate log p_ij at samples from component i
-        auto log_ni_on_i = gauss_log_pdf_diagrot(xi, u_mean, cache_i.rotation_transpose, cache_i.inv_diag, cache_i.log_det);
-        auto log_nj_on_i = gauss_log_pdf_diagrot(xi, v_mean, cache_j.rotation_transpose, cache_j.inv_diag, cache_j.log_det);
+        auto log_ni_on_i =
+            gauss_log_pdf_diagrot(xi, u_mean, cache_i.rotation_transpose, cache_i.inv_diag, cache_i.log_det);
+        auto log_nj_on_i =
+            gauss_log_pdf_diagrot(xi, v_mean, cache_j.rotation_transpose, cache_j.inv_diag, cache_j.log_det);
         sum_log_p_on_i += log_add_exp(log_pi + log_ni_on_i, log_pj + log_nj_on_i);
 
         // Evaluate log p_ij at samples from component j
-        auto log_ni_on_j = gauss_log_pdf_diagrot(xj, u_mean, cache_i.rotation_transpose, cache_i.inv_diag, cache_i.log_det);
-        auto log_nj_on_j = gauss_log_pdf_diagrot(xj, v_mean, cache_j.rotation_transpose, cache_j.inv_diag, cache_j.log_det);
+        auto log_ni_on_j =
+            gauss_log_pdf_diagrot(xj, u_mean, cache_i.rotation_transpose, cache_i.inv_diag, cache_i.log_det);
+        auto log_nj_on_j =
+            gauss_log_pdf_diagrot(xj, v_mean, cache_j.rotation_transpose, cache_j.inv_diag, cache_j.log_det);
         sum_log_p_on_j += log_add_exp(log_pi + log_ni_on_j, log_pj + log_nj_on_j);
     }
 
@@ -280,12 +292,15 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
 
     while (current.gaussians.size() > target_count && current.gaussians.size() > 0 && step < max_step) {
         GaussianCloud cloud(current);
-        KDTree tree(3, cloud,
+        KDTree tree(
+            3, cloud,
             nanoflann::KDTreeSingleIndexAdaptorParams(
-                10, nanoflann::KDTreeSingleIndexAdaptorFlags::None,
-                KD_TREE_BUILD_THREADS));
+                10, nanoflann::KDTreeSingleIndexAdaptorFlags::None, KD_TREE_BUILD_THREADS
+            )
+        );
 
-        auto k_eff = std::min<uint32_t>(std::max<uint32_t>(1, knn_k), std::max<uint32_t>(1, current.gaussians.size() - 1));
+        auto k_eff =
+            std::min<uint32_t>(std::max<uint32_t>(1, knn_k), std::max<uint32_t>(1, current.gaussians.size() - 1));
         size_t query_count = static_cast<size_t>(std::min<size_t>(current.gaussians.size(), k_eff + 1));
         auto max_pairs = current.gaussians.size() - target_count;
 
@@ -305,7 +320,8 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
         for (auto i = 0; i < current.gaussians.size(); i++) {
             out_indices.assign(query_count, 0);
             out_distances.assign(query_count, 0.0);
-            auto result_count = tree.knnSearch(current.gaussians[i].mean.data(), query_count, out_indices.data(), out_distances.data());
+            auto result_count =
+                tree.knnSearch(current.gaussians[i].mean.data(), query_count, out_indices.data(), out_distances.data());
             const size_t take = std::min<size_t>(k_eff, result_count > 0 ? result_count - 1 : size_t { 0 });
             for (auto j = 0; j < take; j++) {
                 auto neighbor = static_cast<int32_t>(out_indices[j + 1]);
@@ -381,8 +397,10 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
 
         // Report blocks that need additional reduction passes.
         if (step >= max_step / 2) {
-            utility::logger().info("block: ", id, ", step: ", step, ", required: ", target_count, ", current: ", current.gaussians.size(),
-                '(', utility::fixed(static_cast<double>(current.gaussians.size()) / target_count * 100), "%)");
+            utility::logger().info(
+                "block: ", id, ", step: ", step, ", required: ", target_count, ", current: ", current.gaussians.size(),
+                '(', utility::fixed(static_cast<double>(current.gaussians.size()) / target_count * 100), "%)"
+            );
         }
 
         // cannot reduce any more...
@@ -398,10 +416,13 @@ Splat reduce_gaussians(size_t id, const Splat& input, size_t target_count, float
 } // namespace splat_transform::splat::lod::detail
 
 namespace splat_transform::splat::lod {
-void generate_lod(size_t id, SplatLod& lod, std::span<const SplatLevelParameters> parameters, size_t min_size, size_t max_step) {
+void generate_lod(
+    size_t id, SplatLod& lod, std::span<const SplatLevelParameters> parameters, size_t min_size, size_t max_step
+) {
     const auto base_count = lod.splats.back().gaussians.size();
     for (const auto& parameter : parameters) {
-        const auto target_count = std::max<size_t>(static_cast<size_t>(std::floor(static_cast<double>(base_count) * parameter.precision)), 1);
+        const auto target_count =
+            std::max<size_t>(static_cast<size_t>(std::floor(static_cast<double>(base_count) * parameter.precision)), 1);
         auto& current = lod.splats.back();
         if (current.gaussians.size() > min_size && target_count < current.gaussians.size()) {
             lod.splats.push_back(detail::reduce_gaussians(id, current, target_count, parameter.scale_boost, max_step));
@@ -410,11 +431,16 @@ void generate_lod(size_t id, SplatLod& lod, std::span<const SplatLevelParameters
     }
 }
 
-BlockedSplat generate_blocked_lod(Splat input, std::span<const SplatLevelParameters> parameters, float precision, block::SplitNormal normal) {
+BlockedSplat generate_blocked_lod(
+    Splat input, std::span<const SplatLevelParameters> parameters, float precision, block::SplitNormal normal
+) {
     BlockedSplat output;
     if (!input.size()) {
         output.splats.push_back(std::move(input));
-        output.blocks.push_back({ Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f::Zero()), std::vector<uint32_t>(parameters.size(), 0) });
+        output.blocks.push_back(
+            { Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f::Zero()),
+                std::vector<uint32_t>(parameters.size(), 0) }
+        );
         return output;
     }
     if (!(precision > 0 && precision <= 1) || parameters.empty()) {

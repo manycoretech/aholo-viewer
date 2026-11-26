@@ -11,7 +11,9 @@ public:
     splat::Splat read(const FileInput& input) const override;
     splat::Splat read(const std::filesystem::path& path, uint32_t max_sh_degree) const override;
     Bytes write(const splat::Splat& splat, std::span<const uint32_t> indices) const override;
-    void write(const std::filesystem::path& path, const splat::Splat& splat, std::span<const uint32_t> indices) const override;
+    void write(
+        const std::filesystem::path& path, const splat::Splat& splat, std::span<const uint32_t> indices
+    ) const override;
 
 private:
     int32_t version_;

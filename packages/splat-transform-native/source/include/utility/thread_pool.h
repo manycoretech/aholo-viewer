@@ -23,7 +23,8 @@ public:
     ThreadPool(size_t thread_count = default_thread_count());
     ThreadPool(ThreadPool&& other) noexcept;
 
-    template<typename F, typename... Args,
+    template<
+        typename F, typename... Args,
         typename ReturnType = std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>>
         requires std::invocable<std::decay_t<F>, std::decay_t<Args>...>
     std::future<ReturnType> submit_task(F&& f, Args&&... args);
@@ -140,7 +141,8 @@ std::future<ReturnType> ThreadPool::submit_task(F&& f, Args&&... args) {
     auto task = std::make_shared<std::packaged_task<ReturnType()>>(
         [function = std::forward<F>(f), ... arguments = std::forward<Args>(args)]() mutable -> ReturnType {
             return std::invoke(std::move(function), std::move(arguments)...);
-        });
+        }
+    );
     auto future = task->get_future();
     {
         auto lock = std::lock_guard(state->queue_mutex);

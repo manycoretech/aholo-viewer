@@ -60,10 +60,12 @@ Octree build_octree(const Grid& grid) {
     });
     // Preserve the last linear-grid entry if coordinates alias in the existing
     // 21-bit Morton encoding, as the previous sorted map insertion did.
-    leaves.erase(std::unique(leaves.begin(), leaves.end(), [](const Node& left, const Node& right) {
-        return left.key == right.key;
-    }),
-        leaves.end());
+    leaves.erase(
+        std::unique(
+            leaves.begin(), leaves.end(), [](const Node& left, const Node& right) { return left.key == right.key; }
+        ),
+        leaves.end()
+    );
     size_t node_count = leaves.size();
     const auto mixed_count = std::ranges::count_if(leaves, [](const Node& node) { return !node.solid; });
     do {
@@ -123,7 +125,8 @@ io::Bytes encode_octree(const Octree& tree, bool compact) {
     io::Bytes output;
     if (compact) {
         const uint32_t tag_bytes = static_cast<uint32_t>((tree.nodes.size() + 3) / 4);
-        for (uint32_t value : { 0x31424356u, 1u, static_cast<uint32_t>(tree.nodes.size()), tree.interiors, tree.mixed, static_cast<uint32_t>(tree.leaves.size()), tag_bytes, tree.interiors }) {
+        for (uint32_t value : { 0x31424356u, 1u, static_cast<uint32_t>(tree.nodes.size()), tree.interiors, tree.mixed,
+                 static_cast<uint32_t>(tree.leaves.size()), tag_bytes, tree.interiors }) {
             io::append(output, value);
         }
         io::Bytes tags(tag_bytes), masks;
@@ -154,7 +157,9 @@ float fallback_resolution(float current, float count, float target) {
     const float next = align(current * std::cbrt(count / target));
     return next > current ? next : align(current + 0.01f);
 }
-Occupancy voxelize_occupancy(const PreparedData& data, const Backend& backend, const Eigen::AlignedBox3f& bounds, GridSpec spec) {
+Occupancy voxelize_occupancy(
+    const PreparedData& data, const Backend& backend, const Eigen::AlignedBox3f& bounds, GridSpec spec
+) {
     auto timer = utility::logger().time("Voxelizing (" + std::string(backend.name()) + ") done");
     return { backend.voxelize(data, bounds, spec.voxel_resolution, spec.opacity_cutoff), bounds, spec };
 }
@@ -162,7 +167,8 @@ Occupancy voxelize_occupancy(const PreparedData& data, const Backend& backend, c
 Occupancy generate_occupancy(const splat::Splat& data, GridSpec spec) {
     auto prepared = prepare(data);
     if (prepared.gaussians.empty() || !prepared.scene.min().allFinite() || !prepared.scene.max().allFinite()) {
-        return { Grid {}, Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f::Constant(4 * spec.voxel_resolution)), spec };
+        return { Grid {},
+            Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f::Constant(4 * spec.voxel_resolution)), spec };
     }
     const auto bounds = align_bounds(prepared.scene, spec.voxel_resolution);
     auto backend = resolve_backend(BackendType::Gpu);
@@ -202,16 +208,21 @@ CollisionVolume generate_collision(const splat::Splat& input, const Options& opt
     if (!prepared.invalid_extents.empty()) {
         logger.info("voxel: skipped ", prepared.invalid_extents.size(), " gaussians with invalid extent values");
     }
-    logger.info("scene extents: (", utility::fixed(prepared.scene.min()[0]), ',', utility::fixed(prepared.scene.min()[1]), ',', utility::fixed(prepared.scene.min()[2]),
-        ") - (", utility::fixed(prepared.scene.max()[0]), ',', utility::fixed(prepared.scene.max()[1]), ',', utility::fixed(prepared.scene.max()[2]), ')');
+    logger.info(
+        "scene extents: (", utility::fixed(prepared.scene.min()[0]), ',', utility::fixed(prepared.scene.min()[1]), ',',
+        utility::fixed(prepared.scene.min()[2]), ") - (", utility::fixed(prepared.scene.max()[0]), ',',
+        utility::fixed(prepared.scene.max()[1]), ',', utility::fixed(prepared.scene.max()[2]), ')'
+    );
     const auto& navigation = options.navigation;
     if (navigation.floor_dilation < 0 || navigation.exterior_radius < 0) {
         throw std::runtime_error("Navigation dilation must be nonnegative");
     }
     const bool has_exterior = navigation.exterior_radius != 0 && navigation.seed.has_value();
     auto resolve_bounds = [&] {
-        const float exterior_pad = has_exterior ? (std::ceil(navigation.exterior_radius / resolution) + 1) * resolution : 0;
-        const float floor_pad = navigation.floor_fill ? (std::ceil(navigation.floor_dilation / resolution) + 1) * resolution : 0;
+        const float exterior_pad =
+            has_exterior ? (std::ceil(navigation.exterior_radius / resolution) + 1) * resolution : 0;
+        const float floor_pad =
+            navigation.floor_fill ? (std::ceil(navigation.floor_dilation / resolution) + 1) * resolution : 0;
         auto bounds = prepared.scene;
         for (int32_t a = 0; a < 3; ++a) {
             const float pad = a == 1 ? exterior_pad : std::max(exterior_pad, floor_pad);
@@ -235,7 +246,10 @@ CollisionVolume generate_collision(const splat::Splat& input, const Options& opt
                 break;
             }
             const auto next_resolution = fallback_resolution(resolution, count, target);
-            logger.info("voxel resolution fallback: grid blocks total=", count, ", target=", target, "; resolution ", resolution, " -> ", next_resolution);
+            logger.info(
+                "voxel resolution fallback: grid blocks total=", count, ", target=", target, "; resolution ",
+                resolution, " -> ", next_resolution
+            );
             resolution = next_resolution;
             bounds = resolve_bounds();
         }
@@ -256,7 +270,10 @@ CollisionVolume generate_collision(const splat::Splat& input, const Options& opt
         navigate(grid, bounds, resolution, navigation, *backend);
         {
             auto crop_time = logger.time("Crop voxel bounds");
-            crop_grid(grid, bounds, resolution, has_exterior || navigation.floor_fill, has_exterior || navigation.floor_fill ? 1 : 0);
+            crop_grid(
+                grid, bounds, resolution, has_exterior || navigation.floor_fill,
+                has_exterior || navigation.floor_fill ? 1 : 0
+            );
         }
         Octree tree;
         try {
@@ -266,21 +283,29 @@ CollisionVolume generate_collision(const splat::Splat& input, const Options& opt
             if (attempt == 4) {
                 throw;
             }
-            const auto next_resolution = fallback_resolution(resolution, static_cast<float>(error.count), std::floor(0x1000000 * 0.98f));
-            logger.info("voxel resolution fallback: octree nodes=", error.count, "; resolution ", resolution, " -> ", next_resolution);
+            const auto next_resolution =
+                fallback_resolution(resolution, static_cast<float>(error.count), std::floor(0x1000000 * 0.98f));
+            logger.info(
+                "voxel resolution fallback: octree nodes=", error.count, "; resolution ", resolution, " -> ",
+                next_resolution
+            );
             resolution = next_resolution;
             continue;
         }
         if (filter_grid) {
             filter_grids.push_back(std::move(*filter_grid));
         }
-        return { { std::move(grid), bounds, { resolution, cutoff } }, prepared.scene, std::move(tree), std::move(filter_grids) };
+        return { { std::move(grid), bounds, { resolution, cutoff } }, prepared.scene, std::move(tree),
+            std::move(filter_grids) };
     }
     throw std::logic_error("Voxel generation exhausted its attempts");
 }
 } // namespace
 
-void write(const splat::Splat& input, const std::filesystem::path& directory, const Options& options, const std::function<void(Occupancy&&)>& cache_grid) {
+void write(
+    const splat::Splat& input, const std::filesystem::path& directory, const Options& options,
+    const std::function<void(Occupancy&&)>& cache_grid
+) {
     auto generated = generate_collision(input, options);
     const auto& [grid, bounds, spec] = generated.collision;
     const auto& tree = generated.tree;
@@ -302,14 +327,11 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
         binary = codec::zstd_compress(binary, 12);
         filename += ".zst";
     }
-    const io::Json metadata {
-        { "version", "1.2" }, { "gridBounds", io::bounds_json(bounds) },
-        { "sceneBounds", io::bounds_json(generated.scene) },
-        { "voxelResolution", resolution }, { "leafSize", 4 }, { "treeDepth", tree.depth },
-        { "numInteriorNodes", tree.interiors }, { "numMixedLeaves", tree.mixed },
+    const io::Json metadata { { "version", "1.2" }, { "gridBounds", io::bounds_json(bounds) },
+        { "sceneBounds", io::bounds_json(generated.scene) }, { "voxelResolution", resolution }, { "leafSize", 4 },
+        { "treeDepth", tree.depth }, { "numInteriorNodes", tree.interiors }, { "numMixedLeaves", tree.mixed },
         { "nodeCount", tree.nodes.size() }, { "leafDataCount", tree.leaves.size() },
-        { "files", io::Json::array({ filename }) }, { "nodeEncoding", encoding }, { "compression", compression }
-    };
+        { "files", io::Json::array({ filename }) }, { "nodeEncoding", encoding }, { "compression", compression } };
     std::filesystem::create_directories(directory);
     const auto json = metadata.dump(2);
     logger.info("writing '", (directory / "voxel-meta.json").string(), "'...");
@@ -320,14 +342,24 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
     size_t mesh_bytes = 0;
     if (shape != CollisionMesh::None) {
         auto mesh_time = logger.time("Build collision mesh");
-        auto mesh = shape == CollisionMesh::Faces ? voxel_faces(grid, bounds, resolution) : marching_cubes(grid, bounds, resolution);
-        logger.info(shape == CollisionMesh::Faces ? "collision mesh faces: " : "collision mesh smooth: ", mesh.positions.size() / 3, " vertices, ", mesh.indices.size() / 3, " triangles");
+        auto mesh = shape == CollisionMesh::Faces ? voxel_faces(grid, bounds, resolution)
+                                                  : marching_cubes(grid, bounds, resolution);
+        logger.info(
+            shape == CollisionMesh::Faces ? "collision mesh faces: " : "collision mesh smooth: ",
+            mesh.positions.size() / 3, " vertices, ", mesh.indices.size() / 3, " triangles"
+        );
         if (shape != CollisionMesh::Faces) {
             const auto original_triangles = mesh.indices.size() / 3;
             mesh = merge_coplanar(mesh, resolution);
-            logger.info("collision mesh merged: ", mesh.positions.size() / 3, " vertices, ", mesh.indices.size() / 3, " triangles");
+            logger.info(
+                "collision mesh merged: ", mesh.positions.size() / 3, " vertices, ", mesh.indices.size() / 3,
+                " triangles"
+            );
             if (original_triangles) {
-                logger.info("collision mesh reduction: ", utility::fixed((1 - static_cast<float>(mesh.indices.size() / 3) / original_triangles) * 100, 0), '%');
+                logger.info(
+                    "collision mesh reduction: ",
+                    utility::fixed((1 - static_cast<float>(mesh.indices.size() / 3) / original_triangles) * 100, 0), '%'
+                );
             }
         }
         mesh_time.finish();
@@ -340,9 +372,12 @@ void write(const splat::Splat& input, const std::filesystem::path& directory, co
             io::write_bytes(directory / "collision.glb", glb);
         }
     }
-    const auto size_message = compression == "none" ? "octree " + utility::format_size(raw_bytes)
-                                                    : "octree raw: " + utility::format_size(raw_bytes) + ", " + compression + ": " + utility::format_size(binary.size()) +
-                                                          " (" + utility::fixed(raw_bytes ? static_cast<float>(binary.size()) / raw_bytes * 100 : 0) + "%)";
+    const auto size_message =
+        compression == "none"
+            ? "octree " + utility::format_size(raw_bytes)
+            : "octree raw: " + utility::format_size(raw_bytes) + ", " + compression + ": " +
+                  utility::format_size(binary.size()) + " (" +
+                  utility::fixed(raw_bytes ? static_cast<float>(binary.size()) / raw_bytes * 100 : 0) + "%)";
     logger.info(size_message, mesh_bytes ? ", collision mesh " + utility::format_size(mesh_bytes) : "");
     if (cache_grid) {
         for (auto& field : generated.filter_grids) {

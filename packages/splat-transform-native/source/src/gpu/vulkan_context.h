@@ -36,7 +36,9 @@ public:
     size_t allocation_bytes() const override;
     std::unique_ptr<detail::BackendBuffer> create_buffer(size_t size, BufferMemory memory, bool within_budget) override;
     std::unique_ptr<detail::BackendPipeline> create_pipeline(const ComputeShader& shader) override;
-    std::unique_ptr<detail::BackendDescriptorTable> create_descriptor_table(detail::BackendPipeline& pipeline, std::span<const detail::BackendRange> buffers) override;
+    std::unique_ptr<detail::BackendDescriptorTable> create_descriptor_table(
+        detail::BackendPipeline& pipeline, std::span<const detail::BackendRange> buffers
+    ) override;
     std::unique_ptr<detail::BackendCommands> create_commands() override;
     std::unique_ptr<detail::BackendQueue> create_queue() override;
     std::unique_ptr<detail::BackendFence> create_fence(uint64_t initial_value) override;

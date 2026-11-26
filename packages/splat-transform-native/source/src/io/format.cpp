@@ -19,21 +19,39 @@ struct Format {
     std::unique_ptr<IFile> (*create)(const FileOptions&);
 };
 template<typename T>
-std::unique_ptr<IFile> make_file(const FileOptions&) {
-    return std::make_unique<T>();
-}
+std::unique_ptr<IFile> make_file(const FileOptions&) { return std::make_unique<T>(); }
 const std::array FORMATS {
     Format { ".ply", true, make_file<PlyFile> },
-    Format { ".spz", true, [](const FileOptions& options) -> std::unique_ptr<IFile> {
-                return std::make_unique<SpzFile>(options.version, options.compress_level, options.sh_bits);
-            } },
-    Format { ".uspz", true, [](const FileOptions& options) -> std::unique_ptr<IFile> { return std::make_unique<SpzFile>(3, -1, options.sh_bits); } },
+    Format {
+        ".spz",
+        true,
+        [](const FileOptions& options) -> std::unique_ptr<IFile> {
+            return std::make_unique<SpzFile>(options.version, options.compress_level, options.sh_bits);
+        },
+    },
+    Format {
+        ".uspz",
+        true,
+        [](const FileOptions& options) -> std::unique_ptr<IFile> {
+            return std::make_unique<SpzFile>(3, -1, options.sh_bits);
+        },
+    },
     Format { ".splat", true, make_file<SplatFile> },
-    Format { ".sog", true, [](const FileOptions& options) -> std::unique_ptr<IFile> {
-                return std::make_unique<SogFile>(options.version, options.palette_size, options.color_error);
-            } },
+    Format {
+        ".sog",
+        true,
+        [](const FileOptions& options) -> std::unique_ptr<IFile> {
+            return std::make_unique<SogFile>(options.version, options.palette_size, options.color_error);
+        },
+    },
     Format { ".json", false, make_file<SogFile> },
-    Format { ".esz", true, [](const FileOptions& options) -> std::unique_ptr<IFile> { return std::make_unique<EszFile>(options.high_precision, options.sh_bits); } },
+    Format {
+        ".esz",
+        true,
+        [](const FileOptions& options) -> std::unique_ptr<IFile> {
+            return std::make_unique<EszFile>(options.high_precision, options.sh_bits);
+        },
+    },
     Format { ".ksplat", false, make_file<KsplatFile> },
     Format { ".lcc", false, make_file<LccFile> },
     Format { ".lcc2", false, make_file<Lcc2File> },
@@ -59,7 +77,9 @@ std::string input_extension(const FileInput& input) {
 Bytes IFile::write(const splat::Splat&, std::span<const uint32_t>) const {
     throw std::runtime_error("Writing is unsupported for " + std::string(this->name()));
 }
-void IFile::write(const std::filesystem::path& path, const splat::Splat& splat, std::span<const uint32_t> indices) const {
+void IFile::write(
+    const std::filesystem::path& path, const splat::Splat& splat, std::span<const uint32_t> indices
+) const {
     write_bytes(path, this->write(splat, indices));
 }
 splat::Splat IFile::read(const std::filesystem::path& path, uint32_t max_sh_degree) const {
@@ -70,7 +90,10 @@ std::unique_ptr<IFile> create_file(std::string_view extension, const FileOptions
     const auto normalized = utility::lower(std::string(extension));
     const auto found = std::ranges::find(FORMATS, normalized, &Format::extension);
     if (found == FORMATS.end() || (operation == FileOperation::Write && !found->writable)) {
-        throw std::runtime_error(std::string("Unsupported ") + (operation == FileOperation::Read ? "input" : "output") + " format: " + normalized);
+        throw std::runtime_error(
+            std::string("Unsupported ") + (operation == FileOperation::Read ? "input" : "output") +
+            " format: " + normalized
+        );
     }
     return found->create(options);
 }

@@ -22,7 +22,8 @@ void parallel_chunks(size_t count, size_t grain, F&& function) {
     TaskGroup<void> tasks(pool, workers);
     for (size_t worker = 0; worker < workers; ++worker) {
         tasks.submit([&] {
-            for (auto begin = next.fetch_add(grain, std::memory_order_relaxed); begin < count; begin = next.fetch_add(grain, std::memory_order_relaxed)) {
+            for (auto begin = next.fetch_add(grain, std::memory_order_relaxed); begin < count;
+                begin = next.fetch_add(grain, std::memory_order_relaxed)) {
                 function(begin, std::min(count, begin + grain));
             }
         });

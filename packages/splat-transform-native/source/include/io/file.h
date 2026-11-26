@@ -112,7 +112,9 @@ public:
     virtual splat::Splat read(const FileInput& input) const = 0;
     virtual splat::Splat read(const std::filesystem::path& path, uint32_t max_sh_degree) const;
     virtual Bytes write(const splat::Splat& splat, std::span<const uint32_t> indices) const;
-    virtual void write(const std::filesystem::path& path, const splat::Splat& splat, std::span<const uint32_t> indices) const;
+    virtual void write(
+        const std::filesystem::path& path, const splat::Splat& splat, std::span<const uint32_t> indices
+    ) const;
     virtual bool requires_gpu() const noexcept { return false; }
     virtual bool preserve_bundle_order() const noexcept { return false; }
 };
@@ -120,6 +122,8 @@ enum class FileOperation {
     Read,
     Write,
 };
-std::unique_ptr<IFile> create_file(std::string_view extension, const FileOptions& options = {}, FileOperation operation = FileOperation::Read);
+std::unique_ptr<IFile> create_file(
+    std::string_view extension, const FileOptions& options = {}, FileOperation operation = FileOperation::Read
+);
 splat::Splat read_splat(const FileInput& input);
 } // namespace splat_transform::io

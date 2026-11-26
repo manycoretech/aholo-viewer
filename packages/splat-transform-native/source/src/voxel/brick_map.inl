@@ -9,7 +9,8 @@ template<uint32_t BrickSize>
     requires ValidBrickSize<BrickSize>
 Eigen::Vector3i BrickMap<BrickSize>::origin(uint32_t index) const {
     const auto row = index / this->dimensions_.x();
-    return Eigen::Vector3i(index % this->dimensions_.x(), row % this->dimensions_.y(), row / this->dimensions_.y()) * block_side;
+    return Eigen::Vector3i(index % this->dimensions_.x(), row % this->dimensions_.y(), row / this->dimensions_.y()) *
+           block_side;
 }
 template<uint32_t BrickSize>
     requires ValidBrickSize<BrickSize>
@@ -89,7 +90,8 @@ template<uint32_t BrickSize>
     requires ValidBrickSize<BrickSize>
 bool BrickMap<BrickSize>::empty() const {
     const auto empty_slot = this->background_ ? SOLID : EMPTY;
-    return this->pool_.empty() && std::ranges::all_of(this->directory_, [empty_slot](uint32_t slot) { return slot == empty_slot; });
+    return this->pool_.empty() &&
+           std::ranges::all_of(this->directory_, [empty_slot](uint32_t slot) { return slot == empty_slot; });
 }
 template<uint32_t BrickSize>
     requires ValidBrickSize<BrickSize>

@@ -20,10 +20,9 @@ uint64_t pipeline_hash(const gpu::ComputeShader& shader) noexcept {
         constants += XXH3_64bits(value.data(), value.size() * sizeof(uint32_t));
     }
     const auto code = shader.code.bytes;
-    const std::array<uint64_t, 6> fields {
-        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(code.data())), static_cast<uint64_t>(code.size()),
-        shader.push_constant_bytes, static_cast<uint64_t>(shader.bindings.size()), static_cast<uint64_t>(shader.constants.size()), constants
-    };
+    const std::array<uint64_t, 6> fields { static_cast<uint64_t>(reinterpret_cast<uintptr_t>(code.data())),
+        static_cast<uint64_t>(code.size()), shader.push_constant_bytes, static_cast<uint64_t>(shader.bindings.size()),
+        static_cast<uint64_t>(shader.constants.size()), constants };
     uint64_t hash = XXH3_64bits(fields.data(), fields.size() * sizeof(uint64_t));
     for (const auto access : shader.bindings) {
         const auto value = static_cast<uint32_t>(access);
@@ -41,8 +40,10 @@ const gpu::ComputePipeline& GpuWorkspace::pipeline(const gpu::ComputeShader& sha
     }
     return found->second;
 }
-void GpuWorkspace::execute(const gpu::ComputeShader& shader, const std::vector<BufferData>& bindings,
-    std::span<const std::byte> push, std::array<uint32_t, 3> groups) {
+void GpuWorkspace::execute(
+    const gpu::ComputeShader& shader, const std::vector<BufferData>& bindings, std::span<const std::byte> push,
+    std::array<uint32_t, 3> groups
+) {
     std::vector<uint32_t> slots(bindings.size());
     std::iota(slots.begin(), slots.end(), 0);
     this->execute_chain(bindings, { { shader, std::move(slots), push, groups } });
@@ -55,19 +56,30 @@ void GpuWorkspace::execute_chain(const std::vector<BufferData>& bindings, const 
     // Validate all host ranges and stage indices before changing reused storage.
     for (const auto& binding : bindings) {
         const size_t size = std::max<size_t>(4, std::max(binding.bytes.size(), binding.size));
-        require(size <= this->device_.limits().storage_buffer_bytes && size % 4 == 0, "GPU workspace buffer size exceeds device limits or alignment");
-        require(binding.output.size() <= size && binding.bytes.size() % 4 == 0 && binding.output.size() % 4 == 0,
-            "GPU workspace transfer range exceeds the buffer or is unaligned");
+        require(
+            size <= this->device_.limits().storage_buffer_bytes && size % 4 == 0,
+            "GPU workspace buffer size exceeds device limits or alignment"
+        );
+        require(
+            binding.output.size() <= size && binding.bytes.size() % 4 == 0 && binding.output.size() % 4 == 0,
+            "GPU workspace transfer range exceeds the buffer or is unaligned"
+        );
     }
     std::vector<const gpu::ComputePipeline*> pipelines;
     for (const auto& stage : stages) {
-        require(stage.bindings.size() == stage.shader.bindings.size() && stage.push.size() == stage.shader.push_constant_bytes,
-            "GPU workspace stage differs from its pipeline layout");
+        require(
+            stage.bindings.size() == stage.shader.bindings.size() &&
+                stage.push.size() == stage.shader.push_constant_bytes,
+            "GPU workspace stage differs from its pipeline layout"
+        );
         for (const auto slot : stage.bindings) {
             require(slot < bindings.size(), "GPU workspace stage references an unavailable buffer");
         }
         for (size_t axis = 0; axis < 3; ++axis) {
-            require(stage.groups[axis] <= this->device_.limits().workgroup_count[axis], "GPU dispatch exceeds device workgroup limits");
+            require(
+                stage.groups[axis] <= this->device_.limits().workgroup_count[axis],
+                "GPU dispatch exceeds device workgroup limits"
+            );
         }
         pipelines.push_back(&this->pipeline(stage.shader));
     }

@@ -10,9 +10,7 @@ size_t default_pool_thread_count = std::clamp(std::bit_ceil(std::thread::hardwar
 
 thread_local ThreadPool::State* ThreadPool::current_state_ = nullptr;
 
-size_t default_thread_count() noexcept {
-    return default_pool_thread_count;
-}
+size_t default_thread_count() noexcept { return default_pool_thread_count; }
 
 void configure_default_pool(size_t thread_count) noexcept {
     const auto hardware = std::thread::hardware_concurrency();
@@ -24,8 +22,7 @@ ThreadPool& default_pool() {
     return pool;
 }
 
-ThreadPool::ThreadPool(size_t thread_count)
-    : state_(std::make_unique<State>()) {
+ThreadPool::ThreadPool(size_t thread_count) : state_(std::make_unique<State>()) {
     thread_count = std::max(thread_count, static_cast<size_t>(1));
     this->state_->workers.reserve(thread_count);
     for (size_t i = 0; i < thread_count; ++i) {
@@ -37,13 +34,9 @@ ThreadPool::ThreadPool(ThreadPool&& other) noexcept = default;
 ThreadPool& ThreadPool::operator=(ThreadPool&& other) noexcept = default;
 ThreadPool::~ThreadPool() noexcept = default;
 
-size_t ThreadPool::thread_count() const noexcept {
-    return this->state_ ? this->state_->workers.size() : 0;
-}
+size_t ThreadPool::thread_count() const noexcept { return this->state_ ? this->state_->workers.size() : 0; }
 
-bool ThreadPool::owns_current_thread() const noexcept {
-    return this->state_ && current_state_ == this->state_.get();
-}
+bool ThreadPool::owns_current_thread() const noexcept { return this->state_ && current_state_ == this->state_.get(); }
 
 bool ThreadPool::run_one() {
     Task task;
@@ -82,9 +75,7 @@ void ThreadPool::State::stop() noexcept {
     this->workers.clear();
 }
 
-ThreadPool::State::~State() noexcept {
-    this->stop();
-}
+ThreadPool::State::~State() noexcept { this->stop(); }
 
 void ThreadPool::worker_loop(std::stop_token token, State* state) {
     current_state_ = state;
@@ -92,7 +83,8 @@ void ThreadPool::worker_loop(std::stop_token token, State* state) {
         ThreadPool::Task task;
         {
             auto lk = std::unique_lock(state->queue_mutex);
-            if (!state->cv.wait(lk, token, [&] { return !state->tasks.empty(); }) || state->stopped.load(std::memory_order_relaxed)) {
+            if (!state->cv.wait(lk, token, [&] { return !state->tasks.empty(); }) ||
+                state->stopped.load(std::memory_order_relaxed)) {
                 break;
             }
             task = std::move(state->tasks.front());

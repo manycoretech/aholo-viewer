@@ -14,9 +14,14 @@ void ReadTask::exec(const Json& config, TaskContext& context) const {
         total_bytes += std::filesystem::file_size(path);
         parts.push_back(io::read_splat(path, max_sh));
     }
-    auto data = std::make_shared<splat::Splat>(parts.size() == 1 ? std::move(parts.front()) : splat::combine(std::move(parts), true));
+    auto data = std::make_shared<splat::Splat>(
+        parts.size() == 1 ? std::move(parts.front()) : splat::combine(std::move(parts), true)
+    );
     auto& logger = utility::logger();
-    logger.info("load: ", inputs.size(), " files | sizes=", utility::fixed(static_cast<float>(total_bytes) / (1024 * 1024)), "MB");
+    logger.info(
+        "load: ", inputs.size(), " files | sizes=", utility::fixed(static_cast<float>(total_bytes) / (1024 * 1024)),
+        "MB"
+    );
     for (const auto& input : inputs) {
         logger.info("  - ", context.paths.resolve(input.get<std::string>()).string());
     }

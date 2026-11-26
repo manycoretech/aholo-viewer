@@ -50,7 +50,8 @@ Fixture fixture(int32_t version, uint32_t degree = 0, size_t palette_count = 1, 
         sh[i] = static_cast<float>(i) / 16;
     }
     Fixture result { { { "version", version }, { "count", 4 },
-                         { "means", { { "mins", { 0, 0, 0 } }, { "maxs", { 1, 1, 1 } }, { "files", { "means_l.webp", "means_u.webp" } } } },
+                         { "means", { { "mins", { 0, 0, 0 } }, { "maxs", { 1, 1, 1 } },
+                                        { "files", { "means_l.webp", "means_u.webp" } } } },
                          { "scales", { { "codebook", scales }, { "files", { "scales.webp" } } } },
                          { "sh0", { { "codebook", colors }, { "files", { "sh0.webp" } } } } },
         {} };
@@ -82,7 +83,8 @@ Fixture fixture(int32_t version, uint32_t degree = 0, size_t palette_count = 1, 
     }
     if (degree) {
         const size_t coefficients = version == 1 ? 15 : splat::SH_COUNTS[degree] / 3;
-        const auto width = static_cast<uint32_t>(64 * coefficients), height = static_cast<uint32_t>((palette_count + 63) / 64);
+        const auto width = static_cast<uint32_t>(64 * coefficients),
+                   height = static_cast<uint32_t>((palette_count + 63) / 64);
         io::Bytes centroids(static_cast<size_t>(width) * height * 4, std::byte { 255 });
         for (size_t j = 0; j < coefficients; ++j) {
             for (size_t c = 0; c < 3; ++c) {
@@ -97,7 +99,8 @@ Fixture fixture(int32_t version, uint32_t degree = 0, size_t palette_count = 1, 
         }
         result.files["shN_centroids.webp"] = codec::encode_webp(centroids, width, height);
         result.files["shN_labels.webp"] = codec::encode_webp(labels, 4, 4);
-        result.meta["shN"] = { { "count", palette_count }, { "bands", degree }, { "codebook", sh }, { "files", { "shN_centroids.webp", "shN_labels.webp" } } };
+        result.meta["shN"] = { { "count", palette_count }, { "bands", degree }, { "codebook", sh },
+            { "files", { "shN_centroids.webp", "shN_labels.webp" } } };
         if (version == 1) {
             result.meta["shN"]["shape"] = { 4, splat::SH_COUNTS[degree] };
             result.meta["shN"]["mins"] = 0;
@@ -123,8 +126,16 @@ splat::Splat cloud(uint32_t degree = 0) {
 }
 void rotation_and_opacity() {
     auto data = cloud();
-    require(codec::encode_exp_quaternion(data.gaussians[0].rotation) == std::array { std::byte { 128 }, std::byte { 128 }, std::byte { 128 } }, "Identity rotation must encode exactly");
-    require(codec::encode_exp_quaternion(data.gaussians[1].rotation) == std::array { std::byte { 255 }, std::byte { 128 }, std::byte { 128 } }, "Half-turn rotation has wrong exp-map bytes");
+    require(
+        codec::encode_exp_quaternion(data.gaussians[0].rotation) ==
+            std::array { std::byte { 128 }, std::byte { 128 }, std::byte { 128 } },
+        "Identity rotation must encode exactly"
+    );
+    require(
+        codec::encode_exp_quaternion(data.gaussians[1].rotation) ==
+            std::array { std::byte { 255 }, std::byte { 128 }, std::byte { 128 } },
+        "Half-turn rotation has wrong exp-map bytes"
+    );
     std::mt19937 random(370);
     std::normal_distribution<float> normal;
     for (size_t i = 0; i < 4096; ++i) {
@@ -132,28 +143,44 @@ void rotation_and_opacity() {
         rotation = Eigen::Quaternionf(normal(random), normal(random), normal(random), normal(random));
         const auto bytes = codec::encode_exp_quaternion(data.gaussians[0].rotation);
         rotation.coeffs() *= -1;
-        require(codec::encode_exp_quaternion(data.gaussians[0].rotation) == bytes, "Quaternion sign changed the exp map");
+        require(
+            codec::encode_exp_quaternion(data.gaussians[0].rotation) == bytes, "Quaternion sign changed the exp map"
+        );
         data.gaussians[2].rotation = codec::decode_exp_quaternion(bytes);
         data.gaussians[2].rotation.normalize();
-        require(data.gaussians[2].rotation.angularDistance(rotation.normalized()) < 0.023f, "Exp-map angular error exceeds 1.32 degrees");
+        require(
+            data.gaussians[2].rotation.angularDistance(rotation.normalized()) < 0.023f,
+            "Exp-map angular error exceeds 1.32 degrees"
+        );
 
         rotation.normalize();
         auto opposite = rotation;
         opposite.coeffs() *= -1;
         const auto packed = codec::encode_quaternion(rotation, true);
         require(codec::encode_quaternion(opposite, true) == packed, "Quaternion sign changed the packed encoding");
-        require(codec::decode_quaternion(packed).normalized().angularDistance(rotation) < 0.025f, "Packed quaternion round trip changed rotation");
+        require(
+            codec::decode_quaternion(packed).normalized().angularDistance(rotation) < 0.025f,
+            "Packed quaternion round trip changed rotation"
+        );
         const auto oct = codec::encode_oct_quaternion(rotation);
         require(codec::encode_oct_quaternion(opposite) == oct, "Quaternion sign changed the oct encoding");
-        require(codec::decode_oct_quaternion(oct).normalized().angularDistance(rotation) < 0.025f, "Oct quaternion round trip changed rotation");
+        require(
+            codec::decode_oct_quaternion(oct).normalized().angularDistance(rotation) < 0.025f,
+            "Oct quaternion round trip changed rotation"
+        );
     }
     for (uint32_t i = 0; i < 256; ++i) {
         const auto value = static_cast<std::byte>(i);
         const float expected = static_cast<float>(i) * static_cast<float>(i) / (204 * 204);
-        require(std::abs(codec::decode_sog_opacity(value) - expected) < 3e-7f, "Opacity does not follow the v3 square law");
+        require(
+            std::abs(codec::decode_sog_opacity(value) - expected) < 3e-7f, "Opacity does not follow the v3 square law"
+        );
         require(codec::encode_sog_opacity(expected) == value, "Opacity byte failed to round-trip");
     }
-    require(codec::encode_sog_opacity(-1) == std::byte { 0 } && codec::encode_sog_opacity(2) == std::byte { 255 }, "Opacity saturation failed");
+    require(
+        codec::encode_sog_opacity(-1) == std::byte { 0 } && codec::encode_sog_opacity(2) == std::byte { 255 },
+        "Opacity saturation failed"
+    );
 }
 void readers(const std::filesystem::path& directory) {
     for (int32_t version : { 1, 2, 3 }) {
@@ -164,19 +191,41 @@ void readers(const std::filesystem::path& directory) {
             require(data.size() == 4 && data.sh_degree == degree, "SOG reader changed count or SH degree");
             const float opacity = version == 1 ? 1 / (1 + std::exp(-4.0f)) : version == 2 ? 1
                                                                                           : 1.5625f;
-            require(std::abs(data.gaussians[3].opacity - opacity) < 1e-6f, "SOG opacity decoding differs from known bytes");
-            require(data.gaussians[0].mean.isZero() && data.gaussians[0].scale == Eigen::Vector3f::Ones(), "SOG position or scale decoding changed");
+            require(
+                std::abs(data.gaussians[3].opacity - opacity) < 1e-6f, "SOG opacity decoding differs from known bytes"
+            );
+            require(
+                data.gaussians[0].mean.isZero() && data.gaussians[0].scale == Eigen::Vector3f::Ones(),
+                "SOG position or scale decoding changed"
+            );
             for (size_t c = 0; c < data.sh_count(); ++c) {
-                require(data.gaussians[0].attribute(splat::ShOffset + c) == static_cast<float>(c + 1) / 16, "SOG SH palette channels are reordered");
+                require(
+                    data.gaussians[0].attribute(splat::ShOffset + c) == static_cast<float>(c + 1) / 16,
+                    "SOG SH palette channels are reordered"
+                );
             }
             const auto reduced = io::read_splat({ "fixture.sog", bytes, 0 });
             require(reduced.sh_degree == 0 && reduced.gaussians[0].sh.size() == 3, "SOG maxShDegree was ignored");
             if (version == 3) {
-                require(data.gaussians[0].rotation.coeffs() == Eigen::Quaternionf::Identity().coeffs(), "V3 identity rotation did not decode exactly");
-                require(data.gaussians[1].rotation.angularDistance(Eigen::Quaternionf(0, 1, 0, 0)) < 1e-6f, "V3 rotation RGB channels are reordered");
-                require(data.gaussians[2].rotation.angularDistance(Eigen::Quaternionf(0, 0, -1, 0)) < 1e-6f, "V3 rotation green channel is ignored");
-                const Eigen::Quaternionf expected(Eigen::AngleAxisf(std::numbers::pi_v<float> * 64 / 127, Eigen::Vector3f::UnitZ()));
-                require(data.gaussians[3].rotation.angularDistance(expected) < 1e-6f, "V3 exp-map angle differs from known bytes");
+                require(
+                    data.gaussians[0].rotation.coeffs() == Eigen::Quaternionf::Identity().coeffs(),
+                    "V3 identity rotation did not decode exactly"
+                );
+                require(
+                    data.gaussians[1].rotation.angularDistance(Eigen::Quaternionf(0, 1, 0, 0)) < 1e-6f,
+                    "V3 rotation RGB channels are reordered"
+                );
+                require(
+                    data.gaussians[2].rotation.angularDistance(Eigen::Quaternionf(0, 0, -1, 0)) < 1e-6f,
+                    "V3 rotation green channel is ignored"
+                );
+                const Eigen::Quaternionf expected(
+                    Eigen::AngleAxisf(std::numbers::pi_v<float> * 64 / 127, Eigen::Vector3f::UnitZ())
+                );
+                require(
+                    data.gaussians[3].rotation.angularDistance(expected) < 1e-6f,
+                    "V3 exp-map angle differs from known bytes"
+                );
             }
         }
     }
@@ -190,7 +239,10 @@ void readers(const std::filesystem::path& directory) {
     partial.meta["shN"]["count"] = 65;
     const auto partial_bytes = partial.bundle();
     const auto decoded = io::read_splat({ "partial.sog", partial_bytes });
-    require(decoded.gaussians[0].attribute(splat::ShOffset) == 1.0f / 16, "SOG reader failed to decode a referenced palette entry");
+    require(
+        decoded.gaussians[0].attribute(splat::ShOffset) == 1.0f / 16,
+        "SOG reader failed to decode a referenced palette entry"
+    );
     const auto source = fixture(3);
     for (const auto& [name, bytes] : source.files) {
         io::write_bytes(directory / name, bytes);
@@ -215,28 +267,49 @@ void writers() {
         const auto bytes = io::SogFile(version).write(source, indices);
         io::Resources resources("result.sog", bytes, ".sog");
         const auto& meta = resources.meta;
-        require(meta.at("version") == version && meta.at("count") == indices.size(), "SOG writer lost version or subset count");
-        require(meta.at("quats").at("files") == io::Json::array({ "quats.webp" }), "SOG must reference the quaternion texture");
+        require(
+            meta.at("version") == version && meta.at("count") == indices.size(),
+            "SOG writer lost version or subset count"
+        );
+        require(
+            meta.at("quats").at("files") == io::Json::array({ "quats.webp" }),
+            "SOG must reference the quaternion texture"
+        );
         require(meta.contains("opacity") == (version == 3), "SOG opacity metadata has the wrong version");
         const auto colors = codec::decode_webp(resources.read("sh0.webp"));
-        require(colors.rgba[3] == std::byte { 255 } && colors.rgba[11] == std::byte { 0 }, "Opacity endpoints were not preserved");
+        require(
+            colors.rgba[3] == std::byte { 255 } && colors.rgba[11] == std::byte { 0 },
+            "Opacity endpoints were not preserved"
+        );
         if (version == 3) {
             const auto low = codec::decode_webp(resources.read("means_l.webp"));
             const auto high = codec::decode_webp(resources.read("means_u.webp"));
             const auto scales = codec::decode_webp(resources.read("scales.webp"));
             const auto quats = codec::decode_webp(resources.read("quats.webp"));
-            require(quats.rgba[4] == std::byte { 255 } && quats.rgba[5] == std::byte { 128 } && quats.rgba[6] == std::byte { 128 }, "Exp-map bytes are not in quaternion RGB");
+            require(
+                quats.rgba[4] == std::byte { 255 } && quats.rgba[5] == std::byte { 128 } &&
+                    quats.rgba[6] == std::byte { 128 },
+                "Exp-map bytes are not in quaternion RGB"
+            );
             for (size_t i = 0; i < indices.size(); ++i) {
-                require(low.rgba[i * 4 + 3] == std::byte { 255 } && high.rgba[i * 4 + 3] == std::byte { 255 } &&
-                            scales.rgba[i * 4 + 3] == std::byte { 255 } && quats.rgba[i * 4 + 3] == std::byte { 255 },
-                    "SOG position, scale and rotation textures must have opaque alpha");
+                require(
+                    low.rgba[i * 4 + 3] == std::byte { 255 } && high.rgba[i * 4 + 3] == std::byte { 255 } &&
+                        scales.rgba[i * 4 + 3] == std::byte { 255 } && quats.rgba[i * 4 + 3] == std::byte { 255 },
+                    "SOG position, scale and rotation textures must have opaque alpha"
+                );
             }
             require(meta.at("opacity").at("max") == 1.5625f, "Opacity maximum is not the largest stored value");
         }
         const auto data = io::read_splat({ "result.sog", bytes });
         for (size_t i = 0; i < indices.size(); ++i) {
-            require((data.gaussians[i].mean - source.gaussians[indices[i]].mean).norm() < 0.001f, "SOG writer changed the requested point order");
-            require(data.gaussians[i].rotation.angularDistance(source.gaussians[indices[i]].rotation) < 0.04f, "SOG rotation error exceeded tolerance");
+            require(
+                (data.gaussians[i].mean - source.gaussians[indices[i]].mean).norm() < 0.001f,
+                "SOG writer changed the requested point order"
+            );
+            require(
+                data.gaussians[i].rotation.angularDistance(source.gaussians[indices[i]].rotation) < 0.04f,
+                "SOG rotation error exceeded tolerance"
+            );
         }
         const auto empty = io::SogFile(version).write(splat::Splat(0, 3), {});
         require(io::read_splat({ "empty.sog", empty }).size() == 0, "Empty SOG failed to round-trip");
@@ -246,7 +319,10 @@ void writers() {
         point.opacity = 1;
     }
     const auto bytes = io::SogFile(3).write(opaque, indices);
-    require(!io::Resources("opaque.sog", bytes, ".sog").meta.contains("opacity"), "Unity opacity should omit optional opacity.max");
+    require(
+        !io::Resources("opaque.sog", bytes, ".sog").meta.contains("opacity"),
+        "Unity opacity should omit optional opacity.max"
+    );
 }
 void pipeline_options(const std::filesystem::path& directory) {
     pipeline::TaskContext context;
@@ -262,13 +338,19 @@ void pipeline_options(const std::filesystem::path& directory) {
             pipeline::WriteTask().exec(config, context);
             auto bytes = io::read_bytes(path);
             if (std::string_view(extension) == ".sog") {
-                require(io::Resources(path, bytes, ".sog").meta.at("version") == (version == 3 ? 3 : 2), "SOG version did not fall back to v2");
+                require(
+                    io::Resources(path, bytes, ".sog").meta.at("version") == (version == 3 ? 3 : 2),
+                    "SOG version did not fall back to v2"
+                );
             } else {
                 if (bytes[0] == std::byte { 0x1f }) {
                     bytes = codec::gunzip(bytes);
                 }
                 const auto expected = std::string_view(extension) == ".spz" && version == 4 ? 4u : 3u;
-                require(io::ByteReader(bytes).read_at<uint32_t>(4) == expected, "SPZ version fallback or USPZ behavior changed");
+                require(
+                    io::ByteReader(bytes).read_at<uint32_t>(4) == expected,
+                    "SPZ version fallback or USPZ behavior changed"
+                );
             }
             require(io::read_splat(path).size() == 4, "Shared Write options produced an unreadable file");
         }
@@ -293,30 +375,37 @@ void wide_palette_writer() {
     io::Resources resources("wide-output.sog", bytes, ".sog");
     require(resources.meta.at("shN").at("count") == COUNT, "SOG v3 palette was truncated to 65536");
     const auto capped = io::SogFile(2, 262145).write(source, indices);
-    require(io::Resources("capped.sog", capped, ".sog").meta.at("shN").at("count") == 65536, "Fixed palette was not clamped to the v2 format limit");
+    require(
+        io::Resources("capped.sog", capped, ".sog").meta.at("shN").at("count") == 65536,
+        "Fixed palette was not clamped to the v2 format limit"
+    );
     const auto labels = codec::decode_webp(resources.read("shN_labels.webp"));
-    require(labels.rgba[0] == std::byte { 0 } && labels.rgba[1] == std::byte { 0 } && labels.rgba[2] == std::byte { 1 }, "SOG writer discarded the high SH label byte");
+    require(
+        labels.rgba[0] == std::byte { 0 } && labels.rgba[1] == std::byte { 0 } && labels.rgba[2] == std::byte { 1 },
+        "SOG writer discarded the high SH label byte"
+    );
     const auto data = io::read_splat({ "wide-output.sog", bytes });
     require(data.size() == indices.size() && data.sh_degree == 1, "Wide SOG v3 palette failed to round-trip");
     for (size_t i = 0; i < data.size(); ++i) {
         for (size_t c = 3; c < 6; ++c) {
-            require(std::abs(data.gaussians[i].sh[c] - source.gaussians[indices[i]].sh[c]) < 0.25f, "Wide SOG v3 palette decoded the wrong centroid");
+            require(
+                std::abs(data.gaussians[i].sh[c] - source.gaussians[indices[i]].sh[c]) < 0.25f,
+                "Wide SOG v3 palette decoded the wrong centroid"
+            );
         }
     }
 }
 void invalid_inputs() {
     const auto source = fixture(3, 3);
-    for (const auto& modify : std::vector<std::function<void(Fixture&)>> {
-             [](Fixture& f) { f.meta["version"] = 4; },
-             [](Fixture& f) { f.meta["shN"]["bands"] = 4; },
-             [](Fixture& f) { f.meta["count"] = 17; },
-             [](Fixture& f) { f.meta["means"]["files"] = { "means_l.webp" }; },
-             [](Fixture& f) { f.meta.erase("quats"); },
-             [](Fixture& f) { f.meta["quats"]["files"] = io::Json::array(); },
-             [](Fixture& f) { f.files["quats.webp"] = codec::encode_webp(io::Bytes(8 * 4 * 4), 8, 4); },
-             [](Fixture& f) { f.meta["shN"]["count"] = 0; },
-             [](Fixture& f) { f.files["shN_centroids.webp"] = codec::encode_webp(io::Bytes(4), 1, 1); },
-             [](Fixture& f) { f.files["scales.webp"] = codec::encode_webp(io::Bytes(8 * 4 * 4), 8, 4); } }) {
+    for (const auto& modify :
+        std::vector<std::function<void(Fixture&)>> { [](Fixture& f) { f.meta["version"] = 4; },
+            [](Fixture& f) { f.meta["shN"]["bands"] = 4; }, [](Fixture& f) { f.meta["count"] = 17; },
+            [](Fixture& f) { f.meta["means"]["files"] = { "means_l.webp" }; },
+            [](Fixture& f) { f.meta.erase("quats"); }, [](Fixture& f) { f.meta["quats"]["files"] = io::Json::array(); },
+            [](Fixture& f) { f.files["quats.webp"] = codec::encode_webp(io::Bytes(8 * 4 * 4), 8, 4); },
+            [](Fixture& f) { f.meta["shN"]["count"] = 0; },
+            [](Fixture& f) { f.files["shN_centroids.webp"] = codec::encode_webp(io::Bytes(4), 1, 1); },
+            [](Fixture& f) { f.files["scales.webp"] = codec::encode_webp(io::Bytes(8 * 4 * 4), 8, 4); } }) {
         auto broken = source;
         modify(broken);
         const auto bytes = broken.bundle();
@@ -337,14 +426,20 @@ void palette_weights() {
     source.gaussians[2].opacity = 0.5f;
     source.gaussians[3].opacity = 0;
     const auto weights = spatial::sh_palette_weights(source);
-    require(weights[0] == weights[1] && weights[0] == 2 * weights[2] && weights[3] == 0, "SH visibility weights did not preserve flat splats or clamp opacity");
+    require(
+        weights[0] == weights[1] && weights[0] == 2 * weights[2] && weights[3] == 0,
+        "SH visibility weights did not preserve flat splats or clamp opacity"
+    );
     source.gaussians[2].scale *= 4;
     const auto scaled = spatial::sh_palette_weights(source);
     require(scaled[0] == scaled[2], "The two largest axes must contribute their area to the quarter power");
     for (auto& point : source.gaussians) {
         point.opacity = 0;
     }
-    require(spatial::sh_palette_weights(source) == std::vector<float>(4, 1.0f), "Invisible inputs must use uniform fallback weights");
+    require(
+        spatial::sh_palette_weights(source) == std::vector<float>(4, 1.0f),
+        "Invisible inputs must use uniform fallback weights"
+    );
 }
 
 void automatic_palettes(const std::filesystem::path& directory) {
@@ -375,7 +470,8 @@ void automatic_palettes(const std::filesystem::path& directory) {
     config["paletteSize"] = 0;
     config["colorError"] = 5.0;
     require(write(config) == automatic, "Zero and omitted paletteSize or default colorError disagree");
-    for (const double invalid : { 0.0, -1.0, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN() }) {
+    for (const double invalid :
+        { 0.0, -1.0, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN() }) {
         config["colorError"] = invalid;
         require(write(config) == automatic, "Invalid colorError did not use 5");
     }
@@ -402,7 +498,10 @@ void weighted_palette_growth() {
     utility::default_random().seed(383);
     constexpr size_t limit = 4224;
     const auto trained = spatial::cluster_sh_to_color_error(source, limit, 1e-9);
-    require(trained.centroids.rows() == limit && trained.labels.size() == source.size(), "e-means did not grow past 4096 to the palette limit");
+    require(
+        trained.centroids.rows() == limit && trained.labels.size() == source.size(),
+        "e-means did not grow past 4096 to the palette limit"
+    );
     const spatial::FeatureView features(source);
     Eigen::MatrixXd sums = Eigen::MatrixXd::Zero(limit, features.dimensions());
     std::vector<double> mass(limit);
@@ -417,7 +516,11 @@ void weighted_palette_growth() {
     }
     for (size_t entry = 0; entry < limit; ++entry) {
         if (mass[entry] > 0) {
-            require((trained.centroids.row(entry).cast<double>() - sums.row(entry) / mass[entry]).cwiseAbs().maxCoeff() < 1e-5, "Closing centroids do not match their weighted members");
+            require(
+                (trained.centroids.row(entry).cast<double>() - sums.row(entry) / mass[entry]).cwiseAbs().maxCoeff() <
+                    1e-5,
+                "Closing centroids do not match their weighted members"
+            );
         }
     }
 }
@@ -431,25 +534,37 @@ void gpu_writers(const std::filesystem::path& directory) {
             const auto bytes = io::SogFile(version, version == 3 ? 262144 : 65536).write(source, indices);
             const auto data = io::read_splat({ "sh.sog", bytes });
             require(data.sh_degree == degree, "SOG writer lost SH bands");
-            require(io::Resources("sh.sog", bytes, ".sog").meta.at("shN").at("count") == source.size(), "SOG palette count must describe the actual centroids");
+            require(
+                io::Resources("sh.sog", bytes, ".sog").meta.at("shN").at("count") == source.size(),
+                "SOG palette count must describe the actual centroids"
+            );
             for (size_t i = 0; i < data.size(); ++i) {
                 for (size_t c = 0; c < data.sh_count(); ++c) {
-                    require(std::abs(data.gaussians[i].attribute(splat::ShOffset + c) - 0.0625f) < 1e-5f, "SOG SH export changed a constant coefficient");
+                    require(
+                        std::abs(data.gaussians[i].attribute(splat::ShOffset + c) - 0.0625f) < 1e-5f,
+                        "SOG SH export changed a constant coefficient"
+                    );
                 }
             }
             pipeline::TaskContext context;
             context.set({ { "output", "source" } }, std::make_shared<splat::Splat>(source));
             const auto path = directory / "palette.sog";
-            pipeline::WriteTask().exec({ { "input", "source" }, { "output", path }, { "version", version }, { "paletteSize", 2 } }, context);
+            pipeline::WriteTask().exec(
+                { { "input", "source" }, { "output", path }, { "version", version }, { "paletteSize", 2 } }, context
+            );
             const auto pipeline_bytes = io::read_bytes(path);
-            require(io::Resources(path, pipeline_bytes, ".sog").meta.at("shN").at("count") == 2, "Write did not forward paletteSize");
+            require(
+                io::Resources(path, pipeline_bytes, ".sog").meta.at("shN").at("count") == 2,
+                "Write did not forward paletteSize"
+            );
         }
     }
 }
 } // namespace
 int main(int argc, char** argv) {
     gpu::DeviceGuard device_guard;
-    const auto directory = std::filesystem::temp_directory_path() / ("sog-tests-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto directory = std::filesystem::temp_directory_path() /
+                           ("sog-tests-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::create_directories(directory);
     struct Cleanup {
         std::filesystem::path path;

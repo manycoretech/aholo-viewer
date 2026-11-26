@@ -3,8 +3,8 @@
 #include <io/lcc2.h>
 #include <io/resource.h>
 #include <numeric>
-#include <utility>
 #include <utility/string.h>
+#include <utility>
 
 namespace splat_transform::io {
 splat::Splat Lcc2File::read(const FileInput& source) const {
@@ -36,7 +36,9 @@ splat::Splat Lcc2File::read(const FileInput& source) const {
             name += extension;
         }
         const auto resolved = resources.resolve(name);
-        auto found = std::find_if(selected.begin(), selected.end(), [&](const auto& value) { return resources.resolve(value.first) == resolved; });
+        auto found = std::find_if(selected.begin(), selected.end(), [&](const auto& value) {
+            return resources.resolve(value.first) == resolved;
+        });
         if (found == selected.end()) {
             selected.emplace_back(name, std::vector<Json> { ref });
         } else {

@@ -10,10 +10,12 @@
 namespace splat_transform::pipeline {
 namespace {
 using io::Json;
-enum class FilterMode { Box,
+enum class FilterMode {
+    Box,
     Sphere,
     Cluster,
-    Floaters };
+    Floaters
+};
 constexpr std::array<std::string_view, 4> names { "box", "sphere", "cluster", "floaters" };
 
 FilterMode filter_mode(const Json& config) {
@@ -59,15 +61,15 @@ void FilterTask::exec(const Json& config, TaskContext& context) const {
     if ((p == FilterMode::Box && (!obj.contains("min") || !obj.contains("max"))) ||
         (p == FilterMode::Sphere && (!obj.contains("center") || !obj.contains("radius")))) {
         context.set(config, context.input(config));
-        utility::logger().info("Filter ", names[static_cast<size_t>(p)], ": missing region parameters, passing input through");
+        utility::logger().info(
+            "Filter ", names[static_cast<size_t>(p)], ": missing region parameters, passing input through"
+        );
         return;
     }
     std::vector<uint32_t> selected;
     if (p == FilterMode::Box) {
         const Eigen::AlignedBox3f box { read_vector3(obj.at("min")), read_vector3(obj.at("max")) };
-        selected = threading::select_indices(count, [&](size_t i) {
-            return box.contains(source.gaussians[i].mean);
-        });
+        selected = threading::select_indices(count, [&](size_t i) { return box.contains(source.gaussians[i].mean); });
     } else if (p == FilterMode::Sphere) {
         const Eigen::Vector3f center = read_vector3(obj.at("center"));
         const float radius = obj.at("radius").get<float>();
@@ -85,14 +87,19 @@ void FilterTask::exec(const Json& config, TaskContext& context) const {
             if (!grid) {
                 grid = &context.store_grid(config, voxel::generate_occupancy(source, spec));
             }
-            utility::logger().info("Filter ", reused ? "reusing" : "generating", " occupancy: voxelResolution=", grid->spec.voxel_resolution,
-                ", requested=", spec.voxel_resolution, ", opacityCutoff=", grid->spec.opacity_cutoff);
+            utility::logger().info(
+                "Filter ", reused ? "reusing" : "generating",
+                " occupancy: voxelResolution=", grid->spec.voxel_resolution, ", requested=", spec.voxel_resolution,
+                ", opacityCutoff=", grid->spec.opacity_cutoff
+            );
             selected = voxel::filter_indices(source, *grid, min_contribution, cluster);
         }
     }
     auto result = std::make_shared<splat::Splat>(context.select_splat(config, selected));
     single_block(*result);
     context.set(config, std::move(result));
-    utility::logger().info("Filter ", names[static_cast<size_t>(p)], ": kept ", selected.size(), " / ", count, " Gaussians");
+    utility::logger().info(
+        "Filter ", names[static_cast<size_t>(p)], ": kept ", selected.size(), " / ", count, " Gaussians"
+    );
 }
 } // namespace splat_transform::pipeline

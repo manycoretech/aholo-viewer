@@ -20,7 +20,8 @@ uint32_t unsigned_integer(const io::Json& value, std::string_view field) {
     }
     // Check the JSON number before narrowing; float cannot represent every uint32_t index.
     const double number = value.get<double>();
-    if (!std::isfinite(number) || number < 0 || number > std::numeric_limits<uint32_t>::max() || std::floor(number) != number) {
+    if (!std::isfinite(number) || number < 0 || number > std::numeric_limits<uint32_t>::max() ||
+        std::floor(number) != number) {
         throw std::runtime_error(std::string(field) + " must be a nonnegative 32-bit integer");
     }
     return static_cast<uint32_t>(number);

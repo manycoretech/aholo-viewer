@@ -34,10 +34,17 @@ public:
     ~VoxelSession();
     VoxelSession(const VoxelSession&) = delete;
     VoxelSession& operator=(const VoxelSession&) = delete;
-    CandidateBins candidates(std::span<const Gaussian> gaussians, std::array<float, 3> origin, float batch_size, std::array<uint32_t, 3> dimensions);
-    std::vector<uint32_t> voxelize(std::span<const Gaussian> gaussians, std::span<const uint32_t> indices,
-        std::span<const VoxelBatch> batches, float resolution, float cutoff, uint32_t max_blocks);
-    std::vector<uint32_t> dilate_blocks(std::span<const uint32_t> blocks, std::array<uint32_t, 3> dimensions, std::array<uint32_t, 3> radii);
+    CandidateBins candidates(
+        std::span<const Gaussian> gaussians, std::array<float, 3> origin, float batch_size,
+        std::array<uint32_t, 3> dimensions
+    );
+    std::vector<uint32_t> voxelize(
+        std::span<const Gaussian> gaussians, std::span<const uint32_t> indices, std::span<const VoxelBatch> batches,
+        float resolution, float cutoff, uint32_t max_blocks
+    );
+    std::vector<uint32_t> dilate_blocks(
+        std::span<const uint32_t> blocks, std::array<uint32_t, 3> dimensions, std::array<uint32_t, 3> radii
+    );
 
 private:
     struct Impl;

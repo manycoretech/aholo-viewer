@@ -55,13 +55,14 @@ T read_scalar(Reader& reader, const std::string& type, bool little) {
     }
     throw std::runtime_error("Unsupported PLY property type: " + type);
 }
-const std::array<std::string, 14> FIELDS {
-    "x", "y", "z", "scale_0", "scale_1", "scale_2", "rot_1", "rot_2", "rot_3", "rot_0", "f_dc_0", "f_dc_1", "f_dc_2", "opacity"
-};
+const std::array<std::string, 14> FIELDS { "x", "y", "z", "scale_0", "scale_1", "scale_2", "rot_1", "rot_2", "rot_3",
+    "rot_0", "f_dc_0", "f_dc_1", "f_dc_2", "opacity" };
 // Resolve the common native-endian float layout once, then decode directly
 // into canonical Gaussians without per-value type/name/attribute dispatch.
 template<typename Reader>
-void read_float_vertices(const Element& element, std::span<const int32_t> bindings, Reader& reader, splat::Splat& result, size_t batch_bytes) {
+void read_float_vertices(
+    const Element& element, std::span<const int32_t> bindings, Reader& reader, splat::Splat& result, size_t batch_bytes
+) {
     const size_t stride = element.properties.size() * sizeof(float);
     if (element.count > result.size() || !stride || element.count > reader.remaining() / stride) {
         throw std::runtime_error("Truncated PLY vertex data or element count mismatch");
@@ -110,7 +111,8 @@ void read_float_vertices(const Element& element, std::span<const int32_t> bindin
             decode(bytes, first, 0, count);
         } else {
             auto& pool = threading::default_pool();
-            const size_t chunk = std::max(static_cast<size_t>(8192), (count + pool.thread_count() - 1) / pool.thread_count());
+            const size_t chunk =
+                std::max(static_cast<size_t>(8192), (count + pool.thread_count() - 1) / pool.thread_count());
             threading::TaskGroup<void> pending(pool, pool.thread_count());
             for (size_t begin = 0; begin < count; begin += chunk) {
                 pending.submit(decode, bytes, first, begin, std::min(count, begin + chunk));
@@ -211,7 +213,8 @@ splat::Splat read_ply(const Header& header, Reader& reader, uint32_t max_sh_degr
             int32_t column = found == FIELDS.end() ? -1 : static_cast<int32_t>(found - FIELDS.begin());
             if (property.name.starts_with("f_rest_") && sh_count) {
                 size_t original = std::stoul(property.name.substr(7));
-                column = static_cast<int32_t>(splat::ShOffset + (original % (sh_count / 3)) * 3 + original / (sh_count / 3));
+                column =
+                    static_cast<int32_t>(splat::ShOffset + (original % (sh_count / 3)) * 3 + original / (sh_count / 3));
             }
             bindings.push_back(column);
         }
@@ -222,7 +225,9 @@ splat::Splat read_ply(const Header& header, Reader& reader, uint32_t max_sh_degr
                 }
             }
             if (little == (std::endian::native == std::endian::little) &&
-                std::ranges::all_of(element.properties, [](const auto& property) { return property.type == "float"; })) {
+                std::ranges::all_of(element.properties, [](const auto& property) {
+                    return property.type == "float";
+                })) {
                 read_float_vertices(element, bindings, reader, result, batch_bytes);
                 continue;
             }
@@ -282,9 +287,12 @@ splat::Splat read_ply(const Header& header, Reader& reader, uint32_t max_sh_degr
                     auto mix = [&](const std::string& field, float t) {
                         return limits.at("min_" + field) + t * (limits.at("max_" + field) - limits.at("min_" + field));
                     };
-                    result.gaussians[i].attribute(splat::X + axis) = mix(xyz[axis], static_cast<float>((packed[0] >> shift) & mask) / mask);
-                    result.gaussians[i].attribute(splat::ScaleX + axis) = std::exp(mix("scale_" + xyz[axis], static_cast<float>((packed[2] >> shift) & mask) / mask));
-                    result.gaussians[i].attribute(splat::Red + axis) = mix(rgb[axis], static_cast<float>((packed[3] >> (24 - 8 * axis)) & 255) / 255);
+                    result.gaussians[i].attribute(splat::X + axis) =
+                        mix(xyz[axis], static_cast<float>((packed[0] >> shift) & mask) / mask);
+                    result.gaussians[i].attribute(splat::ScaleX + axis) =
+                        std::exp(mix("scale_" + xyz[axis], static_cast<float>((packed[2] >> shift) & mask) / mask));
+                    result.gaussians[i].attribute(splat::Red + axis) =
+                        mix(rgb[axis], static_cast<float>((packed[3] >> (24 - 8 * axis)) & 255) / 255);
                 }
                 const float a = (static_cast<float>((packed[1] >> 20) & 1023) / 1023 - 0.5f) * std::sqrt(2.0f);
                 const float b = (static_cast<float>((packed[1] >> 10) & 1023) / 1023 - 0.5f) * std::sqrt(2.0f);
@@ -331,7 +339,8 @@ splat::Splat PlyFile::read(const std::filesystem::path& path, uint32_t max_sh_de
 }
 Bytes PlyFile::write(const splat::Splat& data, std::span<const uint32_t> indices) const {
     std::ostringstream header;
-    header << "ply\nformat binary_little_endian 1.0\ncomment Generated by EGS\nelement vertex " << indices.size() << '\n';
+    header << "ply\nformat binary_little_endian 1.0\ncomment Generated by EGS\nelement vertex " << indices.size()
+           << '\n';
     for (const auto& field : FIELDS) {
         header << "property float " << field << '\n';
     }
@@ -359,7 +368,9 @@ Bytes PlyFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         }
         const size_t coefficients = data.sh_count() / 3;
         for (size_t c = 0; c < data.sh_count(); ++c) {
-            append(output, data.gaussians[index].attribute(splat::ShOffset + (c % coefficients) * 3 + c / coefficients));
+            append(
+                output, data.gaussians[index].attribute(splat::ShOffset + (c % coefficients) * 3 + c / coefficients)
+            );
         }
     }
     return output;

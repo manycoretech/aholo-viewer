@@ -49,7 +49,5 @@ void select_device(uint32_t index) {
     }
     detail::selected_device = index;
 }
-DeviceGuard::~DeviceGuard() {
-    detail::device_context.reset();
-}
+DeviceGuard::~DeviceGuard() { detail::device_context.reset(); }
 } // namespace splat_transform::gpu

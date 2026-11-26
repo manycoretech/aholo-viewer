@@ -48,12 +48,14 @@ splat::Splat LccFile::read(const FileInput& source) const {
                 result.gaussians[output].attribute(c) = reader.read<float>();
             }
             for (size_t c = 0; c < 4; ++c) {
-                result.gaussians[output].attribute(c == 3 ? splat::Alpha : splat::Red + c) = static_cast<float>(reader.read<uint8_t>() / 255.0f);
+                result.gaussians[output].attribute(c == 3 ? splat::Alpha : splat::Red + c) =
+                    static_cast<float>(reader.read<uint8_t>() / 255.0f);
             }
             for (size_t c = 0; c < 3; ++c) {
                 const float t = reader.read<uint16_t>() / 65535.0f;
                 const auto& scale = attributes.at("scale");
-                result.gaussians[output].attribute(splat::ScaleX + c) = ((1 - t) * scale.at("min").at(c).get<float>() + t * scale.at("max").at(c).get<float>());
+                result.gaussians[output].attribute(splat::ScaleX + c) =
+                    ((1 - t) * scale.at("min").at(c).get<float>() + t * scale.at("max").at(c).get<float>());
             }
             auto packed = reader.read<uint32_t>();
             const auto largest = packed >> 30;
@@ -72,11 +74,14 @@ splat::Splat LccFile::read(const FileInput& source) const {
             }
             result.gaussians[output].rotation.normalize();
             for (size_t coefficient = 0; coefficient < result.sh_count() / 3; ++coefficient) {
-                const auto packed_sh = sh_reader.read_at<uint32_t>(static_cast<size_t>(start) * 2 + i * 64 + coefficient * 4);
-                const std::array<float, 3> v { (packed_sh & 2047) / 2047.0f, ((packed_sh >> 11) & 1023) / 1023.0f, ((packed_sh >> 21) & 2047) / 2047.0f };
+                const auto packed_sh =
+                    sh_reader.read_at<uint32_t>(static_cast<size_t>(start) * 2 + i * 64 + coefficient * 4);
+                const std::array<float, 3> v { (packed_sh & 2047) / 2047.0f, ((packed_sh >> 11) & 1023) / 1023.0f,
+                    ((packed_sh >> 21) & 2047) / 2047.0f };
                 for (size_t c = 0; c < 3; ++c) {
                     const auto& attr = attributes.at("shcoef");
-                    result.gaussians[output].attribute(splat::ShOffset + coefficient * 3 + c) = ((1 - v[c]) * attr.at("min").at(c).get<float>() + v[c] * attr.at("max").at(c).get<float>());
+                    result.gaussians[output].attribute(splat::ShOffset + coefficient * 3 + c) =
+                        ((1 - v[c]) * attr.at("min").at(c).get<float>() + v[c] * attr.at("max").at(c).get<float>());
                 }
             }
         }

@@ -33,8 +33,9 @@ public:
     }
     uint64_t get(Eigen::Vector3i block) const {
         const auto slot = this->directory_[this->brick_index(block)];
-        const auto bits = slot == EMPTY ? uint64_t { 0 } : slot == SOLID ? FULL_BLOCK
-                                                                         : this->pool_[slot].masks[local_index(block)];
+        const auto bits = slot == EMPTY   ? uint64_t { 0 }
+                          : slot == SOLID ? FULL_BLOCK
+                                          : this->pool_[slot].masks[local_index(block)];
         return bits ^ this->background_;
     }
     void set(Eigen::Vector3i block, uint64_t mask);
@@ -90,7 +91,8 @@ public:
         this->visit_bricks(skip, [&](Eigen::Vector3i base, const BlockBits& bits, const Brick* brick) {
             bits.for_each([&](size_t i) {
                 const Eigen::Vector3i local { static_cast<int32_t>(i % block_side),
-                    static_cast<int32_t>((i / block_side) % block_side), static_cast<int32_t>(i / block_side / block_side) };
+                    static_cast<int32_t>((i / block_side) % block_side),
+                    static_cast<int32_t>(i / block_side / block_side) };
                 visit(base + local, brick ? brick->masks[i] ^ this->background_ : ~skip);
             });
         });

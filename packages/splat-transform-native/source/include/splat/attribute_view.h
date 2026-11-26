@@ -12,11 +12,13 @@ public:
         }
         this->size_ = values.empty() ? 0 : 1 + (values.size() - 1) / stride;
     }
-    AttributeView(const Splat& splat, size_t attribute) : gaussians_(splat.gaussians), size_(splat.size()), attribute_(attribute) {}
+    AttributeView(const Splat& splat, size_t attribute)
+        : gaussians_(splat.gaussians), size_(splat.size()), attribute_(attribute) {}
     AttributeView(Splat&&, size_t) = delete;
     size_t size() const noexcept { return this->size_; }
     const float& operator[](size_t index) const {
-        return this->gaussians_.empty() ? this->values_[index * this->stride_] : this->gaussians_[index].attribute(this->attribute_);
+        return this->gaussians_.empty() ? this->values_[index * this->stride_]
+                                        : this->gaussians_[index].attribute(this->attribute_);
     }
 
 private:

@@ -45,10 +45,13 @@ public:
     }
     Bytes read(const std::string& name) const {
         zip_stat_t stat;
-        if (zip_stat(this->archive_.get(), name.c_str(), 0, &stat) != 0 || stat.size > std::numeric_limits<size_t>::max()) {
+        if (zip_stat(this->archive_.get(), name.c_str(), 0, &stat) != 0 ||
+            stat.size > std::numeric_limits<size_t>::max()) {
             throw std::runtime_error("Cannot read ZIP entry: " + name);
         }
-        auto file = std::unique_ptr<zip_file_t, decltype(&zip_fclose)>(zip_fopen(this->archive_.get(), name.c_str(), 0), zip_fclose);
+        auto file = std::unique_ptr<zip_file_t, decltype(&zip_fclose)>(
+            zip_fopen(this->archive_.get(), name.c_str(), 0), zip_fclose
+        );
         if (!file) {
             throw std::runtime_error(zip_strerror(this->archive_.get()));
         }

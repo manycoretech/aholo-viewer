@@ -24,7 +24,8 @@ ShCoefficients::ShCoefficients(const ShCoefficients& other) : ShCoefficients(oth
     std::copy_n(other.data(), this->size_, this->data());
 }
 
-ShCoefficients::ShCoefficients(ShCoefficients&& other) noexcept : size_(std::exchange(other.size_, 0)), storage_(std::move(other.storage_)) {
+ShCoefficients::ShCoefficients(ShCoefficients&& other) noexcept
+    : size_(std::exchange(other.size_, 0)), storage_(std::move(other.storage_)) {
     other.storage_.emplace<Inline>();
 }
 
@@ -144,18 +145,16 @@ float Gaussian::area() const {
 }
 
 bool Gaussian::validate(float opacity_prune) const {
-    return this->scale.allFinite() &&
-           this->scale.cwiseGreater(0.0f).all() &&
-           std::isfinite(this->opacity) &&
+    return this->scale.allFinite() && this->scale.cwiseGreater(0.0f).all() && std::isfinite(this->opacity) &&
            this->opacity >= opacity_prune;
 }
 
 void Gaussian::make_valid() {
     if (!this->scale.allFinite() || !this->scale.cwiseGreater(0.0f).all()) {
         this->scale = Eigen::Vector3f(
-            std::numeric_limits<float>::epsilon(),
-            std::numeric_limits<float>::epsilon(),
-            std::numeric_limits<float>::epsilon());
+            std::numeric_limits<float>::epsilon(), std::numeric_limits<float>::epsilon(),
+            std::numeric_limits<float>::epsilon()
+        );
     }
     if (!std::isfinite(this->opacity)) {
         this->opacity = 0.0f;
@@ -381,7 +380,12 @@ std::vector<uint32_t> morton_order(const Splat& data) {
         for (uint32_t i : slice) {
             uint32_t code = 0;
             for (size_t axis = 0; axis < 3; ++axis) {
-                code |= interleave(static_cast<uint32_t>(std::clamp((data.gaussians[i].attribute(axis) - min[axis]) * scale[axis], 0.0f, 1023.0f))) << axis;
+                code |= interleave(
+                            static_cast<uint32_t>(
+                                std::clamp((data.gaussians[i].attribute(axis) - min[axis]) * scale[axis], 0.0f, 1023.0f)
+                            )
+                        )
+                        << axis;
             }
             codes.emplace_back(code, i);
         }

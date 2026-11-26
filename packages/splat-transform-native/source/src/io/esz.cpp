@@ -47,7 +47,8 @@ splat::Splat read_esz_stream(StreamReader& source, uint32_t max_sh_degree) {
         throw std::runtime_error("Invalid ESZ magic");
     }
     const auto meta_bytes = reader.take(reader.read<uint32_t>());
-    const auto meta = Json::parse(std::string_view(reinterpret_cast<const char*>(meta_bytes.data()), meta_bytes.size()));
+    const auto meta =
+        Json::parse(std::string_view(reinterpret_cast<const char*>(meta_bytes.data()), meta_bytes.size()));
     if (meta.at("version") != 2) {
         throw std::runtime_error("Unsupported ESZ version");
     }
@@ -68,7 +69,8 @@ splat::Splat read_esz_stream(StreamReader& source, uint32_t max_sh_degree) {
                 const float max = codec::signed_log(meta.at("box").at("max").at(c).get<float>());
                 parallel_rows(output.size(), [&](size_t first, size_t end) {
                     for (size_t i = first; i < end; ++i) {
-                        const auto value = std::to_integer<uint32_t>(low[i * 4 + c]) | (std::to_integer<uint32_t>(high[i * 4 + c]) << 8);
+                        const auto value = std::to_integer<uint32_t>(low[i * 4 + c]) |
+                                           (std::to_integer<uint32_t>(high[i * 4 + c]) << 8);
                         output.gaussians[i].attribute(c) = codec::signed_exp(min + (max - min) / 65535 * value);
                     }
                 });
@@ -80,7 +82,8 @@ splat::Splat read_esz_stream(StreamReader& source, uint32_t max_sh_degree) {
             parallel_rows(output.size(), [&](size_t first, size_t end) {
                 for (size_t i = first; i < end; ++i) {
                     for (size_t c = 0; c < 3; ++c) {
-                        output.gaussians[i].attribute(splat::ScaleX + c) = std::exp(std::to_integer<uint8_t>(scales[i * 4 + c]) / 16.0f - 10);
+                        output.gaussians[i].attribute(splat::ScaleX + c) =
+                            std::exp(std::to_integer<uint8_t>(scales[i * 4 + c]) / 16.0f - 10);
                     }
                 }
             });
@@ -101,9 +104,11 @@ splat::Splat read_esz_stream(StreamReader& source, uint32_t max_sh_degree) {
             parallel_rows(output.size(), [&](size_t first, size_t end) {
                 for (size_t i = first; i < end; ++i) {
                     for (size_t c = 0; c < 3; ++c) {
-                        output.gaussians[i].attribute(splat::Red + c) = ((std::to_integer<uint8_t>(colors[i * 4 + c]) / 255.0f - 0.5f) * COLOR_SCALE + 0.5f);
+                        output.gaussians[i].attribute(splat::Red + c) =
+                            ((std::to_integer<uint8_t>(colors[i * 4 + c]) / 255.0f - 0.5f) * COLOR_SCALE + 0.5f);
                     }
-                    output.gaussians[i].attribute(splat::Alpha) = static_cast<float>(std::to_integer<uint8_t>(colors[i * 4 + 3]) / 255.0f);
+                    output.gaussians[i].attribute(splat::Alpha) =
+                        static_cast<float>(std::to_integer<uint8_t>(colors[i * 4 + 3]) / 255.0f);
                 }
             });
         }
@@ -115,7 +120,8 @@ splat::Splat read_esz_stream(StreamReader& source, uint32_t max_sh_degree) {
                 for (size_t i = first; i < end; ++i) {
                     for (size_t j = 0; j < output.sh_count() / 3; ++j) {
                         for (size_t c = 0; c < 3; ++c) {
-                            output.gaussians[i].attribute(splat::ShOffset + j * 3 + c) = (std::to_integer<int32_t>(sh[(i * coefficients + j) * 4 + c]) - 128) / 128.0f;
+                            output.gaussians[i].attribute(splat::ShOffset + j * 3 + c) =
+                                (std::to_integer<int32_t>(sh[(i * coefficients + j) * 4 + c]) - 128) / 128.0f;
                         }
                     }
                 }
@@ -153,9 +159,12 @@ splat::Splat read_esz_stream(StreamReader& source, uint32_t max_sh_degree) {
                         const auto value = sh.read<uint32_t>();
                         if (group + j < output.sh_count() / 3) {
                             const size_t col = splat::ShOffset + (group + j) * 3;
-                            output.gaussians[i].attribute(col) = static_cast<float>(((value >> 21) & 2047) / 2047.0f * 2 - 1);
-                            output.gaussians[i].attribute(col + 1) = static_cast<float>(((value >> 11) & 1023) / 1023.0f * 2 - 1);
-                            output.gaussians[i].attribute(col + 2) = static_cast<float>((value & 2047) / 2047.0f * 2 - 1);
+                            output.gaussians[i].attribute(col) =
+                                static_cast<float>(((value >> 21) & 2047) / 2047.0f * 2 - 1);
+                            output.gaussians[i].attribute(col + 1) =
+                                static_cast<float>(((value >> 11) & 1023) / 1023.0f * 2 - 1);
+                            output.gaussians[i].attribute(col + 2) =
+                                static_cast<float>((value & 2047) / 2047.0f * 2 - 1);
                         }
                     }
                 }
@@ -183,7 +192,8 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
     logger.info(high_precision ? "ESZ encoding high mode" : "ESZ encoding low mode");
     constexpr int32_t LEVEL = 3;
     const auto bounds = splat::bounds(data);
-    const Json meta { { "version", 2 }, { "layout", high_precision ? "high" : "low" }, { "counts", data.size() }, { "shDegree", data.sh_degree }, { "box", bounds_json(bounds) } };
+    const Json meta { { "version", 2 }, { "layout", high_precision ? "high" : "low" }, { "counts", data.size() },
+        { "shDegree", data.sh_degree }, { "box", bounds_json(bounds) } };
     const auto text = meta.dump();
     Bytes output;
     append(output, ESZ_MAGIC);
@@ -207,13 +217,16 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
                 append(segment, to_half(data.gaussians[index].attribute(splat::Red + c)));
             }
             for (size_t c = 0; c < 3; ++c) {
-                append(segment, to_half(std::log(static_cast<float>(data.gaussians[index].attribute(splat::ScaleX + c)))));
+                append(
+                    segment, to_half(std::log(static_cast<float>(data.gaussians[index].attribute(splat::ScaleX + c))))
+                );
             }
             append(segment, codec::encode_oct_quaternion(data.gaussians[index].rotation));
         }
         append_segment(output, segment);
         const auto& rgb_bits = this->sh_bits_;
-        const std::array<uint32_t, 3> masks { (1u << rgb_bits[0]) - 1, (1u << rgb_bits[1]) - 1, (1u << rgb_bits[2]) - 1 };
+        const std::array<uint32_t, 3> masks { (1u << rgb_bits[0]) - 1, (1u << rgb_bits[1]) - 1,
+            (1u << rgb_bits[2]) - 1 };
         for (size_t group = 0; group < data.sh_count() / 3; group += 4) {
             segment.clear();
             for (auto index : indices) {
@@ -223,9 +236,13 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
                         const auto col = splat::ShOffset + (group + j) * 3;
                         auto quantize = [&](size_t c) {
                             const auto mask = masks[c];
-                            return static_cast<uint32_t>(std::clamp((data.gaussians[index].attribute(col + c) * 0.5f + 0.5f) * mask, 0.0f, static_cast<float>(mask)));
+                            return static_cast<uint32_t>(std::clamp(
+                                (data.gaussians[index].attribute(col + c) * 0.5f + 0.5f) * mask, 0.0f,
+                                static_cast<float>(mask)
+                            ));
                         };
-                        value = (quantize(0) << (rgb_bits[1] + rgb_bits[2])) | (quantize(1) << rgb_bits[2]) | quantize(2);
+                        value =
+                            (quantize(0) << (rgb_bits[1] + rgb_bits[2])) | (quantize(1) << rgb_bits[2]) | quantize(2);
                     }
                     append(segment, value);
                 }
@@ -244,7 +261,10 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             const float max = codec::signed_log(bounds.max()[c]);
             const float scale = 65535 / std::max(max - min, 1e-9f);
             for (size_t i = 0; i < indices.size(); ++i) {
-                const auto value = static_cast<uint32_t>(std::clamp(std::floor((codec::signed_log(data.gaussians[indices[i]].attribute(c)) - min) * scale + 0.5f), 0.0f, 65535.0f));
+                const auto value = static_cast<uint32_t>(std::clamp(
+                    std::floor((codec::signed_log(data.gaussians[indices[i]].attribute(c)) - min) * scale + 0.5f), 0.0f,
+                    65535.0f
+                ));
                 low[i * 4 + c] = static_cast<std::byte>(value & 255);
                 high[i * 4 + c] = static_cast<std::byte>((value >> 8) & 255);
             }
@@ -256,7 +276,9 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         Bytes pixels(low.size(), std::byte { 255 });
         for (size_t i = 0; i < indices.size(); ++i) {
             for (size_t c = 0; c < 3; ++c) {
-                pixels[i * 4 + c] = codec::quantize_byte((std::log(static_cast<float>(data.gaussians[indices[i]].attribute(splat::ScaleX + c))) + 10) * 16);
+                pixels[i * 4 + c] = codec::quantize_byte(
+                    (std::log(static_cast<float>(data.gaussians[indices[i]].attribute(splat::ScaleX + c))) + 10) * 16
+                );
             }
         }
         write_image(pixels, width, height);
@@ -273,9 +295,12 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         std::fill(pixels.begin(), pixels.end(), std::byte { 255 });
         for (size_t i = 0; i < indices.size(); ++i) {
             for (size_t c = 0; c < 3; ++c) {
-                pixels[i * 4 + c] = codec::quantize_byte(((data.gaussians[indices[i]].attribute(splat::Red + c) - 0.5f) / COLOR_SCALE + 0.5f) * 255);
+                pixels[i * 4 + c] = codec::quantize_byte(
+                    ((data.gaussians[indices[i]].attribute(splat::Red + c) - 0.5f) / COLOR_SCALE + 0.5f) * 255
+                );
             }
-            pixels[i * 4 + 3] = codec::quantize_byte(static_cast<float>(data.gaussians[indices[i]].attribute(splat::Alpha)) * 255);
+            pixels[i * 4 + 3] =
+                codec::quantize_byte(static_cast<float>(data.gaussians[indices[i]].attribute(splat::Alpha)) * 255);
         }
         write_image(pixels, width, height);
         colors_time.finish();
@@ -288,7 +313,9 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             for (size_t i = 0; i < indices.size(); ++i) {
                 for (size_t j = 0; j < coefficients; ++j) {
                     for (size_t c = 0; c < 3; ++c) {
-                        pixels[(i * coefficients + j) * 4 + c] = codec::quantize_sh(data.gaussians[indices[i]].attribute(splat::ShOffset + j * 3 + c), steps[j]);
+                        pixels[(i * coefficients + j) * 4 + c] = codec::quantize_sh(
+                            data.gaussians[indices[i]].attribute(splat::ShOffset + j * 3 + c), steps[j]
+                        );
                     }
                 }
             }

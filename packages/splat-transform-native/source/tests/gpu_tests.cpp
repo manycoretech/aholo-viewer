@@ -17,13 +17,16 @@
 
 using namespace splat_transform;
 namespace {
-splat::Splat feature_splats(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& matrix, uint32_t degree) {
+splat::Splat feature_splats(
+    const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& matrix, uint32_t degree
+) {
     splat::Splat result(static_cast<size_t>(matrix.rows()), degree);
     const auto coefficients = result.sh_count() / 3;
     for (size_t row = 0; row < result.size(); ++row) {
         for (size_t channel = 0; channel < 3; ++channel) {
             for (size_t coefficient = 0; coefficient < coefficients; ++coefficient) {
-                result.gaussians[row].sh[3 + coefficient * 3 + channel] = matrix(row, channel * coefficients + coefficient);
+                result.gaussians[row].sh[3 + coefficient * 3 + channel] =
+                    matrix(row, channel * coefficients + coefficient);
             }
         }
     }
@@ -101,7 +104,8 @@ void emeans_device_updates(uint32_t degree) {
         auto row = order[index];
         weights[row] = index % 5 ? (index % 3 + 1) * 0.25f : 0;
         for (size_t column = 0; column < columns; ++column) {
-            source.gaussians[row].sh[3 + (column % (columns / 3)) * 3 + column / (columns / 3)] = signal(index) * pattern(column);
+            source.gaussians[row].sh[3 + (column % (columns / 3)) * 3 + column / (columns / 3)] =
+                signal(index) * pattern(column);
         }
     }
     decltype(spatial::Clustering::centroids) seeds(3, columns);
@@ -129,8 +133,8 @@ void emeans_device_updates(uint32_t degree) {
     std::array<float, 3> usage {};
     session.revive(usage, [](std::span<const float>) { return std::vector<spatial::EmeansGpu::Split> { { 1, 2 } }; });
     const double retained = 0.75 * initial_mass[0];
-    if (std::abs(usage[0] - (retained + 0.25 * second_mass)) > 1e-5 || std::abs(usage[1] - 0.75 * initial_mass[1]) > 1e-5 ||
-        usage[2] != 0.75f / 65536) {
+    if (std::abs(usage[0] - (retained + 0.25 * second_mass)) > 1e-5 ||
+        std::abs(usage[1] - 0.75 * initial_mass[1]) > 1e-5 || usage[2] != 0.75f / 65536) {
         throw std::runtime_error("GPU EMA did not preserve weighted mass across chunks and wraparound");
     }
     const auto result = session.finish();
@@ -256,7 +260,8 @@ int main(int argc, char** argv) {
         }
         for (size_t i = 0; i < devices.size(); ++i) {
             const auto& device = devices[i];
-            if (device.index != i || device.api != gpu::ApiType::Vulkan || device.api_version == 0 || device.name.empty() || device.uuid.empty()) {
+            if (device.index != i || device.api != gpu::ApiType::Vulkan || device.api_version == 0 ||
+                device.name.empty() || device.uuid.empty()) {
                 throw std::runtime_error("GPU enumeration returned incomplete metadata or non-global indices");
             }
         }
@@ -267,7 +272,9 @@ int main(int argc, char** argv) {
                 g.mean = { static_cast<float>(i) * 0.25f - 0.25f, 0.1f, -0.1f };
                 g.scale = { 0.18f, 0.07f, 0.11f };
                 g.opacity = 0.8f;
-                g.rotation = Eigen::Quaternionf(Eigen::AngleAxisf(0.6f + static_cast<float>(i) * 0.3f, Eigen::Vector3f(1, 2, 3).normalized()));
+                g.rotation = Eigen::Quaternionf(
+                    Eigen::AngleAxisf(0.6f + static_cast<float>(i) * 0.3f, Eigen::Vector3f(1, 2, 3).normalized())
+                );
             }
             const Eigen::AlignedBox3f bounds(Eigen::Vector3f::Constant(-1), Eigen::Vector3f::Ones());
             const auto prepared = voxel::prepare(points);
@@ -291,7 +298,10 @@ int main(int argc, char** argv) {
                 g.rotation = Eigen::Quaternionf::Identity();
                 g.opacity = 0.9f;
             }
-            const auto grid = voxel::gpu_backend()->voxelize(voxel::prepare(points), Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f(512 * 1.6f, 0.4f, 0.4f)), 0.1f, 0.2f);
+            const auto grid = voxel::gpu_backend()->voxelize(
+                voxel::prepare(points),
+                Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f(512 * 1.6f, 0.4f, 0.4f)), 0.1f, 0.2f
+            );
             if (grid.voxel_count() != points.size()) {
                 throw std::runtime_error("Scene-wide voxel dispatch changed isolated Gaussian occupancy");
             }
@@ -317,7 +327,10 @@ int main(int argc, char** argv) {
             const auto prepared = voxel::prepare(points);
             const auto backend = voxel::gpu_backend();
             for (size_t repeat = 0; repeat < 2; ++repeat) {
-                const auto grid = backend->voxelize(prepared, Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f(bins * 1.6f, 0.4f, 0.4f)), 0.1f, 0.2f);
+                const auto grid = backend->voxelize(
+                    prepared, Eigen::AlignedBox3f(Eigen::Vector3f::Zero(), Eigen::Vector3f(bins * 1.6f, 0.4f, 0.4f)),
+                    0.1f, 0.2f
+                );
                 if (grid.voxel_count() != bins) {
                     throw std::runtime_error("Parallel candidate sorting changed voxel occupancy");
                 }
@@ -330,7 +343,8 @@ int main(int argc, char** argv) {
         }
         for (uint32_t degree : { 1u, 2u, 3u }) {
             const auto columns = splat::SH_COUNTS[degree];
-            Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> points(257, columns), centroids(129, columns);
+            Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> points(257, columns),
+                centroids(129, columns);
             for (size_t c = 0; c < columns; ++c) {
                 for (size_t k = 0; k < 129; ++k) {
                     centroids(k, c) = static_cast<float>(std::sin((k + 1) * (c + 3) * 0.173));
@@ -363,7 +377,10 @@ int main(int argc, char** argv) {
                         distance += delta * delta;
                     }
                     if (distance - best > 2e-6 * columns) {
-                        throw std::runtime_error("Vulkan clustering differs from scalar oracle: columns=" + std::to_string(columns) + " row=" + std::to_string(row) + " excess=" + std::to_string(distance - best));
+                        throw std::runtime_error(
+                            "Vulkan clustering differs from scalar oracle: columns=" + std::to_string(columns) +
+                            " row=" + std::to_string(row) + " excess=" + std::to_string(distance - best)
+                        );
                     }
                 }
             }
@@ -373,7 +390,9 @@ int main(int argc, char** argv) {
             batched.assign(centroids, labels, [&](size_t ready) {
                 if (ready <= previous || ready > labels.size() || ready - previous > 128 ||
                     !std::equal(labels.begin(), labels.begin() + ready, actual.begin()) ||
-                    !std::all_of(labels.begin() + ready, labels.end(), [](auto label) { return label == std::numeric_limits<uint32_t>::max(); })) {
+                    !std::all_of(labels.begin() + ready, labels.end(), [](auto label) {
+                        return label == std::numeric_limits<uint32_t>::max();
+                    })) {
                     throw std::runtime_error("Clustering callback exposed incomplete or unordered labels");
                 }
                 previous = ready;
@@ -425,7 +444,8 @@ int main(int argc, char** argv) {
         }
         {
             constexpr size_t ROWS = 200003, COLUMNS = 45, CENTROIDS = 129;
-            Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> points(ROWS, COLUMNS), centroids(CENTROIDS, COLUMNS);
+            Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> points(ROWS, COLUMNS),
+                centroids(CENTROIDS, COLUMNS);
             for (size_t c = 0; c < COLUMNS; ++c) {
                 for (size_t k = 0; k < CENTROIDS; ++k) {
                     centroids(k, c) = static_cast<float>(std::sin((k + 1) * (c + 3) * 0.173));
@@ -490,7 +510,9 @@ int main(int argc, char** argv) {
                         const auto original = row % count;
                         const auto expected = repeat && original < 2 ? 1 - original : original;
                         if (labels[row] != expected) {
-                            throw std::runtime_error("Tile selection changed labels or retained stale centroid bindings");
+                            throw std::runtime_error(
+                                "Tile selection changed labels or retained stale centroid bindings"
+                            );
                         }
                     }
                     centroids.row(0).swap(centroids.row(1));
@@ -512,14 +534,17 @@ int main(int argc, char** argv) {
                 const std::array reference_points { weak, weak };
                 const std::array<uint32_t, 2> reference_indices { 0, 1 };
                 voxel::VoxelBatch batch { 0, 2, 1, 1, 1, 0.45f, 0.45f, 0.45f };
-                const auto expected = session.voxelize(reference_points, reference_indices, std::span(&batch, 1), 0.1f, 0.1f, 1);
+                const auto expected =
+                    session.voxelize(reference_points, reference_indices, std::span(&batch, 1), 0.1f, 0.1f, 1);
                 batch.index_count = 1;
-                const auto single = session.voxelize(reference_points, reference_indices, std::span(&batch, 1), 0.1f, 0.1f, 1);
+                const auto single =
+                    session.voxelize(reference_points, reference_indices, std::span(&batch, 1), 0.1f, 0.1f, 1);
                 if (!(expected[0] & 1) || single[0] || single[1]) {
                     throw std::runtime_error("Density fixture must cross the cutoff only after both contributions");
                 }
                 large[large.size() - 2] = large.back() = weak;
-                const std::array<uint32_t, 2> remapped { static_cast<uint32_t>(large.size() - 2), static_cast<uint32_t>(large.size() - 1) };
+                const std::array<uint32_t, 2> remapped { static_cast<uint32_t>(large.size() - 2),
+                    static_cast<uint32_t>(large.size() - 1) };
                 batch.index_count = 2;
                 if (session.voxelize(large, remapped, std::span(&batch, 1), 0.1f, 0.1f, 1) != expected) {
                     throw std::runtime_error("Voxel input compaction lost global Gaussian indices");
@@ -550,7 +575,9 @@ int main(int argc, char** argv) {
                 voxel::VoxelBatch padded { 0, 0, 65535, 1, 1, 0, 0, 0 };
                 const auto empty = session.voxelize({}, {}, std::span(&padded, 1), 1, 0, 65536);
                 if (empty.size() != 65536 * 2 || empty[65535 * 2] || empty.back() ||
-                    std::ranges::any_of(empty.begin(), empty.end() - 2, [](uint32_t word) { return word != std::numeric_limits<uint32_t>::max(); })) {
+                    std::ranges::any_of(empty.begin(), empty.end() - 2, [](uint32_t word) {
+                        return word != std::numeric_limits<uint32_t>::max();
+                    })) {
                     throw std::runtime_error("Voxel X dispatch split lost its block offset or padding");
                 }
                 std::cout << "Large voxel X/Z workgroup splits passed\n";
@@ -590,8 +617,9 @@ int main(int argc, char** argv) {
                 boundary.values = { 0.5f, 8192, 0.5f, 1, 1, 0, 0, 0, 1, 1, 1, 0.1f, 0.1f, 0.1f, 0, 0 };
                 const auto result = session.candidates(std::span(&boundary, 1), { 0, 0, 0 }, 1, { 4096, 8193, 1 });
                 const size_t first = 8191 * 4096, second = 8192 * 4096;
-                if (result.indices != std::vector<uint32_t> { 0, 0 } || result.counts[first] != 1 || result.counts[second] != 1 ||
-                    result.offsets[first] != 0 || result.offsets[second] != 1 || std::accumulate(result.counts.begin(), result.counts.end(), static_cast<uint64_t>(0)) != 2) {
+                if (result.indices != std::vector<uint32_t> { 0, 0 } || result.counts[first] != 1 ||
+                    result.counts[second] != 1 || result.offsets[first] != 0 || result.offsets[second] != 1 ||
+                    std::accumulate(result.counts.begin(), result.counts.end(), static_cast<uint64_t>(0)) != 2) {
                     throw std::runtime_error("Candidate bin window lost a boundary overlap");
                 }
                 std::cout << "Large candidate bin window passed\n";
@@ -615,7 +643,8 @@ int main(int argc, char** argv) {
                 // tile seam and the outer grid faces. Build an independent
                 // sparse oracle instead of scanning a billion cells on CPU.
                 const Eigen::Vector3i size { 1024, 1024, 1028 };
-                const std::array points { Eigen::Vector3i { 0, 0, 0 }, Eigen::Vector3i { 1023, 1023, 1027 }, Eigen::Vector3i { 511, 511, 515 } };
+                const std::array points { Eigen::Vector3i { 0, 0, 0 }, Eigen::Vector3i { 1023, 1023, 1027 },
+                    Eigen::Vector3i { 511, 511, 515 } };
                 voxel::Grid input(size), expected(size);
                 for (const auto point : points) {
                     input.set(point);
@@ -650,9 +679,15 @@ int main(int argc, char** argv) {
                 const auto mask = grid.mask(index);
                 packed.insert(packed.end(), { index, static_cast<uint32_t>(mask), static_cast<uint32_t>(mask >> 32) });
             }
-            const auto actual = session.dilate_blocks(packed, { static_cast<uint32_t>(dimension), static_cast<uint32_t>(dimension), static_cast<uint32_t>(dimension) }, { 1, 2, 1 });
+            const auto actual = session.dilate_blocks(
+                packed,
+                { static_cast<uint32_t>(dimension), static_cast<uint32_t>(dimension),
+                    static_cast<uint32_t>(dimension) },
+                { 1, 2, 1 }
+            );
             for (uint32_t i = 0; i < grid.block_count(); ++i) {
-                if ((static_cast<uint64_t>(actual[i * 2]) | (static_cast<uint64_t>(actual[i * 2 + 1]) << 32)) != expected.mask(i)) {
+                if ((static_cast<uint64_t>(actual[i * 2]) | (static_cast<uint64_t>(actual[i * 2 + 1]) << 32)) !=
+                    expected.mask(i)) {
                     throw std::runtime_error("Vulkan expand/dilate/compact mismatch");
                 }
             }
@@ -695,7 +730,8 @@ int main(int argc, char** argv) {
             }
             const auto data = voxel::prepare(opaque);
             const Eigen::AlignedBox3f bounds(Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones());
-            if (!voxel::cpu_backend()->voxelize(data, bounds, 0.125f, 1).voxel_count() || backend->voxelize(data, bounds, 0.125f, 1).voxel_count() != 0) {
+            if (!voxel::cpu_backend()->voxelize(data, bounds, 0.125f, 1).voxel_count() ||
+                backend->voxelize(data, bounds, 0.125f, 1).voxel_count() != 0) {
                 throw std::runtime_error("Resolved GPU backend retried an empty result on CPU");
             }
         }
@@ -725,7 +761,9 @@ int main(int argc, char** argv) {
                 point.opacity = 1;
             }
             const Eigen::AlignedBox3f cluster_box(Eigen::Vector3f::Zero(), Eigen::Vector3f(4, 2, 2));
-            const voxel::FilterClusterOptions options { .voxel_resolution = 0.1f, .opacity_cutoff = 0.1f, .seed = Eigen::Vector3f(2.55f, 0.55f, 0.55f) };
+            const voxel::FilterClusterOptions options {
+                .voxel_resolution = 0.1f, .opacity_cutoff = 0.1f, .seed = Eigen::Vector3f(2.55f, 0.55f, 0.55f)
+            };
             auto selected = voxel::prepare(clusters);
             const auto* allocation = selected.gaussians.data();
             const auto cluster_backend = voxel::gpu_backend();
@@ -746,12 +784,17 @@ int main(int argc, char** argv) {
             if (selected.gaussians.data() != allocation || selected.gaussians.size() != expected.gaussians.size()) {
                 throw std::runtime_error("Connected cluster filtering changed the geometry buffer");
             }
-            voxel::filter_cluster(selected, options, Eigen::AlignedBox3f(Eigen::Vector3f::Constant(10), Eigen::Vector3f::Constant(12)), *cluster_backend);
+            voxel::filter_cluster(
+                selected, options, Eigen::AlignedBox3f(Eigen::Vector3f::Constant(10), Eigen::Vector3f::Constant(12)),
+                *cluster_backend
+            );
             if (!selected.gaussians.empty() || !selected.scene.isEmpty()) {
                 throw std::runtime_error("Nonoverlapping cluster bounds must return empty geometry");
             }
         }
-        const auto directory = std::filesystem::temp_directory_path() / ("splat-voxel-links-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        const auto directory =
+            std::filesystem::temp_directory_path() /
+            ("splat-voxel-links-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         struct Cleanup {
             std::filesystem::path path;
             ~Cleanup() {
@@ -763,14 +806,44 @@ int main(int argc, char** argv) {
         io::write_splat(directory / "source.esz", source);
         const auto path = [&](const char* relative) { return directory / relative; };
         using io::Json;
-        pipeline::run({ { "version", 1 }, { "gpu", selected }, { "tasks", Json::array({ { { "type", "Read" }, { "config", { { "inputs", { path("source.esz") } }, { "output", "source" } } } }, { { "type", "AutoChunkLod" }, { "config", { { "input", "source" }, { "output", "lod" }, { "type", "esz" }, { "levels", Json::array({ { { "precision", 1 }, { "scaleBoost", 1 } } }) } } } }, { { "type", "Write" }, { "config", { { "input", "lod" }, { "output", path("scene/lod") } } } }, { { "type", "ExtractLodLevel" }, { "config", { { "input", "lod" }, { "output", "level" }, { "level", 0 } } } }, { { "type", "Voxel" }, { "config", { { "input", "level" }, { "output", path("scene/collision") }, { "filterCluster", false }, { "voxelResolution", 0.1 } } }, { "release", { "level" } } }, { { "type", "Voxel" }, { "config", { { "input", "source" }, { "output", path("scene/lod/voxel") }, { "filterCluster", false }, { "voxelResolution", 0.1 } } }, { "release", { "source" } } }, { { "type", "Write" }, { "config", { { "input", "lod" }, { "output", path("mirror/lod") } } }, { "release", { "lod" } } } }) } });
+        pipeline::run(
+            { { "version", 1 }, { "gpu", selected },
+                { "tasks", Json::array(
+                               { { { "type", "Read" },
+                                     { "config", { { "inputs", { path("source.esz") } }, { "output", "source" } } } },
+                                   { { "type", "AutoChunkLod" },
+                                       { "config",
+                                           { { "input", "source" }, { "output", "lod" }, { "type", "esz" },
+                                               { "levels",
+                                                   Json::array({ { { "precision", 1 }, { "scaleBoost", 1 } } }) } } } },
+                                   { { "type", "Write" },
+                                       { "config", { { "input", "lod" }, { "output", path("scene/lod") } } } },
+                                   { { "type", "ExtractLodLevel" },
+                                       { "config", { { "input", "lod" }, { "output", "level" }, { "level", 0 } } } },
+                                   { { "type", "Voxel" },
+                                       { "config", { { "input", "level" }, { "output", path("scene/collision") },
+                                                       { "filterCluster", false }, { "voxelResolution", 0.1 } } },
+                                       { "release", { "level" } } },
+                                   { { "type", "Voxel" },
+                                       { "config", { { "input", "source" }, { "output", path("scene/lod/voxel") },
+                                                       { "filterCluster", false }, { "voxelResolution", 0.1 } } },
+                                       { "release", { "source" } } },
+                                   { { "type", "Write" },
+                                       { "config", { { "input", "lod" }, { "output", path("mirror/lod") } } },
+                                       { "release", { "lod" } } } }
+                           ) } }
+        );
         const auto first = io::read_json(directory / "scene/lod/lod-meta.json");
         const auto second = io::read_json(directory / "mirror/lod/lod-meta.json");
         const auto same_paths = [](const Json& actual, const Json& expected) {
-            return actual.is_array() && expected.is_array() && std::is_permutation(actual.begin(), actual.end(), expected.begin(), expected.end());
+            return actual.is_array() && expected.is_array() &&
+                   std::is_permutation(actual.begin(), actual.end(), expected.begin(), expected.end());
         };
         if (!same_paths(first.at("voxels"), Json::array({ "../collision/voxel-meta.json", "voxel/voxel-meta.json" })) ||
-            !same_paths(second.at("voxels"), Json::array({ "../../scene/collision/voxel-meta.json", "../../scene/lod/voxel/voxel-meta.json" }))) {
+            !same_paths(
+                second.at("voxels"),
+                Json::array({ "../../scene/collision/voxel-meta.json", "../../scene/lod/voxel/voxel-meta.json" })
+            )) {
             throw std::runtime_error("GPU voxel output association or relative paths differ");
         }
         for (const auto& name : first.at("voxels")) {

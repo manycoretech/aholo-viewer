@@ -41,7 +41,9 @@ struct Rectangle {
     int32_t bucket, plane, u0, v0, u1, v1;
     std::array<Eigen::Vector3i, 4> corners() const {
         const int32_t axis = this->bucket / 2;
-        return { global_point(axis, this->plane, this->u0, this->v0), global_point(axis, this->plane, this->u1, this->v0), global_point(axis, this->plane, this->u1, this->v1), global_point(axis, this->plane, this->u0, this->v1) };
+        return { global_point(axis, this->plane, this->u0, this->v0),
+            global_point(axis, this->plane, this->u1, this->v0), global_point(axis, this->plane, this->u1, this->v1),
+            global_point(axis, this->plane, this->u0, this->v1) };
     }
 };
 } // namespace
@@ -134,7 +136,8 @@ Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float reso
                                                                  : 2;
             const auto& points = line_points.at(line_key(axis, a));
             std::vector<int32_t> segment;
-            auto begin = points.lower_bound(std::min(a[axis], b[axis])), end = points.upper_bound(std::max(a[axis], b[axis]));
+            auto begin = points.lower_bound(std::min(a[axis], b[axis])),
+                 end = points.upper_bound(std::max(a[axis], b[axis]));
             segment.assign(begin, end);
             if (a[axis] > b[axis]) {
                 std::reverse(segment.begin(), segment.end());
@@ -159,10 +162,14 @@ Mesh voxel_faces(const Grid& grid, const Eigen::AlignedBox3f& bounds, float reso
         }
         const bool ccw = static_cast<bool>(rectangle.bucket % 2) == (plane_axis != 1);
         auto append = [&](size_t a, size_t b, size_t c) {
-            output.indices.insert(output.indices.end(), { perimeter[a], perimeter[ccw ? b : c], perimeter[ccw ? c : b] });
+            output.indices.insert(
+                output.indices.end(), { perimeter[a], perimeter[ccw ? b : c], perimeter[ccw ? c : b] }
+            );
         };
         auto convex = [&](size_t a, size_t b, size_t c) {
-            return static_cast<int64_t>(uv[b][0] - uv[a][0]) * (uv[c][1] - uv[a][1]) - static_cast<int64_t>(uv[b][1] - uv[a][1]) * (uv[c][0] - uv[a][0]) > 0;
+            return static_cast<int64_t>(uv[b][0] - uv[a][0]) * (uv[c][1] - uv[a][1]) -
+                       static_cast<int64_t>(uv[b][1] - uv[a][1]) * (uv[c][0] - uv[a][0]) >
+                   0;
         };
         std::vector<size_t> previous(perimeter.size()), next(perimeter.size());
         for (size_t i = 0; i < perimeter.size(); ++i) {
@@ -202,20 +209,31 @@ std::vector<std::byte> encode_glb(const Mesh& mesh) {
         maximum[i % 3] = std::max(maximum[i % 3], mesh.positions[i]);
     }
     const size_t position_bytes = mesh.positions.size() * 4, index_bytes = mesh.indices.size() * 4;
-    const io::Json gltf {
-        { "asset", { { "version", "2.0" }, { "generator", "splat-transform" } } }, { "scene", 0 },
+    const io::Json gltf { { "asset", { { "version", "2.0" }, { "generator", "splat-transform" } } }, { "scene", 0 },
         { "scenes", io::Json::array({ { { "nodes", io::Json::array({ 0 }) } } }) },
         { "nodes", io::Json::array({ { { "mesh", 0 } } }) },
-        { "meshes", io::Json::array({ { { "primitives", io::Json::array({ { { "attributes", { { "POSITION", 0 } } }, { "indices", 1 } } }) } } }) },
-        { "accessors", io::Json::array({ { { "bufferView", 0 }, { "componentType", 5126 }, { "count", mesh.positions.size() / 3 }, { "type", "VEC3" }, { "min", minimum }, { "max", maximum } },
-                           { { "bufferView", 1 }, { "componentType", 5125 }, { "count", mesh.indices.size() }, { "type", "SCALAR" } } }) },
-        { "bufferViews", io::Json::array({ { { "buffer", 0 }, { "byteOffset", 0 }, { "byteLength", position_bytes }, { "target", 34962 } }, { { "buffer", 0 }, { "byteOffset", position_bytes }, { "byteLength", index_bytes }, { "target", 34963 } } }) },
-        { "buffers", io::Json::array({ { { "byteLength", position_bytes + index_bytes } } }) }
-    };
+        { "meshes", io::Json::array(
+                        { { { "primitives",
+                            io::Json::array({ { { "attributes", { { "POSITION", 0 } } }, { "indices", 1 } } }) } } }
+                    ) },
+        { "accessors", io::Json::array(
+                           { { { "bufferView", 0 }, { "componentType", 5126 }, { "count", mesh.positions.size() / 3 },
+                                 { "type", "VEC3" }, { "min", minimum }, { "max", maximum } },
+                               { { "bufferView", 1 }, { "componentType", 5125 }, { "count", mesh.indices.size() },
+                                   { "type", "SCALAR" } } }
+                       ) },
+        { "bufferViews",
+            io::Json::array(
+                { { { "buffer", 0 }, { "byteOffset", 0 }, { "byteLength", position_bytes }, { "target", 34962 } },
+                    { { "buffer", 0 }, { "byteOffset", position_bytes }, { "byteLength", index_bytes },
+                        { "target", 34963 } } }
+            ) },
+        { "buffers", io::Json::array({ { { "byteLength", position_bytes + index_bytes } } }) } };
     auto json = gltf.dump();
     json.resize((json.size() + 3) & ~size_t { 3 }, ' ');
     io::Bytes output;
-    for (auto value : { 0x46546c67u, 2u, static_cast<uint32_t>(28 + json.size() + position_bytes + index_bytes), static_cast<uint32_t>(json.size()), 0x4e4f534au }) {
+    for (auto value : { 0x46546c67u, 2u, static_cast<uint32_t>(28 + json.size() + position_bytes + index_bytes),
+             static_cast<uint32_t>(json.size()), 0x4e4f534au }) {
         io::append(output, value);
     }
     const auto json_bytes = std::as_bytes(std::span(json));

@@ -32,7 +32,11 @@ void same(const splat::Splat& left, const splat::Splat& right) {
     require(left.size() == right.size() && left.sh_degree == right.sh_degree, "Stream changed splat shape");
     for (size_t i = 0; i < left.size(); ++i) {
         for (size_t c = 0; c < left.attribute_count(); ++c) {
-            require(std::bit_cast<uint32_t>(left.gaussians[i].attribute(c)) == std::bit_cast<uint32_t>(right.gaussians[i].attribute(c)), "File and memory decoders differ");
+            require(
+                std::bit_cast<uint32_t>(left.gaussians[i].attribute(c)) ==
+                    std::bit_cast<uint32_t>(right.gaussians[i].attribute(c)),
+                "File and memory decoders differ"
+            );
         }
     }
 }
@@ -47,7 +51,8 @@ void file_backends(const std::filesystem::path& directory, bool require_native) 
             io::FileStream file(path, io::FileStream::Access::Write, backend);
             const bool native = file.uses_native_backend();
             if (backend == io::FileStream::Backend::Automatic) {
-                std::cout << "Automatic file writer backend: " << (native ? "Asio native" : "thread pool fallback") << '\n';
+                std::cout << "Automatic file writer backend: " << (native ? "Asio native" : "thread pool fallback")
+                          << '\n';
                 require(!require_native || native, "Automatic file writer entered fallback");
             } else {
                 require(!native, "Forced file writer fallback was ignored");
@@ -86,11 +91,16 @@ void compressed_windows() {
         const auto encoded = gzip ? codec::gzip(expected, 1) : codec::zstd_compress(expected, 1);
         const auto check = [&](std::span<const std::byte> bytes, bool bounded) {
             io::StreamReader source(bytes, 17);
-            auto decoded = gzip ? io::gzip_reader(source) : io::zstd_reader(source, bounded ? encoded.size() : std::numeric_limits<size_t>::max());
+            auto decoded = gzip
+                               ? io::gzip_reader(source)
+                               : io::zstd_reader(source, bounded ? encoded.size() : std::numeric_limits<size_t>::max());
             for (size_t offset = 0; offset < expected.size();) {
                 const size_t count = std::min(static_cast<size_t>(131071), expected.size() - offset);
                 const auto part = decoded.take(count);
-                require(std::equal(part.begin(), part.end(), expected.begin() + offset), "Stream decompression changed bytes");
+                require(
+                    std::equal(part.begin(), part.end(), expected.begin() + offset),
+                    "Stream decompression changed bytes"
+                );
                 offset += count;
             }
             decoded.require_end();
@@ -121,7 +131,8 @@ void compressed_writes() {
         random = random * 1664525 + 1013904223;
         expected[i] = i % 8 < 3 ? static_cast<std::byte>(random >> 24) : static_cast<std::byte>(i / 1024);
     }
-    for (size_t size : { static_cast<size_t>(0), static_cast<size_t>(131075), static_cast<size_t>(2 * 1024 * 1024 - 1), expected.size() }) {
+    for (size_t size : { static_cast<size_t>(0), static_cast<size_t>(131075), static_cast<size_t>(2 * 1024 * 1024 - 1),
+             expected.size() }) {
         for (int32_t level : { 1, 6 }) {
             for (bool gzip : { false, true }) {
                 const auto input = std::span(expected).first(size);
@@ -130,14 +141,21 @@ void compressed_writes() {
                     require(offset <= size && target.size() <= size - offset, "Compression read outside input");
                     std::copy_n(input.begin() + offset, target.size(), target.begin());
                 };
-                const auto write = [&](std::span<const std::byte> bytes) { output.insert(output.end(), bytes.begin(), bytes.end()); };
+                const auto write = [&](std::span<const std::byte> bytes) {
+                    output.insert(output.end(), bytes.begin(), bytes.end());
+                };
                 if (gzip) {
                     codec::gzip_stream(size, read, write, level);
                     require(output == codec::gzip(input, level), "Streamed gzip changed DEFLATE blocks or CRC");
-                    require(codec::gunzip(output) == io::Bytes(input.begin(), input.end()), "Streamed gzip payload differs");
+                    require(
+                        codec::gunzip(output) == io::Bytes(input.begin(), input.end()), "Streamed gzip payload differs"
+                    );
                 } else {
                     codec::zstd_stream(size, read, write, level);
-                    require(codec::zstd_decompress(output) == io::Bytes(input.begin(), input.end()), "Streamed Zstd payload differs");
+                    require(
+                        codec::zstd_decompress(output) == io::Bytes(input.begin(), input.end()),
+                        "Streamed Zstd payload differs"
+                    );
                 }
             }
         }
@@ -148,7 +166,8 @@ void spz_shapes(const std::filesystem::path& directory) {
         splat::Splat source(97, degree);
         for (size_t i = 0; i < source.size(); ++i) {
             auto& p = source.gaussians[i];
-            p.mean = Eigen::Vector3f(static_cast<float>(i) / 13, -static_cast<float>(i) / 17, static_cast<float>(i) / 19);
+            p.mean =
+                Eigen::Vector3f(static_cast<float>(i) / 13, -static_cast<float>(i) / 17, static_cast<float>(i) / 19);
             p.scale = Eigen::Vector3f(0.3f, 0.7f, 1.1f);
             p.rotation = Eigen::Quaternionf(0.2f, -0.8f, 0.4f, -0.1f).normalized();
             p.opacity = static_cast<float>(i) / 96;
@@ -177,7 +196,9 @@ void format_streams(const std::filesystem::path& directory) {
     splat::Splat source(300001, 3);
     for (size_t i = 0; i < source.size(); ++i) {
         auto& p = source.gaussians[i];
-        p.mean = Eigen::Vector3f(static_cast<float>(i % 97) / 8, static_cast<float>(i % 113) / 8, static_cast<float>(i % 127) / 8);
+        p.mean = Eigen::Vector3f(
+            static_cast<float>(i % 97) / 8, static_cast<float>(i % 113) / 8, static_cast<float>(i % 127) / 8
+        );
         p.scale = Eigen::Vector3f(0.5f, 0.25f, 1.0f);
         p.rotation = Eigen::Quaternionf::Identity();
         p.opacity = static_cast<float>(i % 255) / 255;
@@ -196,7 +217,11 @@ void format_streams(const std::filesystem::path& directory) {
             const auto memory = format.read({ path, bytes, retained });
             const auto file = io::read_splat(path, retained);
             same(memory, file);
-            require(file.block_offsets == std::vector<size_t> { 0 } && file.block_counts == std::vector<size_t> { source.size() }, "Streaming path lost block metadata");
+            require(
+                file.block_offsets == std::vector<size_t> { 0 } &&
+                    file.block_counts == std::vector<size_t> { source.size() },
+                "Streaming path lost block metadata"
+            );
         }
         if (std::string(name) != "scene.splat") {
             io::write_bytes(path, std::span(bytes).first(bytes.size() - 1));
@@ -212,7 +237,9 @@ void format_streams(const std::filesystem::path& directory) {
 }
 } // namespace
 int main(int argc, char** argv) {
-    const auto directory = std::filesystem::temp_directory_path() / ("splat-streaming-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto directory =
+        std::filesystem::temp_directory_path() /
+        ("splat-streaming-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::create_directories(directory);
     struct Cleanup {
         std::filesystem::path path;

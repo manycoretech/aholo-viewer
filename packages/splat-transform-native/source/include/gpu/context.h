@@ -5,7 +5,9 @@
 
 namespace splat_transform::gpu {
 // Serialized values must match ApiType in the JavaScript wrapper.
-enum class ApiType : uint32_t { Vulkan = 0 };
+enum class ApiType : uint32_t {
+    Vulkan = 0
+};
 
 struct DeviceInfo {
     // Zero-based index across all APIs returned by enumerate_devices().
