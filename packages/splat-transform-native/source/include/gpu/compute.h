@@ -11,8 +11,11 @@
 namespace splat_transform::gpu {
 namespace detail {
 struct DeviceState;
-struct QueueState;
 struct FenceState;
+class BackendCommands;
+class BackendDescriptorTable;
+class BackendPipeline;
+class BackendQueue;
 } // namespace detail
 
 struct SpecializationConstant {
@@ -25,8 +28,10 @@ struct SpecializationConstant {
 struct ShaderCode {
     std::span<const std::byte> bytes;
 };
-enum class BufferAccess { Read,
-    ReadWrite };
+enum class BufferAccess {
+    Read,
+    ReadWrite
+};
 struct ComputeShader {
     std::string name;
     ShaderCode code;
@@ -46,9 +51,11 @@ struct ComputeLimits {
     std::array<uint32_t, 3> workgroup_size;
     uint32_t workgroup_invocations;
 };
-enum class BufferMemory { Device,
+enum class BufferMemory {
+    Device,
     Upload,
-    Readback };
+    Readback
+};
 class AllocationFailure : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;
@@ -91,8 +98,7 @@ public:
 private:
     friend class ComputeDevice;
     friend class CommandList;
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
+    std::unique_ptr<detail::BackendPipeline> impl_;
 };
 struct BufferRange {
     const Buffer* buffer = nullptr;
@@ -116,8 +122,7 @@ public:
 private:
     friend class ComputeDevice;
     friend class CommandList;
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
+    std::unique_ptr<detail::BackendDescriptorTable> impl_;
 };
 
 // Records compute/transfer commands with borrowed resource references.
@@ -135,9 +140,12 @@ public:
     CommandList& operator=(const CommandList&) = delete;
     void reset();
     void begin();
-    void copy(const Buffer& source, const Buffer& destination, size_t size, size_t source_offset = 0, size_t destination_offset = 0);
+    void copy(
+        const Buffer& source, const Buffer& destination, size_t size, size_t source_offset = 0,
+        size_t destination_offset = 0
+    );
     void fill(const Buffer& buffer, uint32_t value = 0, size_t size = 0, size_t offset = 0);
-    // Binding a pipeline invalidates the previous table/constant bindings.
+    // Bind the new pipeline's descriptor table and push constants before dispatch.
     void bind_pipeline(const ComputePipeline& pipeline);
     void bind_pipeline(ComputePipeline&&) = delete;
     void bind_descriptor_table(const DescriptorTable& table);
@@ -149,12 +157,9 @@ public:
 private:
     friend class ComputeDevice;
     friend class Queue;
-    friend struct detail::QueueState;
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
+    std::unique_ptr<detail::BackendCommands> impl_;
 };
-// Caller-owned, monotonically increasing completion progress. Polling retires
-// completed submissions; successful submissions allocate consecutive values.
+// Caller-owned timeline. Successful submissions allocate consecutive values.
 class Fence {
 public:
     Fence();
@@ -190,7 +195,7 @@ public:
 
 private:
     friend class ComputeDevice;
-    std::unique_ptr<detail::QueueState> state_;
+    std::unique_ptr<detail::BackendQueue> queue_;
 };
 // Copyable borrowed view of the current device context. Copying or
 // destroying this view never extends or ends the context's lifetime.
@@ -205,7 +210,9 @@ public:
     Buffer create_buffer(size_t size, BufferMemory memory = BufferMemory::Device, bool within_budget = false) const;
     ComputePipeline create_pipeline(const ComputeShader& shader) const;
     // BufferRange[i] populates slot i of the pipeline's descriptor table layout.
-    DescriptorTable create_descriptor_table(const ComputePipeline& pipeline, std::span<const BufferRange> buffers) const;
+    DescriptorTable create_descriptor_table(
+        const ComputePipeline& pipeline, std::span<const BufferRange> buffers
+    ) const;
     CommandList create_commands() const;
     Queue& default_queue() const;
     Fence create_fence(uint64_t initial_value = 0) const;

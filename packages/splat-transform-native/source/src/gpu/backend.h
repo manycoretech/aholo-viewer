@@ -4,8 +4,7 @@
 #include <utility>
 
 namespace splat_transform::gpu::detail {
-// Native handles stay behind these interfaces. Public compute code owns
-// validation without native API dependencies. Callers own resource lifetimes.
+// Native handles stay behind these interfaces. Callers own resource lifetimes.
 class BackendBuffer {
 public:
     virtual ~BackendBuffer() = default;
@@ -63,7 +62,9 @@ public:
     virtual size_t allocation_bytes() const = 0;
     virtual std::unique_ptr<BackendBuffer> create_buffer(size_t size, BufferMemory memory, bool within_budget) = 0;
     virtual std::unique_ptr<BackendPipeline> create_pipeline(const ComputeShader& shader) = 0;
-    virtual std::unique_ptr<BackendDescriptorTable> create_descriptor_table(BackendPipeline& pipeline, std::span<const BackendRange> buffers) = 0;
+    virtual std::unique_ptr<BackendDescriptorTable> create_descriptor_table(
+        BackendPipeline& pipeline, std::span<const BackendRange> buffers
+    ) = 0;
     virtual std::unique_ptr<BackendCommands> create_commands() = 0;
     virtual std::unique_ptr<BackendQueue> create_queue() = 0;
     virtual std::unique_ptr<BackendFence> create_fence(uint64_t initial_value) = 0;
@@ -86,7 +87,8 @@ private:
     std::vector<Entry> entries_;
 };
 struct DeviceState {
-    explicit DeviceState(std::unique_ptr<BackendDevice> device) : backend(std::move(device)), limits(this->backend->limits()) {}
+    explicit DeviceState(std::unique_ptr<BackendDevice> device)
+        : backend(std::move(device)), limits(this->backend->limits()) {}
     // The top-level DeviceGuard controls this context's lifetime. Views borrow it.
     std::unique_ptr<BackendDevice> backend;
     ComputeLimits limits;
