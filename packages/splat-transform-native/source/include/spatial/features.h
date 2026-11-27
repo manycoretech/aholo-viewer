@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <splat/splat.h>
 
 namespace splat_transform::spatial {
@@ -7,7 +8,8 @@ namespace splat_transform::spatial {
 // The feature permutation preserves the existing clustering arithmetic order.
 class FeatureView {
 public:
-    explicit FeatureView(const splat::Splat& points) : gaussians_(points.gaussians), dimensions_(points.sh_count()) {
+    explicit FeatureView(const splat::Splat& points, uint32_t max_sh_degree = splat::MAX_SH_DEGREE)
+        : gaussians_(points.gaussians), dimensions_(splat::SH_COUNTS.at(std::min(points.sh_degree, max_sh_degree))) {
         const auto coefficients = this->dimensions_ / 3;
         for (size_t c = 0; c < 3; ++c) {
             for (size_t j = 0; j < coefficients; ++j) {
@@ -15,8 +17,7 @@ public:
             }
         }
     }
-    FeatureView(splat::Splat&&) = delete;
-    FeatureView(const splat::Splat&&) = delete;
+    FeatureView(const splat::Splat&&, uint32_t = splat::MAX_SH_DEGREE) = delete;
     size_t rows() const noexcept { return this->gaussians_.size(); }
     size_t dimensions() const noexcept { return this->dimensions_; }
     const float& operator()(size_t row, size_t feature) const {
@@ -26,6 +27,6 @@ public:
 private:
     std::span<const splat::Gaussian> gaussians_;
     size_t dimensions_;
-    std::array<uint8_t, 45> attributes_ {};
+    std::array<uint8_t, splat::SH_COUNTS.back()> attributes_ {};
 };
 } // namespace splat_transform::spatial

@@ -192,8 +192,10 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
     logger.info(high_precision ? "ESZ encoding high mode" : "ESZ encoding low mode");
     constexpr int32_t LEVEL = 3;
     const auto bounds = splat::bounds(data);
-    const Json meta { { "version", 2 }, { "layout", high_precision ? "high" : "low" }, { "counts", data.size() },
-        { "shDegree", data.sh_degree }, { "box", bounds_json(bounds) } };
+    const auto degree = std::min(data.sh_degree, this->max_sh_degree());
+    const auto coefficients = splat::SH_COUNTS[degree] / 3;
+    const Json meta { { "version", 2 }, { "layout", high_precision ? "high" : "low" }, { "counts", indices.size() },
+        { "shDegree", degree }, { "box", bounds_json(bounds) } };
     const auto text = meta.dump();
     Bytes output;
     append(output, ESZ_MAGIC);
@@ -202,7 +204,7 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
     output.insert(output.end(), meta_bytes.begin(), meta_bytes.end());
     if (high_precision) {
         Bytes segment;
-        segment.reserve(data.size() * 16);
+        segment.reserve(indices.size() * 16);
         for (auto index : indices) {
             for (size_t c = 0; c < 3; ++c) {
                 append(segment, data.gaussians[index].attribute(c));
@@ -224,15 +226,15 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             append(segment, codec::encode_oct_quaternion(data.gaussians[index].rotation));
         }
         append_segment(output, segment);
-        const auto& rgb_bits = this->sh_bits_;
+        constexpr std::array<uint32_t, 3> rgb_bits { 11, 10, 11 };
         const std::array<uint32_t, 3> masks { (1u << rgb_bits[0]) - 1, (1u << rgb_bits[1]) - 1,
             (1u << rgb_bits[2]) - 1 };
-        for (size_t group = 0; group < data.sh_count() / 3; group += 4) {
+        for (size_t group = 0; group < coefficients; group += 4) {
             segment.clear();
             for (auto index : indices) {
                 for (size_t j = 0; j < 4; ++j) {
                     uint32_t value = 0;
-                    if (group + j < data.sh_count() / 3) {
+                    if (group + j < coefficients) {
                         const auto col = splat::ShOffset + (group + j) * 3;
                         auto quantize = [&](size_t c) {
                             const auto mask = masks[c];
@@ -250,7 +252,7 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             append_segment(output, segment);
         }
     } else {
-        const auto [width, height] = codec::texture_size(data.size());
+        const auto [width, height] = codec::texture_size(indices.size());
         auto write_image = [&](const Bytes& bytes, uint32_t w, uint32_t h) {
             append_segment(output, codec::encode_webp(bytes, w, h));
         };
@@ -304,11 +306,10 @@ Bytes EszFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         }
         write_image(pixels, width, height);
         colors_time.finish();
-        if (data.sh_degree) {
+        if (degree) {
             auto sh_time = logger.time("ESZ encoding shN");
             const auto steps = codec::sh_quantization_steps(this->sh_bits_);
-            const auto coefficients = data.sh_count() / 3;
-            const auto [w, h] = codec::texture_size(data.size() * coefficients);
+            const auto [w, h] = codec::texture_size(indices.size() * coefficients);
             pixels.assign(static_cast<size_t>(w) * h * 4, std::byte { 255 });
             for (size_t i = 0; i < indices.size(); ++i) {
                 for (size_t j = 0; j < coefficients; ++j) {

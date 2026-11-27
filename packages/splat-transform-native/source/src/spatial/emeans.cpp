@@ -184,8 +184,7 @@ struct Trainer {
 double error_slope(Probe first, Probe second) {
     return std::log(second.error / first.error) / std::log(static_cast<double>(second.count) / first.count);
 }
-Clustering search_palette(const splat::Splat& data, size_t max_count, bool exact_allowed, double target) {
-    const FeatureView points(data);
+Clustering search_palette(const splat::Splat& data, FeatureView points, size_t max_count, bool exact_allowed, double target) {
     const size_t rows = points.rows();
     auto weights = sh_palette_weights(data);
     std::vector<uint32_t> order(rows);
@@ -252,8 +251,8 @@ Clustering search_palette(const splat::Splat& data, size_t max_count, bool exact
 }
 } // namespace
 
-Clustering cluster_sh_to_color_error(const splat::Splat& data, size_t limit, double target) {
-    const FeatureView points(data);
+Clustering cluster_sh_to_color_error(const splat::Splat& data, size_t limit, double target, uint32_t max_sh_degree) {
+    const FeatureView points(data, max_sh_degree);
     const size_t rows = points.rows();
     const bool exact_allowed = rows <= limit;
     const size_t max_count = exact_allowed && rows ? (rows - 1) / PaletteRow * PaletteRow : limit;
@@ -264,7 +263,7 @@ Clustering cluster_sh_to_color_error(const splat::Splat& data, size_t limit, dou
     if (rows <= ResidentBytes / sizeof(float) / points.dimensions() &&
         rows <= gpu::ComputeDevice().limits().storage_buffer_bytes / sizeof(uint32_t)) {
         try {
-            return search_palette(data, max_count, exact_allowed, target);
+            return search_palette(data, points, max_count, exact_allowed, target);
         } catch (const gpu::AllocationFailure& error) {
             utility::logger().warn("SOG SH e-means workspace: ", error.what());
         }

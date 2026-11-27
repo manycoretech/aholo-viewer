@@ -21,7 +21,7 @@ splat::Splat LccFile::read(const FileInput& source) const {
         sh_bytes = resources.read("shcoef.bin");
     }
     const ByteReader index_reader(index), sh_reader(sh_bytes);
-    splat::Splat result(meta.at("splats").at(0).get<size_t>(), source.retained_degree(has_sh ? 3 : 0));
+    splat::Splat result(meta.at("splats").at(0).get<size_t>(), source.retained_degree(has_sh ? this->max_sh_degree() : 0));
     Json attributes = Json::object();
     for (const auto& attr : meta.at("attributes")) {
         attributes[attr.at("name").get<std::string>()] = attr;

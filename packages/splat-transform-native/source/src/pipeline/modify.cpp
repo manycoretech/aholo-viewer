@@ -1,9 +1,9 @@
-#include "data_support.h"
 #include <Eigen/Dense>
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <numeric>
 #include <optional>
 #include <pipeline/runner.h>
@@ -70,7 +70,6 @@ std::pair<bool, bool> transform(splat::Splat& data, std::span<const uint32_t> in
 } // namespace
 bool modify(splat::Splat& data, const io::Json& config, const PathResolver& resolver) {
     std::array<std::optional<float>, 4> rgba;
-    std::optional<uint32_t> max_sh_degree;
     if (config.contains("rgba")) {
         const auto& value = config.at("rgba");
         if (value.is_array() && value.size() == rgba.size()) {
@@ -95,16 +94,9 @@ bool modify(splat::Splat& data, const io::Json& config, const PathResolver& reso
                     rgba[i].emplace(v[i]);
                 }
             }
-        } else {
-            throw std::runtime_error("Modify rgba must contain four finite float values or an object");
         }
     }
-    if (config.contains("maxShDegree")) {
-        max_sh_degree = unsigned_integer(config.at("maxShDegree"), "maxShDegree");
-        if (*max_sh_degree > 3) {
-            throw std::runtime_error("Modify maxShDegree must be 0, 1, 2, or 3");
-        }
-    }
+    const auto max_sh_degree = config.value("maxShDegree", data.sh_degree);
     auto& logger = utility::logger();
     const auto paths = config.value("modifyPaths", std::vector<std::string>());
     if (paths.size() > data.block_counts.size()) {
@@ -194,9 +186,7 @@ bool modify(splat::Splat& data, const io::Json& config, const PathResolver& reso
             }
         }
     }
-    if (max_sh_degree) {
-        data.limit_sh_degree(*max_sh_degree);
-    }
+    data.limit_sh_degree(max_sh_degree);
     return geometry_changed;
 }
 } // namespace splat_transform::pipeline

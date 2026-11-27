@@ -12,6 +12,7 @@
 namespace splat_transform::io {
 namespace {
 constexpr uint32_t SPZ_MAGIC = 0x5053474e;
+constexpr uint32_t spz_max_sh_degree(uint32_t version) { return version == 4 ? 4 : 3; }
 constexpr float COLOR_SCALE = splat::SH_C0 / 0.15f;
 } // namespace
 namespace {
@@ -113,7 +114,7 @@ splat::Splat read_spz_stream(StreamReader& source, uint32_t max_sh_degree) {
     const auto fractional_bits = input.read<uint8_t>();
     input.read<uint8_t>();
     const auto streams = input.read<uint8_t>();
-    if (degree > 3 || fractional_bits > 30) {
+    if (degree > spz_max_sh_degree(version) || fractional_bits > 30) {
         throw std::runtime_error("Invalid SPZ SH degree or fractional bits");
     }
     splat::Splat result(count, std::min(static_cast<uint32_t>(degree), max_sh_degree));
@@ -148,6 +149,7 @@ splat::Splat read_spz_stream(StreamReader& source, uint32_t max_sh_degree) {
     return result;
 }
 } // namespace
+uint32_t SpzFile::max_sh_degree() const noexcept { return spz_max_sh_degree(this->version_); }
 splat::Splat SpzFile::read(const FileInput& source) const {
     StreamReader reader(source.bytes);
     return read_spz_stream(reader, source.max_sh_degree);
@@ -165,23 +167,25 @@ public:
         const ShBits& sh_bits
     )
         : data_(data), indices_(indices), version_(version), level_(level),
-          sh_steps_(codec::sh_quantization_steps(sh_bits)), strides_ { 9, 1, 3, 3, 4, data.sh_count() } {
+          sh_steps_(codec::sh_quantization_steps(sh_bits)) {
         if (version != 3 && version != 4) {
             throw std::runtime_error("Unsupported SPZ output version");
         }
         if (indices.size() > std::numeric_limits<uint32_t>::max()) {
             throw std::runtime_error("Too many SPZ points");
         }
+        const auto degree = std::min(data.sh_degree, spz_max_sh_degree(version));
+        this->strides_.back() = splat::SH_COUNTS.at(degree);
         for (size_t field = 0; field < this->strides_.size(); ++field) {
             this->offsets_[field + 1] = this->offsets_[field] + indices.size() * this->strides_[field];
         }
         append(this->header_, SPZ_MAGIC);
         append(this->header_, static_cast<uint32_t>(version));
         append(this->header_, static_cast<uint32_t>(indices.size()));
-        this->header_.push_back(static_cast<std::byte>(data.sh_degree));
+        this->header_.push_back(static_cast<std::byte>(degree));
         this->header_.push_back(std::byte { 12 });
         this->header_.push_back(std::byte { 1 });
-        this->header_.push_back(static_cast<std::byte>(version == 4 ? (data.sh_degree ? 6 : 5) : 0));
+        this->header_.push_back(static_cast<std::byte>(version == 4 ? (degree ? 6 : 5) : 0));
     }
     void write(const codec::WriteChunk& output, const std::function<void(size_t)>& seek) const {
         if (this->version_ == 3) {
@@ -210,7 +214,7 @@ public:
             }
             return;
         }
-        const size_t streams = this->data_.sh_degree ? 6 : 5;
+        const size_t streams = this->strides_.back() ? 6 : 5;
         auto header = this->header_;
         append(header, static_cast<uint32_t>(32));
         header.resize(32 + streams * 16, std::byte {});
@@ -283,7 +287,7 @@ private:
                     output[c] = static_cast<std::byte>(packed >> (8 * c));
                 }
             } else {
-                for (size_t c = 0; c < this->data_.sh_count(); ++c) {
+                for (size_t c = 0; c < this->strides_[field]; ++c) {
                     output[c] = codec::quantize_sh(point.attribute(splat::ShOffset + c), this->sh_steps_[c / 3]);
                 }
             }
@@ -293,7 +297,7 @@ private:
         const size_t stride = this->strides_[field];
         size_t first = offset / stride;
         const size_t skip = offset % stride;
-        std::array<std::byte, 45> partial;
+        std::array<std::byte, splat::SH_COUNTS.back()> partial;
         if (skip) {
             this->encode_rows(field, first++, 1, partial.data());
             const size_t count = std::min(bytes.size(), stride - skip);
@@ -331,8 +335,8 @@ private:
     const splat::Splat& data_;
     std::span<const uint32_t> indices_;
     int32_t version_, level_;
-    std::array<float, 15> sh_steps_;
-    std::array<size_t, 6> strides_;
+    std::array<float, 24> sh_steps_;
+    std::array<size_t, 6> strides_ { 9, 1, 3, 3, 4, 0 };
     std::array<size_t, 7> offsets_ {};
     Bytes header_;
 };

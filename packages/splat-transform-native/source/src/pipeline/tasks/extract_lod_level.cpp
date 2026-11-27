@@ -1,4 +1,5 @@
 #include "../data_support.h"
+#include <algorithm>
 #include <limits>
 #include <pipeline/tasks/extract_lod_level.h>
 #include <unordered_map>
@@ -7,7 +8,7 @@
 namespace splat_transform::pipeline {
 void ExtractLodLevelTask::exec(const io::Json& config, TaskContext& context) const {
     const auto output = config.at("output").get<std::string>();
-    const auto level = unsigned_integer(config.at("level"), "level");
+    const auto level = config.at("level").get<size_t>();
     const auto* bundle = std::get_if<std::vector<SingleFile>>(&context.input(config));
     if (!bundle) {
         throw std::runtime_error("ExtractLodLevel requires an in-memory LOD bundle");
@@ -30,10 +31,10 @@ void ExtractLodLevelTask::exec(const io::Json& config, TaskContext& context) con
         throw std::runtime_error("ExtractLodLevel lod-meta.json is missing");
     }
     const auto meta = io::Json::parse(*metadata);
-    const auto levels = unsigned_integer(meta.at("levels"), "levels");
-    const auto degree = unsigned_integer(meta.at("shDegree"), "shDegree");
-    if (level >= levels || degree > 3) {
-        throw std::runtime_error("ExtractLodLevel level or SH degree is out of range");
+    const auto levels = meta.at("levels").get<size_t>();
+    const auto degree = std::min(meta.at("shDegree").get<uint32_t>(), splat::MAX_SH_DEGREE);
+    if (level >= levels) {
+        throw std::runtime_error("ExtractLodLevel level is out of range");
     }
     const auto& files = meta.at("files");
     const auto& tree = meta.at("tree");
@@ -58,9 +59,9 @@ void ExtractLodLevelTask::exec(const io::Json& config, TaskContext& context) con
             throw std::runtime_error("ExtractLodLevel tree node is missing the requested level");
         }
         const auto& ref = lods.at(level);
-        const auto file = unsigned_integer(ref.at("file"), "file");
-        const auto offset = unsigned_integer(ref.at("offset"), "offset");
-        const auto count = unsigned_integer(ref.at("count"), "count");
+        const auto file = ref.at("file").get<size_t>();
+        const auto offset = ref.at("offset").get<size_t>();
+        const auto count = ref.at("count").get<size_t>();
         if (file >= files.size()) {
             throw std::runtime_error("ExtractLodLevel file index is out of range");
         }
@@ -82,12 +83,7 @@ void ExtractLodLevelTask::exec(const io::Json& config, TaskContext& context) con
     result->gaussians.reserve(total);
     for (const auto& range : ranges) {
         const auto points = std::span(range.data->gaussians).subspan(range.offset, range.count);
-        for (const auto& point : points) {
-            if (point.sh.size() != splat::SH_COUNTS[degree] + 3) {
-                throw std::runtime_error("ExtractLodLevel chunk SH layout is inconsistent");
-            }
-            result->gaussians.push_back(point);
-        }
+        result->gaussians.insert(result->gaussians.end(), points.begin(), points.end());
     }
     single_block(*result);
     context.set(config, std::move(result));

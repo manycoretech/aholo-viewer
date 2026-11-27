@@ -58,5 +58,7 @@ Quantization quantize_1d(
 
 Clustering k_means(FeatureView points, size_t count, size_t iterations = 10);
 std::vector<float> sh_palette_weights(const splat::Splat& data);
-Clustering cluster_sh_to_color_error(const splat::Splat& data, size_t limit, double target);
+Clustering cluster_sh_to_color_error(
+    const splat::Splat& data, size_t limit, double target, uint32_t max_sh_degree = splat::MAX_SH_DEGREE
+);
 } // namespace splat_transform::spatial

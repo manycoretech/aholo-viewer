@@ -10,12 +10,12 @@ struct Parameters {
 [[vk::binding(2, 0)]] StructuredBuffer<float> squared;
 [[vk::binding(3, 0)]] RWStructuredBuffer<uint> labels;
 
-// SH1, SH2 and SH3 occupy 3, 6 and 12 padded float4 columns.
+// SH1 through SH4 occupy 3, 6, 12 and 18 float4 columns.
 [[vk::constant_id(0)]] const uint vec_columns = 12;
-static const uint max_columns = 12;
-static const uint tile_size = 64;
-groupshared float4 tile[tile_size * max_columns];
-groupshared float tile_squared[tile_size];
+static const uint max_columns = 18;
+// Keep the existing workgroup memory budget. SH4 loads 32 centers per tile.
+groupshared float4 tile[64 * 12];
+groupshared float tile_squared[64];
 
 [numthreads(64, 1, 1)] void main(uint3 group : SV_GroupID, uint lane : SV_GroupIndex) {
     // A group covers 128 rows. Each lane reuses a centroid for two dot products.
@@ -29,6 +29,7 @@ groupshared float tile_squared[tile_size];
     }
     float best0 = asfloat(0x7f800000u), best1 = best0;
     uint label0 = 0, label1 = 0;
+    const uint tile_size = vec_columns <= 12 ? 64 : 32;
     for (uint start = 0; start < parameters.centroid_count; start += tile_size) {
         uint count = min(tile_size, parameters.centroid_count - start);
         for (uint i = lane; i < count * vec_columns; i += 64) {

@@ -24,8 +24,11 @@ function(check_base json entry dir expected_bytes)
     file(WRITE "${file}" "${json}")
     execute_process(COMMAND "${CLI}" "${entry}" WORKING_DIRECTORY "${work}"
         INPUT_FILE "${file}" ERROR_VARIABLE warning ERROR_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
-    if(NOT warning STREQUAL "${ARGV4}")
-        message(FATAL_ERROR "Expected stderr '${ARGV4}', got '${warning}'")
+    cmake_path(CONVERT "${dir}/probe.splat" TO_NATIVE_PATH_LIST native_probe_path)
+    string(JOIN "\n" expected_warning ${ARGN}
+        "[Task:Write#] ${native_probe_path} supports up to SH0. Writing SH0 from SH3 input.")
+    if(NOT warning STREQUAL "${expected_warning}")
+        message(FATAL_ERROR "Expected stderr '${expected_warning}', got '${warning}'")
     endif()
     file(SIZE "${dir}/probe.splat" actual)
     if(NOT actual EQUAL expected_bytes)

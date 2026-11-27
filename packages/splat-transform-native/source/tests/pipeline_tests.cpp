@@ -43,7 +43,7 @@ void write_options(const std::filesystem::path& directory, const splat::Splat& s
     }
 }
 void sh_quantization_options(const std::filesystem::path& directory) {
-    auto source = std::make_shared<splat::Splat>(1, 3);
+    auto source = std::make_shared<splat::Splat>(1, 4);
     auto& point = source->gaussians.front();
     point.scale.setOnes();
     constexpr std::array<float, 3> rgb { 13.0f / 128, -13.0f / 128, 1.0f };
@@ -60,16 +60,23 @@ void sh_quantization_options(const std::filesystem::path& directory) {
             { "shBits", { 9, 0, 6 } } };
         task.exec(config, context);
         const auto decoded = io::read_splat(path);
-        require(decoded.size() == 1 && decoded.sh_degree == 3, "Custom SH precision changed the splat shape");
+        require(decoded.size() == 1 && decoded.sh_degree == (version == 4 ? 4u : 3u), "Unexpected output SH degree");
         for (size_t c = 0; c < decoded.sh_count(); ++c) {
             // [9, 0, 6] clamps to [8, 1, 6]. The positive endpoint saturates at byte 255.
             const int magnitude = c < 9 ? 13 : c < 24 ? 0
-                                                      : 12;
+                                           : c < 45   ? 12
+                                                      : 16;
             const std::array<int, 3> expected { magnitude, -magnitude, 127 };
             require(
                 decoded.gaussians.front().attribute(splat::ShOffset + c) == expected[c % 3] / 128.0f,
                 "Wrong quantization for SH band or channel"
             );
+        }
+        if (version == 4) {
+            config["shBits"] = { 9, 0, 6, 8 };
+            task.exec(config, context);
+            const auto explicit_fourth = io::read_splat(path);
+            require(explicit_fourth.gaussians[0].sh[48] == rgb[0], "SPZ v4 ignored the fourth SH bit count");
         }
         config.erase("shBits");
         task.exec(config, context);

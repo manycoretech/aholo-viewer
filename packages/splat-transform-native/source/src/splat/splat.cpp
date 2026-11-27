@@ -162,7 +162,7 @@ void Gaussian::make_valid() {
 }
 
 Splat::Splat(size_t count, uint32_t degree) : sh_degree(degree) {
-    if (degree > 3 || count > std::numeric_limits<uint32_t>::max()) {
+    if (degree > MAX_SH_DEGREE || count > std::numeric_limits<uint32_t>::max()) {
         throw std::runtime_error("Unsupported splat size or SH degree");
     }
     this->gaussians.resize(count);
@@ -172,7 +172,7 @@ Splat::Splat(size_t count, uint32_t degree) : sh_degree(degree) {
 }
 
 void Splat::limit_sh_degree(uint32_t maximum) {
-    const auto degree = std::min(this->sh_degree, std::min(maximum, 3u));
+    const auto degree = std::min(this->sh_degree, maximum);
     if (degree == this->sh_degree) {
         return;
     }
@@ -221,7 +221,7 @@ void Splat::prepare_lod() {
 }
 
 Splat combine(std::vector<Splat>&& source, bool minimum_sh) {
-    uint32_t degree = minimum_sh ? 3 : 0;
+    uint32_t degree = minimum_sh ? MAX_SH_DEGREE : 0;
     size_t count = 0;
     for (const auto& part : source) {
         if (part.size() > std::numeric_limits<uint32_t>::max() - count) {

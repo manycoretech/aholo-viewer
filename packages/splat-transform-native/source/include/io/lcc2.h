@@ -5,6 +5,7 @@ namespace splat_transform::io {
 class Lcc2File final : public IFile {
 public:
     std::string_view name() const noexcept override { return "LCC2"; }
+    uint32_t max_sh_degree() const noexcept override { return 4; }
     splat::Splat read(const FileInput& input) const override;
 };
 } // namespace splat_transform::io

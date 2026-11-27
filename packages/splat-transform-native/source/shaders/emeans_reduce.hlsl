@@ -11,7 +11,9 @@ struct Parameters {
 [[vk::binding(2, 0)]] StructuredBuffer<uint> members;
 [[vk::binding(3, 0)]] RWStructuredBuffer<float> sums;
 
-groupshared float partials[64 * 49];
+// One tile holds all padded SH3 columns and the weight. SH4 uses two tiles.
+static const uint tile_columns = 49;
+groupshared float partials[64 * tile_columns];
 
 float contribution(uint member, uint column) {
     uint row = parameters.point_offset + members[member];
@@ -33,28 +35,34 @@ float contribution(uint member, uint column) {
     }
     uint base = entry * (parameters.stride + 1);
     if (end - begin <= 64) {
-        if (lane <= parameters.stride) {
+        for (uint column = lane; column <= parameters.stride; column += 64) {
             float sum = 0;
             for (uint member = begin; member < end; ++member) {
-                sum += contribution(member, lane);
+                sum += contribution(member, column);
             }
-            sums[base + lane] += sum;
+            sums[base + column] += sum;
         }
         return;
     }
-    for (uint column = 0; column <= parameters.stride; ++column) {
-        float sum = 0;
-        for (uint member = begin + lane; member < end; member += 64) {
-            sum += contribution(member, column);
+    for (uint first = 0; first <= parameters.stride; first += tile_columns) {
+        uint count = min(tile_columns, parameters.stride + 1 - first);
+        for (uint column = 0; column < count; ++column) {
+            float sum = 0;
+            for (uint member = begin + lane; member < end; member += 64) {
+                sum += contribution(member, first + column);
+            }
+            partials[column * 64 + lane] = sum;
         }
-        partials[column * 64 + lane] = sum;
-    }
-    GroupMemoryBarrierWithGroupSync();
-    if (lane <= parameters.stride) {
-        float sum = 0;
-        for (uint index = 0; index < 64; ++index) {
-            sum += partials[lane * 64 + index];
+        GroupMemoryBarrierWithGroupSync();
+        if (lane < count) {
+            float sum = 0;
+            for (uint index = 0; index < 64; ++index) {
+                sum += partials[lane * 64 + index];
+            }
+            sums[base + first + lane] += sum;
         }
-        sums[base + lane] += sum;
+        if (first + count <= parameters.stride) {
+            GroupMemoryBarrierWithGroupSync();
+        }
     }
 }

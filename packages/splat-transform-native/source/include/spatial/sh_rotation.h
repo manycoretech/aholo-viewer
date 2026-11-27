@@ -66,21 +66,56 @@ public:
         this->sh1_.noalias() = basis * rotation * basis.transpose();
         this->sh2_.noalias() = projection2 * Eigen::kroneckerProduct(this->sh1_, this->sh1_).eval() * embedding2;
         this->sh3_.noalias() = projection3 * Eigen::kroneckerProduct(this->sh1_, this->sh2_).eval() * embedding3;
+        // Orthonormal real Clebsch-Gordan projection from bands 1 x 3 onto band 4.
+        // Rows are m=-4..4. Columns are (m1+1)*7 + (m3+3), in the same basis as sh1_ and sh3_.
+        static const Eigen::Matrix<float, 9, 21> projection4 = [] {
+            Eigen::Matrix<float, 9, 21> p = Eigen::Matrix<float, 9, 21>::Zero();
+            const auto weight = [](float numerator) { return std::sqrt(numerator / 56.0f); };
+            p(0, 6) = p(0, 14) = weight(28);
+            p(1, 5) = p(1, 15) = weight(21);
+            p(1, 7) = 0.5f;
+            p(2, 4) = p(2, 16) = weight(15);
+            p(2, 6) = weight(1);
+            p(2, 8) = weight(24);
+            p(2, 14) = -weight(1);
+            p(3, 3) = weight(20);
+            p(3, 5) = weight(3);
+            p(3, 9) = weight(30);
+            p(3, 15) = -weight(3);
+            p(4, 2) = p(4, 18) = -weight(12);
+            p(4, 10) = weight(32);
+            p(5, 1) = p(5, 19) = -weight(3);
+            p(5, 11) = weight(30);
+            p(5, 17) = weight(20);
+            p(6, 0) = p(6, 20) = -weight(1);
+            p(6, 2) = -weight(15);
+            p(6, 12) = weight(24);
+            p(6, 18) = weight(15);
+            p(7, 1) = -weight(21);
+            p(7, 13) = 0.5f;
+            p(7, 19) = weight(21);
+            p(8, 0) = -weight(28);
+            p(8, 20) = weight(28);
+            return p;
+        }();
+        this->sh4_.noalias() =
+            projection4 * Eigen::kroneckerProduct(this->sh1_, this->sh3_).eval() * projection4.transpose();
     }
     void apply(splat::ShCoefficients& sh) const {
         const size_t count = sh.size() > 3 ? (sh.size() - 3) / 3 : 0;
         if (count == 0) {
             return;
         }
-        if (count != 3 && count != 8 && count != 15) {
+        if (count != 3 && count != 8 && count != 15 && count != 24) {
             throw std::runtime_error("Unsupported SH coefficient count");
         }
         if (!Eigen::Map<const Eigen::VectorXf>(sh.data() + 3, count * 3).allFinite()) {
             // The former dense product also propagated 0 * NaN/Inf across bands.
-            Eigen::Matrix<float, 15, 15> factors = Eigen::Matrix<float, 15, 15>::Zero();
+            Eigen::Matrix<float, 24, 24> factors = Eigen::Matrix<float, 24, 24>::Zero();
             factors.topLeftCorner<3, 3>() = this->sh1_;
             factors.block<5, 5>(3, 3) = this->sh2_;
-            factors.bottomRightCorner<7, 7>() = this->sh3_;
+            factors.block<7, 7>(8, 8) = this->sh3_;
+            factors.bottomRightCorner<9, 9>() = this->sh4_;
             Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, 3, Eigen::RowMajor>> coefficients(sh.data() + 3, count, 3);
             coefficients = (factors.topLeftCorner(count, count) * coefficients).eval();
             return;
@@ -89,8 +124,11 @@ public:
         if (count >= 8) {
             rotate_band<5>(sh, 4, this->sh2_);
         }
-        if (count == 15) {
+        if (count >= 15) {
             rotate_band<7>(sh, 9, this->sh3_);
+        }
+        if (count == 24) {
+            rotate_band<9>(sh, 16, this->sh4_);
         }
     }
 
@@ -106,5 +144,6 @@ private:
     Eigen::Matrix3f sh1_;
     Eigen::Matrix<float, 5, 5> sh2_;
     Eigen::Matrix<float, 7, 7> sh3_;
+    Eigen::Matrix<float, 9, 9> sh4_;
 };
 } // namespace splat_transform::spatial

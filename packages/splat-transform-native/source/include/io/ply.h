@@ -6,8 +6,9 @@ namespace splat_transform::io {
 class PlyFile final : public IFile {
 public:
     std::string_view name() const noexcept override { return "PLY"; }
+    uint32_t max_sh_degree() const noexcept override { return 4; }
     splat::Splat read(const FileInput& input) const override;
-    splat::Splat read(const std::filesystem::path& path, uint32_t max_sh_degree = 3) const override;
+    splat::Splat read(const std::filesystem::path& path, uint32_t max_sh_degree = splat::MAX_SH_DEGREE) const override;
     Bytes write(const splat::Splat& splat, std::span<const uint32_t> indices) const override;
 };
 } // namespace splat_transform::io

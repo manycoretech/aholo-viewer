@@ -9,9 +9,13 @@
 #include <utility/thread_pool.h>
 
 namespace splat_transform::io {
+namespace {
+constexpr uint32_t sog_max_sh_degree(int32_t version) { return version == 3 ? 4 : 3; }
+} // namespace
 SogFile::SogFile(int32_t version, size_t palette_size, double color_error)
     : version_(version == 3 ? 3 : 2), palette_size_(std::min(palette_size, palette_limit(version))),
       color_error_(std::isfinite(color_error) && color_error > 0 ? color_error : FileOptions::default_color_error) {}
+uint32_t SogFile::max_sh_degree() const noexcept { return sog_max_sh_degree(this->version_); }
 splat::Splat SogFile::read(const FileInput& source) const {
     const auto bytes = source.bytes;
     const auto& path = source.path;
@@ -43,7 +47,7 @@ splat::Splat SogFile::read(const FileInput& source) const {
             degree = meta.at("shN").at("bands").get<uint32_t>();
         }
     }
-    splat::Splat output(count, source.retained_degree(degree));
+    splat::Splat output(count, source.retained_degree(degree, sog_max_sh_degree(version)));
     std::array<codec::Image, 7> images;
     auto read_images = [&](const char* group, size_t first, size_t expected) {
         const auto& files = meta.at(group).at("files");
@@ -244,18 +248,19 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
         meta["opacity"] = { { "max", codec::decode_sog_opacity(maximum_opacity) } };
     }
     const auto attribute_textures = textures.size();
-    if (data.sh_degree && !indices.empty()) {
+    const auto degree = std::min(data.sh_degree, this->max_sh_degree());
+    if (degree && !indices.empty()) {
         auto& logger = utility::logger();
-        const auto sh_name = "SH" + std::to_string(data.sh_degree);
+        const auto sh_name = "SH" + std::to_string(degree);
         auto elapsed = logger.time("SOG encoding " + sh_name);
-        const size_t coefficients = data.sh_count() / 3;
+        const size_t coefficients = splat::SH_COUNTS[degree] / 3;
         // Coordinate Vulkan work on the caller while CPU texture jobs use the
         // shared pool; no extra coordinator thread or per-SOG pool is needed.
         auto clustering_time = logger.time("SOG " + sh_name + " clustering");
         auto clustering =
             this->palette_size_
-                ? spatial::k_means(spatial::FeatureView(data), std::min(this->palette_size_, data.size()))
-                : spatial::cluster_sh_to_color_error(data, palette_limit(this->version_), this->color_error_);
+                ? spatial::k_means(spatial::FeatureView(data, degree), std::min(this->palette_size_, data.size()))
+                : spatial::cluster_sh_to_color_error(data, palette_limit(this->version_), this->color_error_, degree);
         clustering_time.finish();
         auto quantized = spatial::quantize_1d(clustering.centroids);
         const size_t centroid_count = static_cast<size_t>(clustering.centroids.rows());
@@ -279,7 +284,7 @@ Bytes SogFile::write(const splat::Splat& data, std::span<const uint32_t> indices
             pixels[i * 4 + 2] = this->version_ == 3 ? static_cast<std::byte>((label >> 16) & 255) : std::byte { 0 };
         }
         encode_image("shN_labels.webp", std::move(pixels), width, height);
-        meta["shN"] = { { "count", centroid_count }, { "bands", data.sh_degree }, { "codebook", quantized.centroids },
+        meta["shN"] = { { "count", centroid_count }, { "bands", degree }, { "codebook", quantized.centroids },
             { "files", { "shN_centroids.webp", "shN_labels.webp" } } };
     }
     for (size_t i = attribute_textures; i < textures.size(); ++i) {

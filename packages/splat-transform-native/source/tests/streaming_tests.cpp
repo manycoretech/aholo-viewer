@@ -162,7 +162,7 @@ void compressed_writes() {
     }
 }
 void spz_shapes(const std::filesystem::path& directory) {
-    for (uint32_t degree = 0; degree <= 3; ++degree) {
+    for (uint32_t degree = 0; degree <= splat::MAX_SH_DEGREE; ++degree) {
         splat::Splat source(97, degree);
         for (size_t i = 0; i < source.size(); ++i) {
             auto& p = source.gaussians[i];
@@ -187,7 +187,8 @@ void spz_shapes(const std::filesystem::path& directory) {
                 const auto path = directory / "shape.spz";
                 format.write(path, source, indices);
                 require(io::read_bytes(path) == format.write(source, indices), "File and memory SPZ writers differ");
-                same(expected, io::read_splat(path));
+                same(expected, io::read_splat(path, 3));
+                require(io::read_splat(path).sh_degree == std::min(degree, format.max_sh_degree()), "SPZ file header did not use its version's SH limit");
             }
         }
     }

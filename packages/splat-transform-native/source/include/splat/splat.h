@@ -11,7 +11,8 @@
 
 namespace splat_transform::splat {
 inline constexpr float SH_C0 = 0.28209479177387814f;
-inline constexpr std::array<size_t, 4> SH_COUNTS { 0, 9, 24, 45 };
+inline constexpr std::array<size_t, 5> SH_COUNTS { 0, 9, 24, 45, 72 };
+inline constexpr uint32_t MAX_SH_DEGREE = SH_COUNTS.size() - 1;
 enum Attribute : size_t {
     X,
     Y,

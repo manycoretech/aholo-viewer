@@ -1,6 +1,7 @@
 #include <pipeline/tasks/write.h>
 #include <utility/logger.h>
 #include <utility/thread_pool.h>
+#include <utility>
 
 namespace splat_transform::pipeline {
 using io::Json;
@@ -13,7 +14,11 @@ io::FileOptions file_options(const Json& config) {
     options.color_error = config.value("colorError", options.color_error);
     options.high_precision = config.value("highPrecision", options.high_precision);
     options.enable_morton_sort = config.value("enableMortonSort", options.enable_morton_sort);
-    options.sh_bits = config.value("shBits", options.sh_bits);
+    if (const auto bits = config.find("shBits"); bits != config.end() && bits->size() == 3) {
+        std::ranges::copy(bits->get<std::array<uint32_t, 3>>(), options.sh_bits.begin());
+    } else {
+        options.sh_bits = config.value("shBits", io::FileOptions::default_sh_bits);
+    }
     return options;
 }
 struct SplatWrite {
@@ -48,6 +53,7 @@ void write_resource(
     auto& pool = threading::default_pool();
     const auto concurrency = pool.thread_count();
     logger.info("writing bundle -> dir=\"", output, "\" files=", files.size());
+    bool sh_truncated = false;
     {
         auto quiet = logger.silence();
         threading::TaskGroup<void> pending(pool, files.size());
@@ -65,6 +71,7 @@ void write_resource(
             }
             const auto format = io::create_file(destination.extension().string(), options, io::FileOperation::Write);
             SplatWrite write { destination, std::get<SplatPtr>(file.content), options };
+            sh_truncated |= write.data->sh_degree > format->max_sh_degree();
             if (file.preserve_order || format->preserve_bundle_order()) {
                 write.options.enable_morton_sort = false;
             }
@@ -85,6 +92,9 @@ void write_resource(
             progress(write.path);
             write();
         }
+    }
+    if (sh_truncated) {
+        logger.warn("SH degree truncated in bundle output.");
     }
     logger.info("writing bundle done -> dir=\"", output, "\" files=", files.size());
 }

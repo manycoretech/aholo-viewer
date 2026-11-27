@@ -250,7 +250,7 @@ int main(int argc, char** argv) {
             }
         }
         gpu::select_device(selected);
-        for (uint32_t degree : { 1u, 2u, 3u }) {
+        for (uint32_t degree : { 1u, 2u, 3u, 4u }) {
             emeans_assignment_tiles(degree);
             emeans_device_updates(degree);
         }
@@ -341,7 +341,7 @@ int main(int argc, char** argv) {
                 }
             }
         }
-        for (uint32_t degree : { 1u, 2u, 3u }) {
+        for (uint32_t degree : { 1u, 2u, 3u, 4u }) {
             const auto columns = splat::SH_COUNTS[degree];
             Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> points(257, columns),
                 centroids(129, columns);

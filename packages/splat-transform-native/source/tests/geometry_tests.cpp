@@ -272,7 +272,7 @@ void voxel_selection() {
 void sh_rotation() {
     const Eigen::Matrix3f rotation = Eigen::AngleAxisf(0.73f, Eigen::Vector3f(1, 2, 3).normalized()).toRotationMatrix();
     const spatial::ShRotation forward(rotation), backward(rotation.transpose()), identity(Eigen::Matrix3f::Identity());
-    for (uint32_t degree = 0; degree <= 3; ++degree) {
+    for (uint32_t degree = 0; degree <= splat::MAX_SH_DEGREE; ++degree) {
         splat::ShCoefficients original(3 + splat::SH_COUNTS[degree]);
         for (size_t i = 0; i < original.size(); ++i) {
             original[i] = static_cast<float>(std::sin(static_cast<double>(i) * 0.73)) * 0.3f;
@@ -298,6 +298,17 @@ void sh_rotation() {
         for (size_t i = 0; i < actual.size(); ++i) {
             require(std::abs(actual[i] - original[i]) < 2e-5f, "In-place SH inverse rotation lost coefficients");
         }
+    }
+    // A rotated zonal harmonic has coefficients Y_4m(direction) / Y_40(UnitZ) in the gsplat basis.
+    const Eigen::Vector3f direction = Eigen::Vector3f(2, -3, 6) / 7;
+    const auto zonal_rotation = Eigen::Quaternionf::FromTwoVectors(Eigen::Vector3f::UnitZ(), direction);
+    splat::ShCoefficients zonal(75);
+    zonal[(16 + 4) * 3] = 1;
+    spatial::ShRotation(zonal_rotation.toRotationMatrix()).apply(zonal);
+    constexpr std::array<float, 9> expected { 0.036960099f, 0.047042525f, -0.567165930f, 0.622314117f,
+        -0.018586006f, -0.414876078f, -0.236319138f, 0.240439575f, -0.036652098f };
+    for (size_t m = 0; m < expected.size(); ++m) {
+        require(std::abs(zonal[(16 + m) * 3] - expected[m]) < 2e-5f, "SH4 rotation changed basis or signs");
     }
     splat::ShCoefficients exceptional(48);
     exceptional.set_zero();

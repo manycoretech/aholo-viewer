@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Read and write degree-4 spherical harmonics (SH4) in PLY, SOG v3, and SPZ v4. SH rotation and SOG palette clustering now handle degree-4 coefficients. `Read.maxShDegree` defaults to `4`, and `Modify.maxShDegree` treats larger limits as `4`.
+- Warn when writing to a format with a lower SH limit. SOG v2, SPZ v3, USPZ, and ESZ retain up to SH3. SPLAT writes SH0. Bundle writes emit one warning if any file drops coefficients. Native file handlers expose their limit through `IFile::max_sh_degree()`.
+- Add an optional fourth entry to `Write.shBits` for SPZ v4. The default is `[5, 4, 4, 4]`. Existing three-entry configurations use 4 bits for degree 4.
+- Preserve repeated indices in `Select` output. `ReplaceAppend` applies replacements in input order, so the last patch point for a repeated index wins.
+- Ignore unsupported `Modify.rgba` shapes, including arrays with fewer or more than four entries.
+
 ## 2.5.2
 
 - Reduce Vulkan e-means clustering time for automatic SOG SH palettes by about 20%.

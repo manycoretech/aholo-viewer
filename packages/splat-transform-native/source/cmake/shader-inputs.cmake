@@ -18,8 +18,8 @@ file(GLOB SHADER_INCLUDES ${SHADER_GLOB_OPTIONS} "${SHADER_DIRECTORY}/*.hlsli")
 
 set(SHADER_DXC_OPTIONS -spirv -T cs_6_0 -E main -HV 2021
     -fspv-target-env=vulkan1.2 -fvk-use-gl-layout -Ges -WX)
-# HLSL array extents are compile-time constants: SH1/SH2/SH3 x tile sizes.
-set(SHADER_CLUSTER_COLUMNS 3 6 12)
+# HLSL array extents are compile-time constants: SH1 through SH4 x tile sizes.
+set(SHADER_CLUSTER_COLUMNS 3 6 12 18)
 set(SHADER_CLUSTER_TILES 1 2 4 8 16 32 64 128)
 set(GENERATED_SHADER_HEADERS)
 foreach(SHADER IN LISTS COMPUTE_SHADERS)

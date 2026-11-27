@@ -19,8 +19,8 @@ export interface WriteConfig extends Record<string, unknown> {
     version?: number;
     compressLevel?: number;
     highPrecision?: boolean;
-    /** SPZ, USPZ and low-precision ESZ clamp each degree to 1–8 bits. Defaults to [5, 4, 4]. */
-    shBits?: [degree1: number, degree2: number, degree3: number];
+    /** SH quantization bits by degree, clamped to 1–8. Defaults to [5, 4, 4, 4]. An omitted fourth entry defaults to 4. */
+    shBits?: [degree1: number, degree2: number, degree3: number, degree4?: number];
     enableMortonSort?: boolean;
     paletteSize?: number;
     colorError?: number;
@@ -40,11 +40,11 @@ export interface ModifyConfig extends Record<string, unknown> {
               b?: number;
               a?: number;
           };
-    /** Truncate existing SH bands without creating higher bands. */
-    maxShDegree?: 0 | 1 | 2 | 3;
+    /** Maximum retained SH degree, capped at 4. */
+    maxShDegree?: number;
 }
 
-/** Stable first-occurrence selection into an independent splat resource. */
+/** Copy one point per index in input order into an independent splat resource. */
 export type SelectConfig = {
     input: string;
     output: string;

@@ -26,7 +26,7 @@ splat::Splat KsplatFile::read(const FileInput& source) const {
     for (size_t s = 0; s < section_count; ++s) {
         degree = std::max(degree, static_cast<uint32_t>(input.read_at<uint16_t>(4096 + s * 1024 + 40)));
     }
-    splat::Splat result(count, source.retained_degree(degree));
+    splat::Splat result(count, source.retained_degree(degree, this->max_sh_degree()));
     constexpr std::array<size_t, 45> SH_INDEX { 0, 3, 6, 1, 4, 7, 2, 5, 8, 9, 14, 19, 10, 15, 20, 11, 16, 21, 12, 17,
         22, 13, 18, 23, 24, 31, 38, 25, 32, 39, 26, 33, 40, 27, 34, 41, 28, 35, 42, 29, 36, 43, 30, 37, 44 };
     size_t section_base = 4096 + static_cast<size_t>(section_count) * 1024;

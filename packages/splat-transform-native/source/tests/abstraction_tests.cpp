@@ -162,7 +162,7 @@ void gaussian_rotation() {
     require(restored.covariance().isApprox(covariance, 1e-5f), "Quaternion covariance round trip changed geometry");
 }
 void formats() {
-    splat::Splat source(7, 3);
+    splat::Splat source(7, 4);
     std::vector<uint32_t> indices(source.size());
     std::iota(indices.begin(), indices.end(), 0);
     for (size_t i = 0; i < source.size(); ++i) {
@@ -181,14 +181,19 @@ void formats() {
                 extension, { .version = variant ? 4 : 3, .high_precision = variant }, io::FileOperation::Write
             );
             const auto bytes = file->write(source, indices);
-            const auto full = file->read({ {}, bytes, 3 });
+            const auto full = file->read({ {}, bytes });
+            const auto expected_degree = std::string_view(extension) == ".ply" ||
+                                                 (std::string_view(extension) == ".spz" && variant)
+                                             ? 4u
+                                             : 3u;
+            require(full.sh_degree == expected_degree && file->max_sh_degree() == expected_degree, "File SH capability disagrees with the encoded degree");
             for (size_t i = 0; i < source.size(); ++i) {
                 require(
                     full.gaussians[i].rotation.angularDistance(source.gaussians[i].rotation) < 0.025f,
                     "Format changed a negative-w rotation"
                 );
             }
-            for (uint32_t degree : { 0u, 1u, 2u }) {
+            for (uint32_t degree = 0; degree <= expected_degree; ++degree) {
                 const auto limited = file->read({ {}, bytes, degree });
                 require(limited.sh_degree == degree && limited.size() == source.size(), "Format ignored maxShDegree");
                 for (size_t i = 0; i < limited.size(); ++i) {
@@ -231,10 +236,15 @@ void packed_ply_fields() {
         io::append(payload, 1.0f);
     }
     header += "element vertex 1\nproperty uint packed_position\nproperty uint packed_rotation\nproperty uint "
-              "packed_scale\nproperty uint packed_color\nend_header\n";
+              "packed_scale\nproperty uint packed_color\nelement sh 1\n";
     for (const uint32_t field : { 0xa5a5a5a5u, 0xe0080201u, 0x12345678u, 0x89abcdefu }) {
         io::append(payload, field);
     }
+    for (uint8_t field = 0; field < 72; ++field) {
+        header += "property uchar f_rest_" + std::to_string(field) + '\n';
+        io::append(payload, field);
+    }
+    header += "end_header\n";
     const auto header_bytes = std::as_bytes(std::span(header));
     io::Bytes bytes(header_bytes.begin(), header_bytes.end());
     bytes.insert(bytes.end(), payload.begin(), payload.end());
@@ -245,6 +255,12 @@ void packed_ply_fields() {
         point.opacity == 239.0f / 255 && point.sh[0] == 137.0f / 255 && point.sh[2] == 205.0f / 255,
         "Packed PLY color lost integer bits"
     );
+    const auto full = io::PlyFile().read(io::FileInput { {}, bytes });
+    require(full.sh_degree == 4, "Packed PLY lost SH4");
+    for (size_t field = 0; field < 72; ++field) {
+        const auto band_channel = (field % 24) * 3 + field / 24;
+        require(std::abs(full.gaussians[0].sh[3 + band_channel] - (field * 8.0f / 255 - 4)) < 1e-6f, "Packed PLY changed the SH4 channel order");
+    }
 }
 void float_ply_layouts() {
     const auto path =
@@ -299,7 +315,7 @@ void float_ply_layouts() {
         }
         return bytes;
     };
-    for (uint32_t degree : { 0u, 1u, 2u, 3u }) {
+    for (uint32_t degree : { 0u, 1u, 2u, 3u, 4u }) {
         const size_t count = degree == 3 ? 65537 : 13;
         const auto fast_bytes = make_file(count, degree, true, false);
         const auto opposite = make_file(count, degree, false, false);

@@ -9,6 +9,7 @@
 #include <io/splat.h>
 #include <io/spz.h>
 #include <numeric>
+#include <utility/logger.h>
 #include <utility/string.h>
 
 namespace splat_transform::io {
@@ -116,6 +117,12 @@ splat::Splat read_splat(const std::filesystem::path& path, uint32_t max_sh_degre
 }
 void write_splat(const std::filesystem::path& path, const splat::Splat& splat, const FileOptions& options) {
     auto format = create_file(path.extension().string(), options, FileOperation::Write);
+    const auto maximum = format->max_sh_degree();
+    if (maximum < splat.sh_degree) {
+        utility::logger().warn(
+            path.string(), " supports up to SH", maximum, ". Writing SH", maximum, " from SH", splat.sh_degree, " input."
+        );
+    }
     std::vector<uint32_t> indices;
     if (options.enable_morton_sort) {
         indices = splat::morton_order(splat);

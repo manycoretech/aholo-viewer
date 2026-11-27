@@ -131,31 +131,31 @@ Get-Content -Raw pipeline.json | splat-transform -
 
 读取多个输入并合并，保留输入块顺序供 `Modify.modifyPaths` 使用。
 
-| 参数          | 类型 / 默认值            | 说明                                            |
-| ------------- | ------------------------ | ----------------------------------------------- |
-| `inputs`      | `string[]`，必填         | 输入文件路径。                                  |
-| `output`      | `string`，必填           | 输出资源键。                                    |
-| `maxShDegree` | `0 \| 1 \| 2 \| 3` / `3` | 最多保留的 SH 阶数；不会生成输入中不存在的 SH。 |
+| 参数          | 类型 / 默认值                 | 说明                                            |
+| ------------- | ----------------------------- | ----------------------------------------------- |
+| `inputs`      | `string[]`，必填              | 输入文件路径。                                  |
+| `output`      | `string`，必填                | 输出资源键。                                    |
+| `maxShDegree` | `0 \| 1 \| 2 \| 3 \| 4` / `4` | 最多保留的 SH 阶数；不会生成输入中不存在的 SH。 |
 
 ### Write
 
 将单个 splat 写入文件，或将 LOD / 分块 bundle 写入目录。格式由输出文件扩展名或 bundle 中的文件名决定。
 
-| 参数               | 类型 / 默认值       | 说明                                                                                                                                                            |
-| ------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `input`            | `string`，必填      | 输入资源键。                                                                                                                                                    |
-| `output`           | `string`，必填      | 单文件路径或 bundle 输出目录。                                                                                                                                  |
-| `enableMortonSort` | `boolean` / `true`  | 写出前按 Morton 顺序排列；要求保留区间顺序的 bundle 文件会强制关闭。                                                                                            |
-| `version`          | `number` / 按格式   | SOG 支持 `2`、`3`，默认 `2`；SPZ 支持 `3`、`4`，默认 `3`。不支持的版本回退到该格式默认值；`.uspz` 固定输出未压缩的 v3。                                         |
-| `compressLevel`    | `number` / `6`      | 仅用于 SPZ：v3 使用 gzip（常用范围 `0–9`），v4 使用 zstd（遵循 zstd 等级范围）。                                                                                |
-| `paletteSize`      | `number` / `0`      | 省略或传 `0` 时，SOG 按 `colorError` 自动选取 SH 调色板容量。正整数使用固定容量的 Lloyd 聚类，并自动限制到输入点数及版本上限（v2 为 `65536`，v3 为 `262144`）。 |
-| `colorError`       | `number` / `5`      | 自动模式下，加权 e-means 的 SH 颜色均方根误差目标，单位为 8 位色阶。数值越小越严格。非有限数和非正数均使用 `5`。                                                |
-| `highPrecision`    | `boolean` / `false` | 仅用于 ESZ：`false` 为低精度，`true` 为高精度布局。                                                                                                             |
-| `shBits`           | 数组 / `[5, 4, 4]`  | 三个整数依次指定一、二、三阶 SH 的量化位数。SPZ、USPZ 和低精度 ESZ 将每项限制到 1–8 位。高精度 ESZ 每阶固定按 RGB 11/10/11 位写出。                             |
+| 参数               | 类型 / 默认值         | 说明                                                                                                                                                            |
+| ------------------ | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `input`            | `string`，必填        | 输入资源键。                                                                                                                                                    |
+| `output`           | `string`，必填        | 单文件路径或 bundle 输出目录。                                                                                                                                  |
+| `enableMortonSort` | `boolean` / `true`    | 写出前按 Morton 顺序排列；要求保留区间顺序的 bundle 文件会强制关闭。                                                                                            |
+| `version`          | `number` / 按格式     | SOG 支持 `2`、`3`，默认 `2`；SPZ 支持 `3`、`4`，默认 `3`。不支持的版本回退到该格式默认值；`.uspz` 固定输出未压缩的 v3。                                         |
+| `compressLevel`    | `number` / `6`        | 仅用于 SPZ：v3 使用 gzip（常用范围 `0–9`），v4 使用 zstd（遵循 zstd 等级范围）。                                                                                |
+| `paletteSize`      | `number` / `0`        | 省略或传 `0` 时，SOG 按 `colorError` 自动选取 SH 调色板容量。正整数使用固定容量的 Lloyd 聚类，并自动限制到输入点数及版本上限（v2 为 `65536`，v3 为 `262144`）。 |
+| `colorError`       | `number` / `5`        | 自动模式下，加权 e-means 的 SH 颜色均方根误差目标，单位为 8 位色阶。数值越小越严格。非有限数和非正数均使用 `5`。                                                |
+| `highPrecision`    | `boolean` / `false`   | 仅用于 ESZ：`false` 为低精度，`true` 为高精度布局。                                                                                                             |
+| `shBits`           | 数组 / `[5, 4, 4, 4]` | 依次指定一到四阶 SH 的量化位数。只传三项时，第四项补 4。SPZ、USPZ 和低精度 ESZ 将每项限制到 1–8 位。高精度 ESZ 每阶固定按 RGB 11/10/11 位写出。                 |
 
 自 `2.1.2` 起，SPZ v3/v4 的默认压缩等级统一为 `6`。`2.1.1` 中，v3 默认 `6`，v4 默认 `7`。需要沿用 `2.1.1` 的 SPZ v4 等级时，显式设置 `compressLevel: 7`。
 
-SOG 输入支持 v1/v2/v3；输出默认保持 v2，通过 `version: 3` 启用 v3。v3 将旋转以 exp-map 编码存入独立 `quats.webp` 的 RGB 通道，使用平方根 opacity 编码（上限 `1.5625`）和 24 位 SH 标签。SH 上限仍为 3，不保留 blind data、extras 和 comments 等可选信息。大于 1 的 opacity 写入 SOG v2 时截断到 1。
+SOG 输入支持 v1/v2/v3；输出默认保持 v2，通过 `version: 3` 启用 v3。v3 将旋转以 exp-map 编码存入独立 `quats.webp` 的 RGB 通道，使用平方根 opacity 编码（上限 `1.5625`）和 24 位 SH 标签。PLY、SOG v3 和 SPZ v4 支持 SH4。SOG v2、SPZ v3、USPZ、ESZ 输出最高 SH3，SPLAT 输出 SH0。SOG 省略 blind data、extras 和 comments 等可选信息。大于 1 的 opacity 写入 SOG v2 时截断到 1。
 
 在 `Write` 任务的 `config` 中设置 `"colorError": 4`，可将目标设为 4 个色阶。达到版本上限时，实际误差可能高于目标。SH 数据超过 2 GiB 搜索预算或设备标签缓冲上限时，自动模式回退到按点数向下取 2 的幂，最多 65536 项。
 
@@ -172,9 +172,9 @@ bundle 的 CPU 文件写出并发上限由 pipeline 根级 `cpuWorkers` 统一�
 | `input`、`output` | `string`，必填                                                     | 输入及输出资源键；输出是修改后输入的别名。                         |
 | `modifyPaths`     | `string[]` / `[]`                                                  | 按输入块顺序应用 patch JSON；空字符串跳过该块。                    |
 | `rgba`            | `[number, number, number, number]` / `{ r?, g?, b?, a? }` / 不修改 | 内部 RGBA 浮点值，仅写入有限且非负的通道；不钳制、不转换色彩空间。 |
-| `maxShDegree`     | `0 \| 1 \| 2 \| 3` / 不截断                                        | 截断到当前阶数与指定阶数的较小值。                                 |
+| `maxShDegree`     | `number` / 不截断                                                  | 非负阶数上限。大于 4 时取 4，再按该上限截断现有 SH。               |
 
-先读取 `rgba` 并校验 `maxShDegree`，再应用 patch 变换和删除，最后设置剩余点的 RGBA、截断 SH。`rgba` 支持数组 `[r, g, b, a]` 或对象 `{ r?, g?, b?, a? }`：未提供的通道保持原值；负值和非有限值不会被写入，对象中的未知字段被忽略；数组长度必须为 4，其他形状或无法按数字读取的通道值（如字符串、null）会使任务失败。patch 格式如下：
+先读取 `rgba` 和 `maxShDegree`，再应用 patch 变换和删除，最后设置剩余点的 RGBA、截断 SH。`rgba` 支持四元素数组 `[r, g, b, a]` 或对象 `{ r?, g?, b?, a? }`，其他形状会被忽略。仅更新值为有限非负数的通道，忽略未知字段。提供的通道值若无法按数字读取（如字符串或 null），任务会报错。patch 文件使用以下结构。
 
 ```typescript
 interface ModifyPatch {
@@ -237,16 +237,16 @@ patch 中的索引相对于对应输入块。`deletedIndices` 是位图，不是
 | `indices`         | `number[]`     | 与 `indicesPath` 恰好二选一。                                                                |
 | `indicesPath`     | `string`       | `.json` 支持数组或 `{ "indices": [...] }`；其他文件按小端 uint32 读取，`.zst` 先 zstd 解压。 |
 
-按首次出现顺序稳定去重，例如 `[8,2,8,5] → [8,2,5]`，复制完整属性和 SH，不做 Morton 排序。索引必须是有效整数；二进制长度必须为 4 的倍数。空索引有效，空结果能否写出取决于目标格式。
+按索引顺序复制完整属性和 SH。索引 `[8,2,8,5]` 会输出四个点，第一个和第三个点都来自源点 8。JSON 索引按 uint32 读取，每个索引都必须小于源点数。二进制索引文件的字节数必须是 4 的倍数。空索引有效，空结果能否写出取决于目标格式。
 
 ### ReplaceAppend
 
 | 参数                       | 类型             | 说明                               |
 | -------------------------- | ---------------- | ---------------------------------- |
 | `input`、`patch`、`output` | `string`，必填   | 原始资源、补丁资源和独立输出资源。 |
-| `sourceIndices`            | `number[]`，必填 | 不重复的源索引，可以为空。         |
+| `sourceIndices`            | `number[]`，必填 | 源点索引，可以为空。               |
 
-令源点数为 N、patch 点数为 M、索引数为 K：patch 前 K 点依次替换对应源点，其余追加，结果点数为 N+M−K，要求 K≤M。源和 patch 的 SH 阶数、属性布局必须一致；输入及其别名不被修改。
+源点数为 N、patch 点数为 M、索引数为 K 时，patch 前 K 个点按索引顺序替换对应源点，其余追加。索引重复时，最后一次替换生效。结果点数为 N+M−K，要求 K≤M。源和 patch 的 SH 阶数必须一致，输出使用独立存储。
 
 ### ExtractLodLevel
 
@@ -255,7 +255,7 @@ patch 中的索引相对于对应输入块。`deletedIndices` 是位图，不是
 | `input`、`output` | `string`，必填 | 当前 pipeline 中的 LOD bundle 和独立输出资源。            |
 | `level`           | `number`，必填 | 从 `0` 开始的层级，必须小于 bundle 的层数，没有默认层级。 |
 
-按 `tree` 顺序复制指定层的 file/offset/count 区间，保留重复引用，复制完整属性和独立 SH 存储。此任务不会从磁盘 `lod-meta.json` 恢复 bundle，也不会重新生成 LOD。
+按 `tree` 顺序复制指定层的 file/offset/count 区间，保留重复引用，复制完整属性和独立 SH 存储。读取清单中的 `shDegree` 时最高取 4，各引用分块的实际 SH 阶数必须与该值一致。此任务不会从磁盘 `lod-meta.json` 恢复 bundle，也不会重新生成 LOD。
 
 ### SkeletonLod
 

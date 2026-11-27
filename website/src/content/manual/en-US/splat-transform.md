@@ -131,11 +131,11 @@ Except for path fields in `Read`, `Write`, and `Voxel`, task `input` and `output
 
 Reads and combines multiple inputs while retaining input-block order for `Modify.modifyPaths`.
 
-| Parameter     | Type / default           | Description                                                |
-| ------------- | ------------------------ | ---------------------------------------------------------- |
-| `inputs`      | `string[]`, required     | Input file paths.                                          |
-| `output`      | `string`, required       | Output resource key.                                       |
-| `maxShDegree` | `0 \| 1 \| 2 \| 3` / `3` | Maximum retained SH degree; does not create missing bands. |
+| Parameter     | Type / default                | Description                                                |
+| ------------- | ----------------------------- | ---------------------------------------------------------- |
+| `inputs`      | `string[]`, required          | Input file paths.                                          |
+| `output`      | `string`, required            | Output resource key.                                       |
+| `maxShDegree` | `0 \| 1 \| 2 \| 3 \| 4` / `4` | Maximum retained SH degree; does not create missing bands. |
 
 ### Write
 
@@ -151,11 +151,11 @@ Writes a single splat to a file or a LOD / split bundle to a directory. The outp
 | `paletteSize`      | `number` / `0`            | Omit or set to `0` to size the SOG SH palette by `colorError`. A positive integer selects fixed-size Lloyd clustering, clamped to the point count and the version limit (`65536` for v2, `262144` for v3). |
 | `colorError`       | `number` / `5`            | Weighted e-means target for SH RMS colour error in 8-bit levels. Lower values are stricter. Nonfinite and nonpositive numbers use `5`.                                                                     |
 | `highPrecision`    | `boolean` / `false`       | ESZ only: `false` selects low precision, `true` selects high precision.                                                                                                                                    |
-| `shBits`           | Array / `[5, 4, 4]`       | Integer bit counts for SH degrees 1, 2 and 3. SPZ, USPZ and low-precision ESZ clamp each entry to 1–8. High-precision ESZ uses fixed 11/10/11-bit RGB for every degree.                                    |
+| `shBits`           | Array / `[5, 4, 4, 4]`    | Bit counts for SH degrees 1–4. An omitted fourth entry defaults to 4. SPZ, USPZ and low-precision ESZ clamp each entry to 1–8. High-precision ESZ uses fixed 11/10/11-bit RGB for every degree.            |
 
 Starting with `2.1.2`, the default compression level is `6` for both SPZ v3 and v4. Version `2.1.1` uses `6` for v3 and `7` for v4. Set `compressLevel: 7` explicitly to retain the SPZ v4 level used by `2.1.1`.
 
-SOG input supports v1/v2/v3. Output defaults to v2; set `version: 3` to enable v3. V3 stores exp-map rotations in the RGB channels of a separate `quats.webp` texture, uses square-root opacity encoding up to `1.5625`, and supports 24-bit SH labels. SH remains limited to degree 3. Optional blind data, extras, and comments are not retained. SOG v2 clamps opacity to 1.
+SOG input supports v1/v2/v3. Output defaults to v2; set `version: 3` to enable v3. V3 stores exp-map rotations in the RGB channels of a separate `quats.webp` texture, uses square-root opacity encoding up to `1.5625`, and supports 24-bit SH labels. PLY, SOG v3 and SPZ v4 support SH4. SOG v2, SPZ v3, USPZ and ESZ write at most SH3. SPLAT stores SH0. Optional blind data, extras, and comments are not retained. SOG v2 clamps opacity to 1.
 
 Set `"colorError": 4` in a `Write` task's `config` to target four 8-bit colour levels. The error can exceed the target at the version limit. When SH data exceeds the 2 GiB search budget or the device's label buffer limit, automatic mode uses the point count rounded down to a power of two, capped at 65536 entries.
 
@@ -172,9 +172,9 @@ Write the same LOD bundle to two directories with `highPrecision: false` and `tr
 | `input`, `output` | `string`, required                                                    | Input and output keys; the output aliases the modified input.                                                          |
 | `modifyPaths`     | `string[]` / `[]`                                                     | Patch JSON files in input-block order; an empty string skips that block.                                               |
 | `rgba`            | `[number, number, number, number]` / `{ r?, g?, b?, a? }` / unchanged | Internal float RGBA values; only finite non-negative channels are written, without clamping or color-space conversion. |
-| `maxShDegree`     | `0 \| 1 \| 2 \| 3` / unchanged                                        | Truncates to the smaller of the current and requested degree.                                                          |
+| `maxShDegree`     | `number` / unchanged                                                  | Nonnegative limit capped at 4. Truncates existing SH bands.                                                            |
 
-Reads `rgba` and validates `maxShDegree`, applies patch transforms and deletions, then sets RGBA and truncates SH on the remaining points. `rgba` accepts `[r, g, b, a]` or an object with optional `r`, `g`, `b`, and `a` channels: omitted channels keep their current values; negative and non-finite values are not written, and unknown object fields are ignored; arrays must contain exactly four entries, and other forms or channel values that cannot be read as numbers (for example strings or null) fail the task. Patch files use this structure:
+Reads `rgba` and `maxShDegree`, applies patch transforms and deletions, then sets RGBA and truncates SH on the remaining points. `rgba` accepts a four-entry `[r, g, b, a]` array or an object with optional `r`, `g`, `b`, and `a` channels. Other shapes are ignored. Only finite nonnegative channel values are applied. Unknown fields are ignored. A supplied channel value that cannot be read as a number, such as a string or null, fails the task. Patch files use the following structure.
 
 ```typescript
 interface ModifyPatch {
@@ -237,16 +237,16 @@ With default options, consecutive Cluster and Floaters tasks build separate grid
 | `indices`         | `number[]`         | Specify exactly one of this field or `indicesPath`.                                                                                      |
 | `indicesPath`     | `string`           | `.json` accepts an array or `{ "indices": [...] }`; other files contain little-endian uint32 values, with zstd decompression for `.zst`. |
 
-Preserves first-occurrence order and removes duplicates, for example `[8,2,8,5] → [8,2,5]`. Copies complete attributes and SH without Morton sorting. Indices must be valid integers, and binary lengths must be multiples of four. Empty selection is valid; output-format support determines whether an empty result can be written.
+Copies complete attributes and SH in index order. The indices `[8,2,8,5]` produce four points, with source point 8 in the first and third positions. JSON indices are read as uint32 values. Each index must be less than the source point count. Binary index files must contain a multiple of four bytes. Empty selection is valid. Output-format support determines whether an empty result can be written.
 
 ### ReplaceAppend
 
 | Parameter                  | Type                 | Description                                          |
 | -------------------------- | -------------------- | ---------------------------------------------------- |
 | `input`, `patch`, `output` | `string`, required   | Source, patch, and independent output resource keys. |
-| `sourceIndices`            | `number[]`, required | Unique source indices; may be empty.                 |
+| `sourceIndices`            | `number[]`, required | Source point indices. May be empty.                  |
 
-For N source points, M patch points, and K indices, the patch prefix replaces the selected source points and the remainder is appended. The result contains N+M−K points and requires K≤M. Source and patch SH degrees and attribute layouts must match. Inputs and their aliases remain unchanged.
+For N source points, M patch points, and K indices, the first K patch points replace source points in index order. For repeated indices, the last replacement wins. The remaining patch points are appended. The result contains N+M−K points and requires K≤M. Source and patch SH degrees must match. The output has independent storage.
 
 ### ExtractLodLevel
 
@@ -255,7 +255,7 @@ For N source points, M patch points, and K indices, the patch prefix replaces th
 | `input`, `output` | `string`, required | An in-memory LOD bundle from this pipeline and an independent output resource. |
 | `level`           | `number`, required | Zero-based level below the bundle's level count; there is no default level.    |
 
-Copies file/offset/count intervals in `tree` order, retaining repeated references, complete attributes, and independent SH storage. Does not restore a bundle from an on-disk `lod-meta.json` or regenerate LOD.
+Copies file/offset/count intervals in `tree` order, retaining repeated references, complete attributes, and independent SH storage. The task caps the manifest’s `shDegree` at 4 and requires each referenced chunk to match that degree. Does not restore a bundle from an on-disk `lod-meta.json` or regenerate LOD.
 
 ### SkeletonLod
 

@@ -7,7 +7,7 @@ void ReadTask::exec(const Json& config, TaskContext& context) const {
     std::vector<splat::Splat> parts;
     const auto& inputs = config.at("inputs");
     parts.reserve(inputs.size());
-    const auto max_sh = config.value("maxShDegree", 3u);
+    const auto max_sh = config.value("maxShDegree", splat::MAX_SH_DEGREE);
     uintmax_t total_bytes = 0;
     for (const auto& input : inputs) {
         const auto path = context.paths.resolve(input.get<std::string>());

@@ -27,7 +27,7 @@ FilterMode filter_mode(const Json& config) {
             return static_cast<FilterMode>(found - names.begin());
         }
     } else if (value.is_number()) {
-        const auto index = unsigned_integer(value, "Filter mode");
+        const auto index = value.get<size_t>();
         if (index < names.size()) {
             return static_cast<FilterMode>(index);
         }

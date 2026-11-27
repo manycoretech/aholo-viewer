@@ -184,8 +184,8 @@ void rotation_and_opacity() {
 }
 void readers(const std::filesystem::path& directory) {
     for (int32_t version : { 1, 2, 3 }) {
-        for (uint32_t degree : { 0u, 1u, 2u, 3u }) {
-            const auto source = fixture(version, degree);
+        for (uint32_t degree = 0; degree <= (version == 3 ? 4u : 3u); ++degree) {
+            const auto source = fixture(version, degree, 66, 65);
             const auto bytes = source.bundle();
             const auto data = io::read_splat({ "fixture.sog", bytes });
             require(data.size() == 4 && data.sh_degree == degree, "SOG reader changed count or SH degree");
@@ -204,8 +204,15 @@ void readers(const std::filesystem::path& directory) {
                     "SOG SH palette channels are reordered"
                 );
             }
-            const auto reduced = io::read_splat({ "fixture.sog", bytes, 0 });
-            require(reduced.sh_degree == 0 && reduced.gaussians[0].sh.size() == 3, "SOG maxShDegree was ignored");
+            for (uint32_t limit = 0; limit <= degree; ++limit) {
+                const auto reduced = io::read_splat({ "fixture.sog", bytes, limit });
+                const auto& sh = reduced.gaussians[0].sh;
+                require(
+                    reduced.sh_degree == limit && sh.size() == 3 + splat::SH_COUNTS[limit] &&
+                        std::equal(sh.data(), sh.data() + sh.size(), data.gaussians[0].sh.data()),
+                    "SOG maxShDegree lost the retained SH prefix"
+                );
+            }
             if (version == 3) {
                 require(
                     data.gaussians[0].rotation.coeffs() == Eigen::Quaternionf::Identity().coeffs(),
@@ -399,7 +406,7 @@ void invalid_inputs() {
     const auto source = fixture(3, 3);
     for (const auto& modify :
         std::vector<std::function<void(Fixture&)>> { [](Fixture& f) { f.meta["version"] = 4; },
-            [](Fixture& f) { f.meta["shN"]["bands"] = 4; }, [](Fixture& f) { f.meta["count"] = 17; },
+            [](Fixture& f) { f.meta["shN"]["bands"] = 5; }, [](Fixture& f) { f.meta["count"] = 17; },
             [](Fixture& f) { f.meta["means"]["files"] = { "means_l.webp" }; },
             [](Fixture& f) { f.meta.erase("quats"); }, [](Fixture& f) { f.meta["quats"]["files"] = io::Json::array(); },
             [](Fixture& f) { f.files["quats.webp"] = codec::encode_webp(io::Bytes(8 * 4 * 4), 8, 4); },
@@ -410,6 +417,10 @@ void invalid_inputs() {
         modify(broken);
         const auto bytes = broken.bundle();
         rejects([&] { io::read_splat({ "broken.sog", bytes, 0 }); });
+    }
+    for (int32_t version : { 1, 2 }) {
+        const auto bytes = fixture(version, 4).bundle();
+        rejects([&] { io::read_splat({ "legacy.sog", bytes, 0 }); });
     }
     auto nullable = fixture(3);
     nullable.meta["shN"] = nullptr;
@@ -527,13 +538,13 @@ void weighted_palette_growth() {
 
 void gpu_writers(const std::filesystem::path& directory) {
     gpu::select_device(0);
-    for (uint32_t degree : { 1u, 2u, 3u }) {
+    for (uint32_t degree : { 1u, 2u, 3u, 4u }) {
         const auto source = cloud(degree);
         constexpr std::array<uint32_t, 4> indices { 3, 2, 1, 0 };
         for (int32_t version : { 2, 3 }) {
             const auto bytes = io::SogFile(version, version == 3 ? 262144 : 65536).write(source, indices);
             const auto data = io::read_splat({ "sh.sog", bytes });
-            require(data.sh_degree == degree, "SOG writer lost SH bands");
+            require(data.sh_degree == std::min(degree, version == 3 ? 4u : 3u), "Unexpected SOG output degree");
             require(
                 io::Resources("sh.sog", bytes, ".sog").meta.at("shN").at("count") == source.size(),
                 "SOG palette count must describe the actual centroids"

@@ -16,8 +16,8 @@ inline std::byte quantize_byte(float value) {
     return static_cast<std::byte>(std::clamp(std::floor(value + 0.5f), 0.0f, 255.0f));
 }
 // Each degree l has 2l + 1 RGB coefficients. Build the steps once per output.
-inline std::array<float, 15> sh_quantization_steps(std::span<const int32_t, 3> bits) {
-    std::array<float, 15> steps;
+inline std::array<float, 24> sh_quantization_steps(std::span<const int32_t, 4> bits) {
+    std::array<float, 24> steps;
     auto next = steps.begin();
     for (size_t degree = 1; degree <= bits.size(); ++degree) {
         const auto precision = bits[degree - 1];

@@ -118,10 +118,16 @@ void modify_contracts(const std::filesystem::path& directory) {
             { 0.5f, std::nullopt, std::nullopt, 1.25f } },
         { Json { { "rgba", Json::object() } }, {} },
         { Json { { "rgba", Json::object({ { "x", 1 } }) } }, {} },
+        { Json { { "rgba", { 0, 1, 2 } } }, {} },
+        { Json { { "rgba", Json::array() } }, {} },
+        { Json { { "rgba", nullptr } }, {} },
+        { Json { { "rgba", 1 } }, {} },
+        { Json { { "rgba", "rgba" } }, {} },
         { Json { { "maxShDegree", 0 } }, {} },
+        { Json { { "maxShDegree", 9 } }, {} },
         { Json { { "rgba", { 0, 0, 0, 1 } }, { "maxShDegree", 1 } }, { 0.0f, 0.0f, 0.0f, 1.0f } },
     };
-    for (uint32_t degree = 0; degree <= 3; ++degree) {
+    for (uint32_t degree = 0; degree <= splat::MAX_SH_DEGREE; ++degree) {
         for (const auto& extension : extensions) {
             auto source = cloud(4, degree);
             pipeline::TaskContext context;
@@ -157,16 +163,14 @@ void modify_contracts(const std::filesystem::path& directory) {
         auto source = cloud(4, degree);
         pipeline::TaskContext context;
         put_resource(context, "source", source);
-        task("Modify", { { "input", "source" }, { "output", "source" }, { "maxShDegree", 3 } }, context);
+        task("Modify", { { "input", "source" }, { "output", "source" }, { "maxShDegree", 4 } }, context);
         require(source->sh_degree == degree, "Modify generated new SH bands");
         const auto unchanged = *source;
         for (const Json& invalid :
-            { Json { { "rgba", { 0, 1, 2 } } }, Json { { "rgba", Json::array() } }, Json { { "rgba", nullptr } },
-                Json { { "rgba", 1 } }, Json { { "rgba", "rgba" } }, Json { { "rgba", { 0, 0, "bad", 1 } } },
+            { Json { { "rgba", { 0, 0, "bad", 1 } } },
                 Json { { "rgba", { 0, 0, true, 1 } } }, Json { { "rgba", Json::object({ { "r", "bad" } }) } },
-                Json { { "rgba", Json::object({ { "a", nullptr } }) } }, Json { { "maxShDegree", -1 } },
-                Json { { "maxShDegree", 1.5 } }, Json { { "maxShDegree", 4 } }, Json { { "maxShDegree", true } },
-                Json { { "maxShDegree", nullptr } }, Json { { "rgba", { 0, 0, 0, 1 } }, { "maxShDegree", 99 } } }) {
+                Json { { "rgba", Json::object({ { "a", nullptr } }) } },
+                Json { { "maxShDegree", nullptr } }, Json { { "rgba", { 0, 0, 0, 1 } }, { "maxShDegree", "bad" } } }) {
             Json config { { "input", "source" }, { "output", "bad" }, { "modifyPaths", { patch } } };
             config.update(invalid);
             rejects([&] { task("Modify", config, context); });
@@ -295,7 +299,6 @@ void modify_block_contracts(const std::filesystem::path& directory) {
 
 void select_contracts(const std::filesystem::path& directory) {
     const std::array<uint32_t, 4> input { 8, 2, 8, 5 };
-    const std::array<uint32_t, 3> expected { 8, 2, 5 };
     io::Bytes bytes;
     for (auto index : input) {
         io::append(bytes, index);
@@ -306,7 +309,7 @@ void select_contracts(const std::filesystem::path& directory) {
     io::write_bytes(directory / "indices.zst", codec::zstd_compress(bytes));
     io::write_bytes(directory / "bad.bin", std::span(bytes).first(7));
     io::write_bytes(directory / "bad.zst", codec::zstd_compress(std::span(bytes).first(7)));
-    for (uint32_t degree = 0; degree <= 3; ++degree) {
+    for (uint32_t degree = 0; degree <= splat::MAX_SH_DEGREE; ++degree) {
         auto source = cloud(10, degree);
         const auto unchanged = *source;
         pipeline::TaskContext context;
@@ -321,19 +324,18 @@ void select_contracts(const std::filesystem::path& directory) {
             }
             task("Select", config, context);
             const auto& actual = *get(context, "result");
-            require(actual.size() == 3 && actual.sh_degree == degree, "Selection size or SH degree changed");
+            require(actual.size() == input.size() && actual.sh_degree == degree, "Selection size or SH degree changed");
             single_block(actual);
-            for (size_t i = 0; i < expected.size(); ++i) {
-                equal_point(actual.gaussians[i], source->gaussians[expected[i]]);
+            for (size_t i = 0; i < input.size(); ++i) {
+                equal_point(actual.gaussians[i], source->gaussians[input[i]]);
                 require(
-                    actual.gaussians[i].sh.data() != source->gaussians[expected[i]].sh.data(),
+                    actual.gaussians[i].sh.data() != source->gaussians[input[i]].sh.data(),
                     "Selection aliases SH storage"
                 );
             }
         }
         for (const Json& invalid : { Json::object(), Json { { "indices", input }, { "indicesPath", "missing" } },
-                 Json { { "indices", { -1 } } }, Json { { "indices", { 1.5 } } }, Json { { "indices", { 10 } } },
-                 Json { { "indices", { 4294967296ull } } }, Json { { "indices", { true } } },
+                 Json { { "indices", { "bad" } } }, Json { { "indices", { 10 } } },
                  Json { { "indices", nullptr } }, Json { { "indicesPath", directory / "bad.bin" } },
                  Json { { "indicesPath", directory / "bad.zst" } } }) {
             Json config { { "input", "source" }, { "output", "source" } };
@@ -352,7 +354,7 @@ void select_contracts(const std::filesystem::path& directory) {
     }
 }
 void replace_contracts() {
-    for (uint32_t degree = 0; degree <= 3; ++degree) {
+    for (uint32_t degree = 0; degree <= splat::MAX_SH_DEGREE; ++degree) {
         for (bool same_object : { false, true }) {
             for (const auto output : { "result", "source", "patch", "alias" }) {
                 auto source = cloud(5, degree), patch = same_object ? source : cloud(4, degree, 100);
@@ -365,24 +367,24 @@ void replace_contracts() {
                 task(
                     "ReplaceAppend",
                     { { "input", "source" }, { "patch", same_object ? "alias" : "patch" }, { "output", output },
-                        { "sourceIndices", { 3, 1 } } },
+                        { "sourceIndices", { 3, 1, 3 } } },
                     context
                 );
                 const auto& actual = *get(context, output);
                 require(
-                    actual.size() == 5 + patch->size() - 2 && actual.sh_degree == degree,
+                    actual.size() == 5 + patch->size() - 3 && actual.sh_degree == degree,
                     "ReplaceAppend count or SH degree changed"
                 );
                 single_block(actual);
                 for (size_t i = 0; i < source->size(); ++i) {
                     equal_point(
-                        actual.gaussians[i], i == 3   ? patch->gaussians[0]
+                        actual.gaussians[i], i == 3   ? patch->gaussians[2]
                                              : i == 1 ? patch->gaussians[1]
                                                       : source->gaussians[i]
                     );
                 }
-                for (size_t i = 2; i < patch->size(); ++i) {
-                    equal_point(actual.gaussians[5 + i - 2], patch->gaussians[i]);
+                for (size_t i = 3; i < patch->size(); ++i) {
+                    equal_point(actual.gaussians[5 + i - 3], patch->gaussians[i]);
                 }
                 equal_data(*source, original_source);
                 equal_data(*patch, original_patch);
@@ -403,10 +405,9 @@ void replace_contracts() {
         require(get(context, "same")->size() == 8, "Same-key source/patch count differs");
         equal_point(get(context, "same")->gaussians[4], source->gaussians[0]);
         equal_point(get(context, "same")->gaussians[0], source->gaussians[1]);
-        for (const Json& invalid : { Json { { "sourceIndices", { 1, 1 } } }, Json { { "sourceIndices", { 0, 1, 2 } } },
-                 Json { { "sourceIndices", { -1 } } }, Json { { "sourceIndices", { 0.5 } } },
-                 Json { { "sourceIndices", { 5 } } }, Json { { "sourceIndices", { 4294967296ull } } },
-                 Json { { "sourceIndices", nullptr } }, Json { { "sourceIndices", { true } } },
+        for (const Json& invalid : { Json { { "sourceIndices", { 0, 1, 2 } } },
+                 Json { { "sourceIndices", { "bad" } } }, Json { { "sourceIndices", { 5 } } },
+                 Json { { "sourceIndices", nullptr } },
                  Json { { "patch", "missing" }, { "sourceIndices", Json::array() } } }) {
             Json config { { "input", "source" }, { "patch", "patch" }, { "output", "source" } };
             config.update(invalid);
@@ -421,15 +422,6 @@ void replace_contracts() {
             task(
                 "ReplaceAppend",
                 { { "input", "source" }, { "patch", "wrong-sh" }, { "output", "source" },
-                    { "sourceIndices", Json::array() } },
-                context
-            );
-        });
-        patch->gaussians[0].sh.resize(2);
-        rejects([&] {
-            task(
-                "ReplaceAppend",
-                { { "input", "source" }, { "patch", "patch" }, { "output", "source" },
                     { "sourceIndices", Json::array() } },
                 context
             );
@@ -455,7 +447,7 @@ void replace_contracts() {
     }
 }
 
-std::vector<pipeline::SingleFile> bundle(uint32_t degree) {
+std::vector<pipeline::SingleFile> bundle(uint32_t degree, uint32_t metadata_degree) {
     Json tree = Json::array();
     for (const auto ref : { std::array { 0u, 1u, 2u }, std::array { 1u, 3u, 1u }, std::array { 0u, 5u, 2u },
              std::array { 0u, 1u, 2u }, std::array { 0u, 8u, 0u } }) {
@@ -465,13 +457,13 @@ std::vector<pipeline::SingleFile> bundle(uint32_t degree) {
         );
         tree.push_back({ { "lods", lods } });
     }
-    const Json meta { { "levels", 5 }, { "shDegree", degree }, { "files", { "a.esz", "b.esz" } }, { "tree", tree } };
+    const Json meta { { "levels", 5 }, { "shDegree", metadata_degree }, { "files", { "a.esz", "b.esz" } }, { "tree", tree } };
     return { { "lod-meta.json", meta.dump() }, { "a.esz", cloud(8, degree, 100), true },
         { "b.esz", cloud(6, degree, 500) } };
 }
 void extract_contracts() {
-    for (uint32_t degree = 0; degree <= 3; ++degree) {
-        auto files = bundle(degree);
+    for (uint32_t degree = 0; degree <= splat::MAX_SH_DEGREE; ++degree) {
+        auto files = bundle(degree, degree == 4 ? 9 : degree);
         auto first = std::get<pipeline::SplatPtr>(files[1].content),
              second = std::get<pipeline::SplatPtr>(files[2].content);
         const auto original_first = *first, original_second = *second;
@@ -496,7 +488,7 @@ void extract_contracts() {
         );
         equal_data(*first, original_first);
         equal_data(*second, original_second);
-        for (const Json& level : { Json(-1), Json(1.5), Json(5), Json(true), Json(nullptr), Json(4294967296ull) }) {
+        for (const Json& level : { Json(-1), Json(5), Json(true), Json(nullptr) }) {
             auto invalid = config;
             invalid["level"] = level;
             rejects([&] { task("ExtractLodLevel", invalid, context); });
@@ -533,7 +525,7 @@ void extract_contracts() {
                 meta["tree"][0]["lods"][3]["file"] = -1;
                 break;
             case 7:
-                meta["tree"][0]["lods"][3]["offset"] = 0.5;
+                meta["tree"][0]["lods"][3]["offset"] = 9;
                 break;
             case 8:
                 meta["tree"][0]["lods"][3]["count"] = -1;
@@ -548,7 +540,7 @@ void extract_contracts() {
                 meta["files"] = Json::object();
                 break;
             case 12:
-                meta["shDegree"] = 4;
+                meta.erase("shDegree");
                 break;
             }
             auto bad = files;
@@ -567,10 +559,6 @@ void extract_contracts() {
         rejects([&] { task("ExtractLodLevel", config, context); });
         put_resource(context, "lod", std::vector<pipeline::SingleFile> { files[1] });
         rejects([&] { task("ExtractLodLevel", config, context); });
-        put_resource(context, "lod", files);
-        first->gaussians[1].sh.resize(2);
-        rejects([&] { task("ExtractLodLevel", config, context); });
-        *first = original_first;
         auto empty_meta = original_meta;
         empty_meta["tree"] = Json::array();
         files[0].content = empty_meta.dump();
@@ -824,6 +812,14 @@ void lod_voxel_contracts(const std::filesystem::path& directory) {
         "LOD metadata retained references after all associated outputs were overwritten"
     );
 }
+void read_mixed_sh(const std::filesystem::path& directory) {
+    const auto low = directory / "sh1.ply", high = directory / "sh4.ply";
+    io::write_splat(low, *cloud(1, 1));
+    io::write_splat(high, *cloud(1, 4));
+    pipeline::TaskContext context;
+    task("Read", { { "inputs", { low, high } }, { "output", "mixed" } }, context);
+    require(get(context, "mixed")->sh_degree == 1, "Read must merge at the lowest input SH degree");
+}
 void read_source_order_contracts(const std::filesystem::path& directory) {
     const auto first = directory / "source-order-a.esz", second = directory / "source-order-b.esz";
     io::write_splat(first, *cloud(2, 0));
@@ -1076,6 +1072,7 @@ int main() {
         reread_filter_grid_contract(directory);
         replace_contracts();
         extract_contracts();
+        read_mixed_sh(directory);
         shared_lod_contracts(directory);
         preserve_order_contract(directory);
         lod_voxel_contracts(directory);

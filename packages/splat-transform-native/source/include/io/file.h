@@ -71,8 +71,8 @@ Bytes zip(const Archive& files);
 float from_half(uint16_t value);
 uint16_t to_half(float value);
 
-splat::Splat read_splat(const std::filesystem::path& path, uint32_t max_sh_degree = 3);
-using ShBits = std::array<int32_t, 3>;
+splat::Splat read_splat(const std::filesystem::path& path, uint32_t max_sh_degree = splat::MAX_SH_DEGREE);
+using ShBits = std::array<int32_t, 4>;
 inline ShBits clamp_sh_bits(ShBits bits) {
     for (auto& bit_count : bits) {
         bit_count = std::clamp(bit_count, 1, 8);
@@ -81,7 +81,7 @@ inline ShBits clamp_sh_bits(ShBits bits) {
 }
 struct FileOptions {
     static constexpr double default_color_error = 5.0;
-    static constexpr ShBits default_sh_bits { 5, 4, 4 };
+    static constexpr ShBits default_sh_bits { 5, 4, 4, 4 };
     // Unsupported versions use the target format's default (SPZ 3, SOG 2).
     int32_t version = 0;
     int32_t compress_level = 6;
@@ -96,9 +96,9 @@ void write_splat(const std::filesystem::path& path, const splat::Splat& data, co
 struct FileInput {
     std::filesystem::path path;
     std::span<const std::byte> bytes;
-    uint32_t max_sh_degree = 3;
-    uint32_t retained_degree(uint32_t degree) const {
-        if (degree > 3) {
+    uint32_t max_sh_degree = splat::MAX_SH_DEGREE;
+    uint32_t retained_degree(uint32_t degree, uint32_t format_maximum = splat::MAX_SH_DEGREE) const {
+        if (degree > format_maximum) {
             throw std::runtime_error("Unsupported SH degree");
         }
         return std::min(degree, this->max_sh_degree);
@@ -109,6 +109,8 @@ class IFile {
 public:
     virtual ~IFile() = default;
     virtual std::string_view name() const noexcept = 0;
+    // Highest SH degree representable by the configured format and version.
+    virtual uint32_t max_sh_degree() const noexcept = 0;
     virtual splat::Splat read(const FileInput& input) const = 0;
     virtual splat::Splat read(const std::filesystem::path& path, uint32_t max_sh_degree) const;
     virtual Bytes write(const splat::Splat& splat, std::span<const uint32_t> indices) const;
