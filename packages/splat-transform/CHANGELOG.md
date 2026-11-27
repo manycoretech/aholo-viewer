@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.5.2
 
 - Reduce Vulkan e-means clustering time for automatic SOG SH palettes by about 20%.
 - Credit Faiss e-means under the MIT license.

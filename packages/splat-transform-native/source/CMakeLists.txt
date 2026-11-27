@@ -141,6 +141,7 @@ set(SPLAT_TRANSFORM_HEADER_FILES
     include/utility/random.h
     include/utility/string.h
     include/utility/thread_pool.h
+    include/utility/vector_hash.h
     include/voxel/voxel.h
 )
 set(SPLAT_TRANSFORM_PRIVATE_HEADER_FILES
