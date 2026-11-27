@@ -19,5 +19,7 @@ export default defineConfig({
         '**/.generated/**',
         // externals
         'external/splat-dev-server/**',
+        '.clang-format',
+        '.clang-tidy',
     ],
 });

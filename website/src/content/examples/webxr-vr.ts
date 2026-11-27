@@ -214,7 +214,7 @@ export default async function runner({ renderer, loading, configPanel, indexedDB
     async function loadResource(path: string, resourceSignal?: AbortSignal) {
         const loadSignal = resourceSignal ? AbortSignal.any([signal, resourceSignal]) : signal;
         const url = new URL(path, LOD_URL).href;
-        const cached = await indexedDB.get<SplatData>(url, { version: 0 });
+        const cached = await indexedDB.get<SplatData>(url);
         loadSignal.throwIfAborted();
         if (cached) {
             const data = new SplatLoader.CompressedSplatData();
@@ -236,7 +236,7 @@ export default async function runner({ renderer, loading, configPanel, indexedDB
             mortonSort: false,
         });
         loadSignal.throwIfAborted();
-        await indexedDB.set(url, data.serialize(), { version: 0 });
+        await indexedDB.set(url, data.serialize());
         loadSignal.throwIfAborted();
         return data;
     }

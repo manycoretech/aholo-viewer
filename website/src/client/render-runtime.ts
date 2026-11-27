@@ -131,6 +131,7 @@ interface RuntimeGlobal {
 
 const RENDER_RUNTIME_DB_NAME = 'aholo-render-runtime';
 const RENDER_RUNTIME_CACHE_STORE_NAME = 'runtime-cache';
+const RENDER_RUNTIME_CACHE_VERSION = 2;
 const RENDER_RUNTIME_ABORT_MESSAGE = 'Render runtime was aborted.';
 
 let renderSessionId = 0;
@@ -261,20 +262,20 @@ function createRuntimeIndexedDBStorage(signal: AbortSignal): RuntimeIndexedDBSto
 
     return {
         available,
-        async get<T>(key: string, options?: VersionedCacheOptions) {
+        async get<T>(key: string, { version = RENDER_RUNTIME_CACHE_VERSION }: VersionedCacheOptions = {}) {
             if (!available) {
                 return undefined;
             }
 
             const record = await readIndexedDBRecord<T>(key, signal);
 
-            if (!record || !versionsMatch(record.version, options?.version)) {
+            if (!record || record.version !== version) {
                 return undefined;
             }
 
             return record.value;
         },
-        async set<T>(key: string, value: T, options?: VersionedCacheOptions) {
+        async set<T>(key: string, value: T, { version = RENDER_RUNTIME_CACHE_VERSION }: VersionedCacheOptions = {}) {
             if (!available) {
                 return;
             }
@@ -282,7 +283,7 @@ function createRuntimeIndexedDBStorage(signal: AbortSignal): RuntimeIndexedDBSto
             await writeIndexedDBRecord(
                 {
                     key,
-                    version: options?.version ?? 0,
+                    version,
                     value,
                 },
                 signal,
@@ -416,10 +417,6 @@ function createAbortError() {
 
 function abortable<T>(promise: Promise<T>, signal: AbortSignal) {
     return abortableWithMessage(promise, signal, RENDER_RUNTIME_ABORT_MESSAGE);
-}
-
-function versionsMatch(recordVersion: number | string | undefined, requestedVersion: number | string | undefined) {
-    return requestedVersion === undefined || recordVersion === requestedVersion;
 }
 
 async function readIndexedDBRecord<T>(key: string, signal: AbortSignal): Promise<IndexedDBCacheRecord<T> | undefined> {

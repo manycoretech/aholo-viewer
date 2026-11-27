@@ -131,7 +131,7 @@ async function loadLodMeta(url: string, signal: AbortSignal) {
 
 type ISplatData = ReturnType<SplatLoader.SplatData['serialize']>;
 async function loadResource(url: string, db: RuntimeIndexedDBStorage, signal: AbortSignal) {
-    const cached = await db.get<ISplatData>(url, { version: 0 });
+    const cached = await db.get<ISplatData>(url);
     throwIfAborted(signal);
     if (cached) {
         const data = new SplatLoader.CompressedSplatData();
@@ -155,7 +155,7 @@ async function loadResource(url: string, db: RuntimeIndexedDBStorage, signal: Ab
         { stream: false, mortonSort: false },
     );
     throwIfAborted(signal);
-    await db.set(url, data.serialize(), { version: 0 });
+    await db.set(url, data.serialize());
     throwIfAborted(signal);
     return data;
 }

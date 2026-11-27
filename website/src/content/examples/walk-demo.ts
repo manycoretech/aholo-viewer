@@ -1866,7 +1866,7 @@ function createWalkOutdoorLodResourceLoader(
         const signal = resourceSignal ? AbortSignal.any([sceneSignal, resourceSignal]) : sceneSignal;
         throwIfAborted(signal);
         const resourceUrl = new URL(url, metaBaseUrl).toString();
-        const cached = await indexedDB.get<SerializedCompressedSplatData>(resourceUrl, { version: 0 });
+        const cached = await indexedDB.get<SerializedCompressedSplatData>(resourceUrl);
         throwIfAborted(signal);
         if (cached) {
             const splatData = new CompressedSplatData();
@@ -1889,7 +1889,7 @@ function createWalkOutdoorLodResourceLoader(
             { stream: false, mortonSort: false },
         );
         throwIfAborted(signal);
-        await indexedDB.set(resourceUrl, splatData.serialize(), { version: 0 });
+        await indexedDB.set(resourceUrl, splatData.serialize());
         throwIfAborted(signal);
         return splatData;
     };

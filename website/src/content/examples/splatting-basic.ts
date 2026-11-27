@@ -141,9 +141,9 @@ function initConfigPanel(viewer: Viewer, configPanel: RuntimeConfigPanel, reques
 type ISplatData = ReturnType<SplatLoader.SplatData['serialize']>;
 
 const CACHE_KEY = 'splatting-basic:bear';
-const CACHE_VERSION = 1;
+
 async function loadSplatData(url: string, db: RuntimeIndexedDBStorage, signal: AbortSignal) {
-    const cached = await db.get<ISplatData>(CACHE_KEY, { version: CACHE_VERSION });
+    const cached = await db.get<ISplatData>(CACHE_KEY);
     throwIfAborted(signal);
     if (cached) {
         const data = new SplatLoader.SuperCompressedSplatData();
@@ -162,6 +162,6 @@ async function loadSplatData(url: string, db: RuntimeIndexedDBStorage, signal: A
         { stream: false },
     );
     throwIfAborted(signal);
-    await db.set(CACHE_KEY, data.serialize(), { version: CACHE_VERSION });
+    await db.set(CACHE_KEY, data.serialize());
     return data;
 }
