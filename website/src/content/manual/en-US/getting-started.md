@@ -124,6 +124,30 @@ press h + enter to show help
 
 ![Example](../assets/getting-started/example.png)
 
+## Multithreaded WebGL Sorting
+
+From 1.16.0, the WebGL sorter can share point centers and sorted indices through `SharedArrayBuffer` and use helper threads on supported devices. Serve the application over HTTPS or use `localhost` for development. In a Vite project, save the following as `vite.config.ts` to set the development headers and preserve the SDK's worker asset paths.
+
+```typescript
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+    server: {
+        headers: {
+            'Cross-Origin-Opener-Policy': 'same-origin',
+            'Cross-Origin-Embedder-Policy': 'require-corp',
+        },
+    },
+    optimizeDeps: { exclude: ['@manycore/aholo-viewer'] },
+});
+```
+
+In production, set the same two headers on the **HTML response that hosts the viewer**. Evaluate `window.crossOriginIsolated` in the browser console. It should return `true`.
+
+JavaScript assets can live on a separate origin. Serve them as JavaScript modules with `Access-Control-Allow-Origin` set to the host origin or `*` for public assets. Set `crossorigin="anonymous"` on cross-origin stylesheets and images to request them in CORS mode. In this deployment only the host HTML needs the isolation headers.
+
+When serving the npm package directly, preserve the full `dist/` layout, including `splat-sort-worker.js` and `sort-wasm/sort.js`, which embeds the WASM binary. The sorting worker and its cross-origin helpers start from Blob URLs on the host origin and import the CDN modules. If the site uses CSP, its worker policy must allow `blob:`.
+
 ## Loading and Streaming Uploads
 
 Starting in 1.15.0, [`SplatLoader.parseSplatData()`](api:SplatLoader.parseSplatData) enables streaming by default. It accepts a URL, `File`, `Uint8Array`, or `{ stream, contentLength }`. The first three arguments specify the file format, input, and pack type. The fourth argument controls parsing.

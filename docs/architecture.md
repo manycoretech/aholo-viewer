@@ -195,7 +195,8 @@ The home page intentionally keeps a darker immersive style around the 3D canvas.
 - Renderer output: `packages/renderer/dist/`
     - `index.js`: bundled public runtime.
     - `index.d.ts`: bundled public declarations, including upstream EGS types used by exported symbols.
-    - `splat-worker.js`: bundled worker referenced by the runtime.
+    - `splat-worker.js`, `splat-sort-worker.js`, and `transcoder-worker.js` load splats, sort WebGL splats, and transcode textures.
+    - `sort-wasm/sort.js` is the single-file ES module used by both the sorting worker and its pthread helpers. The build copies it to the path resolved against the renderer entry's `import.meta.url`. Blob worker entries inherit the host page's isolation policy and import cross-origin modules from the CDN.
 
 Root-level `dist/` and `.astro/` are stale and should not exist after the workspace split.
 

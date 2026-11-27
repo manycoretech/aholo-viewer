@@ -277,7 +277,8 @@ export interface ISplattingPluginConfig {
     /**
      * Gaussian sorting. WebGL always uses stable sorting on the upper 24 bits of float32 depth keys.
      * @remarks
-     * WebGL uses WebAssembly SIMD and falls back to JavaScript if initialization fails.
+     * On cross-origin isolated pages, WebGL can share sort buffers and run WebAssembly SIMD across multiple workers.
+     * Without isolation it uses transferable buffers. If WebAssembly initialization fails, the worker sorts in JavaScript.
      */
     sort?: {
         /**

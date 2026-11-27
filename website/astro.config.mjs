@@ -1,7 +1,7 @@
 import { defineConfig } from 'astro/config';
 import { spawn } from 'node:child_process';
 import { createReadStream, existsSync } from 'node:fs';
-import { copyFile, mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import checker from 'vite-plugin-checker';
@@ -54,10 +54,22 @@ export default defineConfig({
     output: 'static',
     trailingSlash: 'always',
     devToolbar: { enabled: false },
+    server: {
+        headers: {
+            'Cross-Origin-Opener-Policy': 'same-origin',
+            'Cross-Origin-Embedder-Policy': 'require-corp',
+        },
+    },
     build: {
         assets: astroAssetsDir,
         assetsPrefix,
     },
+    integrations: [
+        {
+            name: 'aholo-cdn-stylesheets',
+            hooks: { 'astro:build:done': enableCdnStylesheetCors },
+        },
+    ],
     vite: {
         build: {
             rolldownOptions: {
@@ -99,6 +111,21 @@ export default defineConfig({
         ],
     },
 });
+
+// Astro inserts stylesheet links after rendering the layout. Under require-corp they must request CDN CSS in CORS mode.
+async function enableCdnStylesheetCors({ assets }) {
+    const link = `<link rel="stylesheet" href="${assetsPrefix}/`;
+    const corsLink = `<link rel="stylesheet" crossorigin="anonymous" href="${assetsPrefix}/`;
+    for (const file of [...assets.values()].flat()) {
+        if (!file.pathname.endsWith('.html')) {
+            continue;
+        }
+        const html = await readFile(file, 'utf8');
+        if (html.includes(link)) {
+            await writeFile(file, html.replaceAll(link, corsLink));
+        }
+    }
+}
 
 function manualAssetsPlugin() {
     return {

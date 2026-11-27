@@ -66,7 +66,9 @@ setViewerConfig(viewer, {
 
 From 1.14, WebGL always uses stable sorting on the upper 24 bits of float32 depth keys, matching WebGPU. Remove `sort.highPrecisionEnabled` from configuration and presets; it no longer has any effect.
 
-The WebGL sorting worker uses WebAssembly SIMD and falls back to JavaScript if initialization fails. It reuses cached centers when the camera moves or LOD nodes share a source range, reads back changed rows, and overlaps sorting with sorted-index texture uploads. Compare radial sorting and texture repacking in the [Splatting Basic example](https://aholojs.dev/en-US/examples/splatting-basic/).
+From 1.16.0, the WebGL SIMD sorter shares point centers and sorted indices on cross-origin isolated pages and can use up to three helper workers. Set `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on the host HTML. A separate CDN can serve the complete `dist/` tree with ordinary module CORS headers. Without isolation the sorter uses transferable buffers. It falls back to JavaScript if WASM initialization fails. See [Multithreaded WebGL Sorting](https://aholojs.dev/en-US/manual/getting-started/#multithreaded-webgl-sorting).
+
+WebGL reuses cached centers when the camera moves or LOD nodes share a source range, reads back changed rows, and overlaps sorting with sorted-index texture uploads. Compare radial sorting and texture repacking in the [Splatting Basic example](https://aholojs.dev/en-US/examples/splatting-basic/).
 
 Custom source textures supplied to `CompressedSplat` or `SuperCompressedSplat`, including deserialized sampler data, must have power-of-two widths. Invalid widths now throw during construction. `pack.repackEnabled` is a new option; remove the former `pack.sortedLayoutEnabled` setting when upgrading.
 

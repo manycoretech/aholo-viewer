@@ -52,7 +52,9 @@ setViewerConfig(viewer, {
 | `sort.radial`        | `false` | 按高斯中心到相机的距离排序；关闭时按视线方向深度排序。                                        |
 | `pack.repackEnabled` | `false` | 在 WebGL 中按排序结果重排渲染纹理，减少光栅化时的间接纹理寻址；会增加显存占用和一次重排过程。 |
 
-1.14 起，WebGL 统一按 float32 深度键的高 24 位稳定排序，与 WebGPU 一致。Worker 优先使用 WebAssembly SIMD，初始化失败时自动回退 JavaScript，无需手动选择实现。
+1.14 起，WebGL 统一按 float32 深度键的高 24 位稳定排序，与 WebGPU 一致。
+
+从 1.16.0 起，开启跨源隔离后，WebGL 排序 Worker 与渲染器共享点中心和索引缓冲。浏览器报告 4 至 7 个逻辑核心时最多启用 1 个辅助线程，8 个及以上时最多启用 3 个。小批次仍由排序 Worker 独立处理。未开启隔离时使用可转移缓冲区，WASM 初始化失败时自动回退 JavaScript。详见[多线程排序部署](./getting-started.md#webgl-多线程排序)。
 
 WebGL 在相机移动时复用已缓存的点中心，并将排序与索引纹理上传并行处理。从 1.15.0 起，来自同一源文件的 LOD 节点也可复用重叠区间的点中心，仅从 GPU 回读有变化的纹理行。WebGL2 还会在读取协方差数据和计算投影前剔除完全位于屏幕外的高斯。
 

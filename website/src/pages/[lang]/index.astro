@@ -228,7 +228,14 @@ const features = [
                 aria-label={lang === 'zh-CN' ? `${feature.title} 即将上线` : `${feature.title} coming soon`}
                 aria-disabled="true"
               >
-                <img class="home-feature-motion" src={feature.mediaSrc} alt="" loading="lazy" decoding="async" />
+                <img
+                  class="home-feature-motion"
+                  src={feature.mediaSrc}
+                  crossorigin="anonymous"
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                />
                 <span class="home-feature-enter" aria-hidden="true">
                   {lang === 'zh-CN' ? '即将上线' : 'Coming Soon'}
                 </span>
@@ -241,7 +248,14 @@ const features = [
                   lang === 'zh-CN' ? `进入${feature.title}交互示例` : `Enter the ${feature.title} interactive example`
                 }
               >
-                <img class="home-feature-motion" src={feature.mediaSrc} alt="" loading="lazy" decoding="async" />
+                <img
+                  class="home-feature-motion"
+                  src={feature.mediaSrc}
+                  crossorigin="anonymous"
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                />
                 <span class="home-feature-enter" aria-hidden="true">
                   {lang === 'zh-CN' ? '查看示例' : 'View Example'}
                 </span>

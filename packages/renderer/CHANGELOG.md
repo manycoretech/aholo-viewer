@@ -1,5 +1,15 @@
 # ChangeLOG
 
+## 1.16.0
+
+1. Features
+    - parallelize WebGL splat sorting with WebAssembly SIMD and up to three helper workers on cross-origin isolated pages. The renderer and sorting worker share point centers and sorted indices. Pages without isolation use transferable buffers.
+    - support hosting the renderer and its sorting module on a CORS-enabled CDN. The sorting worker and its cross-origin helpers start through Blob URLs, so the host HTML can supply the isolation headers.
+2. Changes
+    - decode Zstandard streams in ESZ and SPZ v4 files with the bundled libzstd WebAssembly decoder.
+3. Fixes
+    - release viewport pipeline resources, including shared sort buffers, when destroying a viewport.
+
 ## 1.15.0
 
 1. Features

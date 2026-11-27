@@ -124,6 +124,30 @@ VITE v8.0.14  ready in 83 ms
 
 ![样例](../assets/getting-started/example.png)
 
+## WebGL 多线程排序
+
+从 1.16.0 起，WebGL 排序可以通过 `SharedArrayBuffer` 共享点中心和排序结果，并在支持的设备上启用辅助线程。生产环境使用 HTTPS，本地开发可使用 `localhost`。在 Vite 项目中，将以下配置保存为 `vite.config.ts`，让开发服务器返回隔离响应头，并保留 SDK 的 Worker 资源路径。
+
+```typescript
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+    server: {
+        headers: {
+            'Cross-Origin-Opener-Policy': 'same-origin',
+            'Cross-Origin-Embedder-Policy': 'require-corp',
+        },
+    },
+    optimizeDeps: { exclude: ['@manycore/aholo-viewer'] },
+});
+```
+
+部署时，在**承载 Viewer 的 HTML 响应**上设置同样的两个头。在浏览器控制台执行 `window.crossOriginIsolated`，应返回 `true`。
+
+JS 可以部署在另一个源。CDN 按 JavaScript 模块提供资源，返回允许主站源的 `Access-Control-Allow-Origin`，公开资源也可使用 `*`。跨源样式表和图片使用 `crossorigin="anonymous"` 发起 CORS 请求。在这种部署方式下，隔离头只需随主站 HTML 返回。
+
+直接部署 npm 包时，保留完整的 `dist/` 目录结构，包括 `splat-sort-worker.js` 和内嵌 WASM 的 `sort-wasm/sort.js`。排序 Worker 和跨源辅助线程从主站源的 Blob URL 启动，再导入 CDN 模块。若站点使用 CSP，Worker 策略需允许 `blob:`。
+
 ## 加载与流式上传
 
 从 1.15.0 起，[`SplatLoader.parseSplatData()`](api:SplatLoader.parseSplatData) 默认开启流式加载。它接受 URL、`File`、`Uint8Array` 或 `{ stream, contentLength }`。前三个参数指定文件格式、输入和打包格式，第四个参数控制解析行为。

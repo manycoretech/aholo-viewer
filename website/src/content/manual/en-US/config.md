@@ -52,7 +52,9 @@ setViewerConfig(viewer, {
 | `sort.radial`        | `false` | Sorts Gaussian centers by distance from the camera instead of view-direction depth.                                                                |
 | `pack.repackEnabled` | `false` | Repacks WebGL rendering textures in sorted order to reduce indirect texture lookups during rasterization. Adds GPU memory usage and a repack pass. |
 
-From 1.14, WebGL always uses stable sorting on the upper 24 bits of float32 depth keys, matching WebGPU. The worker uses WebAssembly SIMD and falls back to JavaScript if initialization fails; no manual implementation selection is required.
+From 1.14, WebGL always uses stable sorting on the upper 24 bits of float32 depth keys, matching WebGPU.
+
+From 1.16.0, the WebGL sorting worker shares point centers and index buffers with the renderer on cross-origin isolated pages. It can start one helper when the browser reports 4–7 logical cores, or up to three helpers with 8 or more. The sorting worker handles small batches on its own. Pages without isolation use transferable buffers. If WASM initialization fails, the worker sorts in JavaScript. See [Multithreaded WebGL Sorting](./getting-started.md#multithreaded-webgl-sorting).
 
 WebGL reuses cached centers when the camera moves and overlaps sorting with sorted-index texture uploads. From 1.15.0, LOD nodes from the same source can also reuse centers in overlapping ranges. WebGL reads back only the changed texture rows. WebGL2 also culls fully offscreen Gaussians before fetching covariance data and calculating their projection.
 

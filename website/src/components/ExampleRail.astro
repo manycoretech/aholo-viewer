@@ -34,7 +34,7 @@ const { currentSlug, label, lang, navId, tagsLabel, variant = 'workspace' } = As
           title={item.title[lang]}
         >
           <span class="example-thumb" aria-hidden="true">
-            <img src={item.coverImageUrl} alt="" loading="lazy" decoding="async" />
+            <img src={item.coverImageUrl} crossorigin="anonymous" alt="" loading="lazy" decoding="async" />
           </span>
           <strong>{item.title[lang]}</strong>
           <span class="example-rail-tags" aria-label={tagsLabel}>

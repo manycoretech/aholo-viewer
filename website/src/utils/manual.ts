@@ -76,7 +76,10 @@ export async function getManualEntry(locale: Locale, slug: string): Promise<Manu
     return {
         ...toManualMetadata(locale, slug, frontmatter),
         headings: toManualHeadings(rendered.metadata.headings),
-        html: rendered.code,
+        html: rendered.code.replaceAll(
+            `<img src="${manualAssetBase}/`,
+            `<img crossorigin="anonymous" src="${manualAssetBase}/`,
+        ),
     };
 }
 

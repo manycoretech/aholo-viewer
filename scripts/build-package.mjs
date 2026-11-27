@@ -109,6 +109,19 @@ async function bundleRuntime() {
             outfile: resolve(runtimeDir, workerBundle.fileName),
         });
     }
+
+    // Keep the single-file module at the runtime URL shared by the sorting worker and its pthread helpers.
+    await cp(
+        resolveWorkspacePath('external/egs-core/packages/utils/splat-utils/sort-wasm/sort.js', 'sort WASM module'),
+        resolve(runtimeDir, 'sort-wasm/sort.js'),
+    );
+    await cp(
+        resolveWorkspacePath(
+            'external/egs-core/packages/loaders/splat-loader/utils/zstd-wasm/LICENSE.zstd',
+            'zstd license',
+        ),
+        resolve(runtimeDir, 'LICENSE.zstd'),
+    );
 }
 
 function emitPackageDeclarations() {
